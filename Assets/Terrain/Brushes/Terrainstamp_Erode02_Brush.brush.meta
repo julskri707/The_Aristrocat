@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 6297e852961cb5d4883ad84dd4297d86
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 213197
+  packageName: Unity Terrain - URP Demo Scene
+  packageVersion: 1.0.3
+  assetPath: Assets/TerrainDemoScene_URP/Terrain/Brushes/Terrainstamp_Erode02_Brush.brush
+  uploadId: 727820

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: d49c6586858d82a4b956835c16720e90
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 213197
+  packageName: Unity Terrain - URP Demo Scene
+  packageVersion: 1.0.3
+  assetPath: Assets/TerrainDemoScene_URP/Terrain/Brushes/Terrainstamp_Mountain02_Brush.brush
+  uploadId: 727820

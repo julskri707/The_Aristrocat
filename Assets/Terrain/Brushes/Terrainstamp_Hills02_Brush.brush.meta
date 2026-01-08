@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: bead3f059072f0340b6f346d0dad86bc
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 213197
+  packageName: Unity Terrain - URP Demo Scene
+  packageVersion: 1.0.3
+  assetPath: Assets/TerrainDemoScene_URP/Terrain/Brushes/Terrainstamp_Hills02_Brush.brush
+  uploadId: 727820
