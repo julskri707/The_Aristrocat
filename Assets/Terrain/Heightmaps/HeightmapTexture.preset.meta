@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 8592ee023a4ea9841b3e597fa8257f11
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2655988077585873504
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 213197
+  packageName: Unity Terrain - URP Demo Scene
+  packageVersion: 1.0.3
+  assetPath: Assets/TerrainDemoScene_URP/Terrain/Brushes/Heightmaps/HeightmapTexture.preset
+  uploadId: 727820

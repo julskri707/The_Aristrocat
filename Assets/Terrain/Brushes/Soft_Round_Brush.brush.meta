@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 11164b7b0791f824f8ca3bac6007933a
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 213197
+  packageName: Unity Terrain - URP Demo Scene
+  packageVersion: 1.0.3
+  assetPath: Assets/TerrainDemoScene_URP/Terrain/Brushes/Soft_Round_Brush.brush
+  uploadId: 727820

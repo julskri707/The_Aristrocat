@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 104f60a2cec266e4eba46aecec2d68d4
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 8574412962073106934
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 213197
+  packageName: Unity Terrain - URP Demo Scene
+  packageVersion: 1.0.3
+  assetPath: Assets/TerrainDemoScene_URP/Terrain/Layers/Cliff_Mossy_E.terrainlayer
+  uploadId: 727820
