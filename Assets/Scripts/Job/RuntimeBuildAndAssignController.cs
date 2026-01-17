@@ -1,176 +1,169 @@
+using System.Linq;
 using UnityEngine;
 
-public class RuntimeBuildAssignController : MonoBehaviour
+public class RuntimeAssignController_Tags_Scan : MonoBehaviour
 {
-    public enum Mode { None, Build, Assign }
+    [Header("Camera (optional)")]
+    public Camera raycastCamera;
 
     [Header("Tags")]
-    public string groundTag = "Ground";
     public string fieldTag = "WorkArea";
     public string workerTag = "Bauer";
 
-    [Header("Prefabs")]
-    public GameObject fieldPrefab;
-
-    [Header("Build")]
-    public float snapSize = 1f;     // 0 = no snap
-    public float placeYOffset = 0f;
-
-    [Header("Keys")]
-    public KeyCode buildKey = KeyCode.B;
+    [Header("Key")]
     public KeyCode assignKey = KeyCode.A;
+
+    [Header("Worker Scan (über & drunter)")]
+    public float scanUp = 3f;
+    public float scanDown = 3f;
+    public float scanRadius = 0.6f;
 
     [Header("Debug")]
     public bool debugLogs = true;
 
-    public Mode mode = Mode.Build;
-
     private ResourceTickBehaviour _selectedField;
+
+    private void Awake()
+    {
+        if (raycastCamera == null) raycastCamera = Camera.main;
+    }
 
     private void Update()
     {
-        if (Input.GetKeyDown(buildKey))
-        {
-            mode = Mode.Build;
-            ClearSelection();
-            Log("Mode: BUILD (click ground to place fields)");
-        }
-
         if (Input.GetKeyDown(assignKey))
         {
-            mode = Mode.Assign;
             ClearSelection();
-            Log("Mode: ASSIGN (click a field, then click farmers)");
+            Log("ASSIGN: Klick Feld, dann Klick Bauer.");
         }
 
-        if (Input.GetMouseButtonDown(1))
-            ClearSelection();
+        if (Input.GetMouseButtonDown(1)) ClearSelection();
 
         if (Input.GetMouseButtonDown(0))
-        {
-            if (mode == Mode.Build) TryBuild();
-            else if (mode == Mode.Assign) TryAssign();
-        }
+            HandleClick();
     }
 
-    private void TryBuild()
+    private void HandleClick()
     {
-        if (fieldPrefab == null) { Log("No fieldPrefab assigned."); return; }
-        if (!RayFromMouse(out var hit)) return;
-
-        // must click ground-tagged collider
-        if (!HasTagInParents(hit.collider.transform, groundTag)) return;
-
-        Vector3 pos = hit.point;
-        pos.y += placeYOffset;
-
-        if (snapSize > 0.0001f)
+        if (!RaycastAllSorted(out var hits))
         {
-            pos.x = Mathf.Round(pos.x / snapSize) * snapSize;
-            pos.z = Mathf.Round(pos.z / snapSize) * snapSize;
-        }
-
-        var go = Instantiate(fieldPrefab, pos, Quaternion.identity);
-
-        // Ensure tag on root (or on collider object)
-        if (!go.CompareTag(fieldTag)) go.tag = fieldTag;
-
-        // Ensure outline exists
-        if (go.GetComponent<FieldOutline>() == null) go.AddComponent<FieldOutline>();
-
-        // Ensure resource tick behaviour exists
-        if (go.GetComponent<ResourceTickBehaviour>() == null)
-            Log("WARNING: FieldPrefab has no ResourceTickBehaviour (field won't produce).");
-
-        Log($"Field placed: {go.name}");
-    }
-
-    private void TryAssign()
-    {
-        if (!RayFromMouse(out var hit)) return;
-
-        // 1) click field to select
-        var site = FindFieldSite(hit.collider);
-        if (site != null)
-        {
-            SelectField(site);
+            Log("Raycast hit nothing.");
             return;
         }
 
-        // 2) with field selected, click farmer
-        if (_selectedField != null)
+        // Debug: show what you hit
+        if (debugLogs)
         {
-            var workerRoot = FindWorkerRoot(hit.collider);
-            if (workerRoot != null)
-            {
-                var wa = workerRoot.GetComponent<WorkerAssignment>();
-                if (wa == null) wa = workerRoot.AddComponent<WorkerAssignment>();
+            var first = hits[0].collider;
+            Debug.Log($"[AssignScan] First hit: {first.name} tag={first.tag} layer={LayerMask.LayerToName(first.gameObject.layer)}");
+        }
 
-                wa.AssignTo(_selectedField);
-                Log($"Assigned '{workerRoot.name}' -> '{_selectedField.name}'");
+        // 1) Select field
+        var fieldHit = hits.FirstOrDefault(h => HasTagInParents(h.collider.transform, fieldTag));
+        if (fieldHit.collider != null)
+        {
+            var site = fieldHit.collider.GetComponentInParent<ResourceTickBehaviour>();
+            if (site != null)
+            {
+                SelectField(site);
+                return;
+            }
+            else
+            {
+                Log("Hit a field-tagged object but no ResourceTickBehaviour in parents.");
             }
         }
+
+        // 2) Assign if field selected
+        if (_selectedField == null) return;
+
+        // 2a) direct worker hit
+        var workerHit = hits.FirstOrDefault(h => HasTagInParents(h.collider.transform, workerTag));
+        if (workerHit.collider != null)
+        {
+            AssignWorker(workerHit.collider.transform.root.gameObject);
+            return;
+        }
+
+        // 2b) scan around click point
+        var p = hits[0].point;
+        var found = ScanForWorkerAtPoint(p);
+        if (found != null) AssignWorker(found);
+        else Log("Kein Bauer im Scan-Bereich gefunden.");
     }
 
-    private ResourceTickBehaviour FindFieldSite(Collider col)
+    private GameObject ScanForWorkerAtPoint(Vector3 point)
     {
-        Transform t = col.transform;
-        while (t != null)
+        Vector3 top = point + Vector3.up * scanUp;
+        Vector3 bottom = point - Vector3.up * scanDown;
+
+        var cols = Physics.OverlapCapsule(top, bottom, scanRadius, ~0, QueryTriggerInteraction.Collide);
+        if (cols == null || cols.Length == 0) return null;
+
+        GameObject best = null;
+        float bestD = float.MaxValue;
+
+        foreach (var c in cols)
         {
-            if (t.CompareTag(fieldTag))
-                return t.GetComponent<ResourceTickBehaviour>() ?? t.GetComponentInParent<ResourceTickBehaviour>();
-            t = t.parent;
+            if (c == null) continue;
+            if (!HasTagInParents(c.transform, workerTag)) continue;
+
+            var root = c.transform.root.gameObject;
+            float d = Vector3.Distance(root.transform.position, point);
+            if (d < bestD) { bestD = d; best = root; }
         }
-        return null;
+
+        return best;
     }
 
-    private GameObject FindWorkerRoot(Collider col)
+    private void AssignWorker(GameObject workerRoot)
     {
-        Transform t = col.transform;
-        while (t != null)
-        {
-            if (t.CompareTag(workerTag))
-                return t.root.gameObject;
-            t = t.parent;
-        }
-        return null;
+        var wa = workerRoot.GetComponent<WorkerAssignment>();
+        if (wa == null) wa = workerRoot.AddComponent<WorkerAssignment>();
+
+        wa.AssignTo(_selectedField);
+        Log($"Assigned '{workerRoot.name}' -> '{_selectedField.name}'");
     }
 
     private void SelectField(ResourceTickBehaviour field)
     {
-        // unselect old
         if (_selectedField != null)
         {
-            var oldO = _selectedField.GetComponent<FieldOutline>();
-            if (oldO != null) oldO.SetSelected(false);
+            var oldFa = _selectedField.GetComponent<FieldArea>();
+            if (oldFa != null) oldFa.SetSelected(false);
         }
 
         _selectedField = field;
 
-        var o = _selectedField.GetComponent<FieldOutline>();
-        if (o != null) o.SetSelected(true);
+        var fa = _selectedField.GetComponent<FieldArea>();
+        if (fa != null) fa.SetSelected(true);
 
-        Log($"Selected field: {_selectedField.name} (now click farmers)");
+        Log($"Selected field: {_selectedField.name}");
     }
 
     private void ClearSelection()
     {
         if (_selectedField != null)
         {
-            var o = _selectedField.GetComponent<FieldOutline>();
-            if (o != null) o.SetSelected(false);
+            var fa = _selectedField.GetComponent<FieldArea>();
+            if (fa != null) fa.SetSelected(false);
         }
         _selectedField = null;
     }
 
-    private bool RayFromMouse(out RaycastHit hit)
+    private bool RaycastAllSorted(out RaycastHit[] hits)
     {
-        hit = default;
-        var cam = Camera.main;
-        if (cam == null) return false;
+        hits = null;
+        if (raycastCamera == null) raycastCamera = Camera.main;
+        if (raycastCamera == null) { Log("No camera (Camera.main missing)."); return false; }
 
-        var ray = cam.ScreenPointToRay(Input.mousePosition);
-        return Physics.Raycast(ray, out hit, 9999f, ~0, QueryTriggerInteraction.Collide);
+        var ray = raycastCamera.ScreenPointToRay(Input.mousePosition);
+
+        // IMPORTANT: Collide -> hits trigger selection box
+        hits = Physics.RaycastAll(ray, 9999f, ~0, QueryTriggerInteraction.Collide)
+                      .OrderBy(h => h.distance)
+                      .ToArray();
+
+        return hits.Length > 0;
     }
 
     private static bool HasTagInParents(Transform t, string tag)
@@ -185,6 +178,6 @@ public class RuntimeBuildAssignController : MonoBehaviour
 
     private void Log(string msg)
     {
-        if (debugLogs) Debug.Log("[BuildAssign] " + msg);
+        if (debugLogs) Debug.Log("[AssignScan] " + msg);
     }
 }

@@ -10,8 +10,8 @@ GameObject:
   m_Component:
   - component: {fileID: 4046020787865011273}
   - component: {fileID: 8484174006818270652}
-  - component: {fileID: 6247265270572103075}
   - component: {fileID: 3331578487721559061}
+  - component: {fileID: 6881739599676233070}
   m_Layer: 0
   m_Name: Farmarea
   m_TagString: WorkArea
@@ -73,22 +73,6 @@ MonoBehaviour:
   missingInputBehaviour: 0
   allowFreeProductionIfNoInputs: 1
   debugLogSkips: 1
---- !u!114 &6247265270572103075
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8619627073657731674}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 61be955ec516a664782f62414dddc3ea, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::FieldOutline
-  yOffset: 0.02
-  lineWidth: 0.2
-  normalColor: {r: 0, g: 0, b: 0, a: 1}
-  selectedColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
 --- !u!120 &3331578487721559061
 LineRenderer:
   serializedVersion: 2
@@ -210,3 +194,28 @@ LineRenderer:
   m_UseWorldSpace: 1
   m_Loop: 1
   m_ApplyActiveColorSpace: 1
+--- !u!114 &6881739599676233070
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8619627073657731674}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3c69720ad66780e48a24cfac25fb9bfc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FieldArea
+  groundTag: Ground
+  raycastUp: 50
+  raycastDown: 200
+  fillAlpha: 0.18
+  yOffset: 0.08
+  fillNormal: {r: 0, g: 0.4113207, b: 0.025296643, a: 1}
+  fillSelected: {r: 0, g: 1, b: 0.38468528, a: 1}
+  lineWidth: 0.08
+  outlineNormal: {r: 0, g: 0, b: 0, a: 1}
+  outlineSelected: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  addMeshCollider: 1
+  autoConformToGround: 0
+  conformInterval: 0.5
