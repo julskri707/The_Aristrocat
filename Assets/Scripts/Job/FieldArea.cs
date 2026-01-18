@@ -112,6 +112,54 @@ public class FieldArea : MonoBehaviour
         ApplySelected(_selected);
     }
 
+    // =========================
+    // ✅ NEW: Area calculation
+    // =========================
+
+    /// <summary>
+    /// Area in WORLD units^2 on the XZ plane, based on the polygon corners.
+    /// This is what you want to scale income by.
+    /// </summary>
+    public float GetAreaWorldXZ()
+    {
+        if (_localPoints.Count < 3) return 0f;
+
+        float sum = 0f;
+        for (int i = 0; i < _localPoints.Count; i++)
+        {
+            int j = (i + 1) % _localPoints.Count;
+
+            Vector3 wi = transform.TransformPoint(_localPoints[i]);
+            Vector3 wj = transform.TransformPoint(_localPoints[j]);
+
+            // Shoelace formula on XZ
+            sum += (wi.x * wj.z) - (wj.x * wi.z);
+        }
+
+        return Mathf.Abs(sum) * 0.5f;
+    }
+
+    /// <summary>
+    /// Area in LOCAL units^2 on the XZ plane. Usually you want world.
+    /// </summary>
+    public float GetAreaLocalXZ()
+    {
+        if (_localPoints.Count < 3) return 0f;
+
+        float sum = 0f;
+        for (int i = 0; i < _localPoints.Count; i++)
+        {
+            int j = (i + 1) % _localPoints.Count;
+
+            Vector3 a = _localPoints[i];
+            Vector3 b = _localPoints[j];
+
+            sum += (a.x * b.z) - (b.x * a.z);
+        }
+
+        return Mathf.Abs(sum) * 0.5f;
+    }
+
     // ---------- Components ----------
     private void EnsureComponents()
     {

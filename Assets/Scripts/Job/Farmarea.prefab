@@ -47,32 +47,27 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ResourceTickBehaviour
   tickSystem: {fileID: 0}
+  autoFindTickSystem: 1
   active: 1
   everyNTicks: 1
   baseMultiplier: 1
   requireWorkers: 1
   assignedWorkers: 0
   maxWorkers: 10
-  scaleByWorkers: 1
-  workAreaMode: 1
-  workAreaTag: WorkArea
-  useLayerMask: 1
-  workAreaLayerMask:
-    serializedVersion: 2
-    m_Bits: 128
-  radiusCenter: {fileID: 0}
-  radiusCenterTag: 
-  radius: 5
-  allowIfCenterMissing: 0
+  scaleByWorkers: 0
+  scaleByFieldArea: 1
+  areaMultiplier: 0.1
+  clampArea: 1
+  minArea: 1
+  maxArea: 200
   inputs:
   - type: 0
     amount: 0
   outputs:
   - type: 4
-    amount: 10
+    amount: 1
   missingInputBehaviour: 0
-  allowFreeProductionIfNoInputs: 1
-  debugLogSkips: 1
+  resourceManager: {fileID: 0}
 --- !u!120 &3331578487721559061
 LineRenderer:
   serializedVersion: 2
@@ -209,6 +204,7 @@ MonoBehaviour:
   groundTag: Ground
   raycastUp: 50
   raycastDown: 200
+  autoSortPointsByAngle: 1
   fillAlpha: 0.18
   yOffset: 0.08
   fillNormal: {r: 0, g: 0.4113207, b: 0.025296643, a: 1}
@@ -217,5 +213,6 @@ MonoBehaviour:
   outlineNormal: {r: 0, g: 0, b: 0, a: 1}
   outlineSelected: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   addMeshCollider: 1
-  autoConformToGround: 0
-  conformInterval: 0.5
+  alwaysAddSelectionBox: 1
+  selectionBoxHeight: 2
+  selectionBoxPadding: 0.01
