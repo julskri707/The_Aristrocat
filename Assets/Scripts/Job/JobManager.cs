@@ -4,85 +4,64 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class JobManager : MonoBehaviour
 {
-    public static JobManager Instance { get; private set; }
-
+    [Header("Tick Connection")]
     public TickSystem tickSystem;
+    public bool autoFindTickSystem = true;
 
-    private readonly List<WorkerAssignment> _workers = new();
-    private readonly Dictionary<ResourceTickBehaviour, int> _lastApplied = new();
-
-    private void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
-    }
+    [Header("Optional: only count workers with this tag (leave empty to count all)")]
+    public string workerTag = "Bauer";
 
     private void OnEnable()
     {
-        if (tickSystem == null)
+        if (tickSystem == null && autoFindTickSystem)
             tickSystem = UnityEngine.Object.FindFirstObjectByType<TickSystem>(FindObjectsInactive.Include);
 
-        if (tickSystem == null)
-        {
-            Debug.LogWarning("JobManager: No TickSystem found.");
-            return;
-        }
-
-        tickSystem.onPreTick.AddListener(OnPreTick);
+        if (tickSystem != null)
+            tickSystem.onTick.AddListener(OnTick);
+        else
+            Debug.LogWarning("[JobManager] No TickSystem found.");
     }
 
     private void OnDisable()
     {
         if (tickSystem != null)
-            tickSystem.onPreTick.RemoveListener(OnPreTick);
+            tickSystem.onTick.RemoveListener(OnTick);
     }
 
-    public void RegisterWorker(WorkerAssignment w)
+    private void OnTick(long tickIndex)
     {
-        if (w == null) return;
-        if (_workers.Contains(w)) return;
-        _workers.Add(w);
+        UpdateAssignments();
     }
 
-    public void UnregisterWorker(WorkerAssignment w)
+    [ContextMenu("Update Assignments Now")]
+    public void UpdateAssignments()
     {
-        if (w == null) return;
-        _workers.Remove(w);
-    }
+        // 1) reset all fields
+        var fields = UnityEngine.Object.FindObjectsByType<ResourceTickBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < fields.Length; i++)
+            fields[i].assignedWorkers = 0;
 
-    private void OnPreTick(long tickIndex)
-    {
-        // reset previous
-        foreach (var kv in _lastApplied)
-            if (kv.Key != null) kv.Key.assignedWorkers = 0;
+        // 2) count workers and apply to their assigned field
+        var workers = UnityEngine.Object.FindObjectsByType<WorkerAssignment>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        int assignedCount = 0;
 
-        _lastApplied.Clear();
-
-        // count
-        var counts = new Dictionary<ResourceTickBehaviour, int>(64);
-        foreach (var w in _workers)
+        for (int i = 0; i < workers.Length; i++)
         {
-            if (w == null || !w.enabled) continue;
-            if (!w.gameObject.activeInHierarchy) continue;
+            var w = workers[i];
+            if (w == null || w.assignedField == null) continue;
 
-            var site = w.assignedSite;
-            if (site == null || !site.enabled) continue;
+            // optional tag filter
+            if (!string.IsNullOrEmpty(workerTag))
+            {
+                // workerTag should be on the same GameObject as WorkerAssignment
+                if (!w.gameObject.CompareTag(workerTag)) continue;
+            }
 
-            counts.TryGetValue(site, out int c);
-            counts[site] = c + 1;
+            w.assignedField.assignedWorkers += 1;
+            assignedCount++;
         }
 
-        // apply
-        foreach (var kv in counts)
-        {
-            var site = kv.Key;
-            if (site == null) continue;
-
-            int desired = kv.Value;
-            if (site.maxWorkers > 0) desired = Mathf.Min(desired, site.maxWorkers);
-
-            site.assignedWorkers = desired;
-            _lastApplied[site] = desired;
-        }
+        // Debug once in a while (you can remove)
+        // Debug.Log($"[JobManager] Assigned workers counted: {assignedCount}");
     }
 }
