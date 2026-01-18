@@ -44,10 +44,7 @@ Material:
   - BACKFACE_NORMAL_MODE_NONE
   m_InvalidKeywords:
   - _EMISSION
-<<<<<<< Updated upstream
-=======
   - _WINDQUALITY_FASTEST
->>>>>>> Stashed changes
   m_LightmapFlags: 2
   m_EnableInstancingVariants: 1
   m_DoubleSidedGI: 0
@@ -110,11 +107,7 @@ Material:
     - _BlendMode: 0
     - _CastShadows: 1
     - _ConservativeDepthOffsetEnable: 0
-<<<<<<< Updated upstream
-    - _Cull: 2
-=======
     - _Cull: 0
->>>>>>> Stashed changes
     - _CullMode: 0
     - _CullModeForward: 0
     - _DepthOffsetEnable: 0
@@ -164,11 +157,7 @@ Material:
     - _TransparentWritingMotionVec: 0
     - _TransparentZWrite: 0
     - _UseShadowThreshold: 0
-<<<<<<< Updated upstream
-    - _WINDQUALITY: 4
-=======
     - _WINDQUALITY: 1
->>>>>>> Stashed changes
     - _WindQuality: 1
     - _WorkflowMode: 1
     - _ZTest: 4

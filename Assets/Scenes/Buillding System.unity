@@ -255,7 +255,7 @@ MonoBehaviour:
   useUnscaledTime: 0
   speedMultiplier: 1
   tickResourceManager: 1
-  resourceManager: {fileID: 1330629022}
+  resourceManager: {fileID: 0}
   tickCounterText: {fileID: 0}
   speedText: {fileID: 0}
   onPreTick:
@@ -341,8 +341,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
-  m_sharedMaterial: {fileID: 7482093317642931679, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -572,19 +572,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 177bac30dde9c8c428b83d6ff8816658, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WorkerAssignment
-  job: 1
-  jobLabelOverride: 
-  assignedField: {fileID: 0}
-  nameTag: {fileID: 0}
-  autoFindNameTag: 1
-  jobStyles:
-  - job: 1
-    font: {fileID: 11400000, guid: 16aa3957c90e8d14f85b9c10cb3b4d16, type: 2}
-    materialPreset: {fileID: 6960064387692826133, guid: 145fe57700747ec448449eef490f1647, type: 3}
-    fontSize: 30
-    color: {r: 0, g: 0, b: 0, a: 0}
-  format: '{job}: {field}'
-  unassignedFieldText: "\u2014"
+  assignedSite: {fileID: 0}
+  autoRegister: 1
 --- !u!1 &386248201
 GameObject:
   m_ObjectHideFlags: 0
@@ -697,8 +686,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::JobManager
   tickSystem: {fileID: 207543737}
-  autoFindTickSystem: 1
-  workerTag: Bauer
 --- !u!4 &556437544
 Transform:
   m_ObjectHideFlags: 0
@@ -892,8 +879,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
-  m_sharedMaterial: {fileID: 7482093317642931679, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -1047,8 +1034,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
-  m_sharedMaterial: {fileID: 7482093317642931679, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -1183,8 +1170,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
-  m_sharedMaterial: {fileID: 7482093317642931679, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -1298,105 +1285,89 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 902c52992cf90af4397ae7676d8af676, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ResourceManager
-  Gold: 100
-  Wood: 100
-  Stone: 100
-  Iron: 100
-  Food: 100
-  Clothing: 100
-  Loyalty: 100
-  clampToZero: 1
-  clampLoyaltyTo0_100: 1
-  tickSystem: {fileID: 207543737}
-  autoFindTickSystem: 1
-  OnResourceChanged:
-    m_PersistentCalls:
-      m_Calls: []
+  startValues:
+    gold: 100
+    wood: 100
+    stone: 100
+    iron: 100
+    food: 100
+    clothing: 100
+    loyalty: 100
+  tick:
+    autoTick: 0
+    secondsPerTick: 0.01
+    population: 0
+    foodPerPerson: 0
+    clothingPerPerson: 0
+    loyaltyLossIfFoodMissing: 0
+    loyaltyLossIfClothingMissing: 0
+    loyaltyGainIfSupplied: 0
+  incomeGold: 0
+  incomeWood: 0
+  incomeStone: 0
+  incomeIron: 0
+  incomeFood: 0
+  incomeClothing: 0
   bindings:
   - name: Gold
     mode: 0
-    resource: 0
-    targetText: {fileID: 736383983}
-    showPerTick: 0
+    resourceType: 0
+    target: {fileID: 736383982}
+    showPerTickInfo: 0
     template: '"{label}: {value} '
     labelOverride: 
-    decimals: 0
     lineTemplate: 
-    separator: '
-
-'
   - name: Wood
     mode: 0
-    resource: 1
-    targetText: {fileID: 759554666}
-    showPerTick: 0
+    resourceType: 1
+    target: {fileID: 759554664}
+    showPerTickInfo: 0
     template: '"{label}: {value} '
     labelOverride: 
-    decimals: 0
     lineTemplate: 
-    separator: '
-
-'
   - name: Stone
     mode: 0
-    resource: 2
-    targetText: {fileID: 1438467432}
-    showPerTick: 0
+    resourceType: 2
+    target: {fileID: 1438467430}
+    showPerTickInfo: 0
     template: '"{label}: {value} '
     labelOverride: 
-    decimals: 0
     lineTemplate: 
-    separator: '
-
-'
   - name: iron
     mode: 0
-    resource: 3
-    targetText: {fileID: 309072696}
-    showPerTick: 0
+    resourceType: 3
+    target: {fileID: 309072694}
+    showPerTickInfo: 0
     template: '"{label}: {value} '
     labelOverride: 
-    decimals: 0
     lineTemplate: 
-    separator: '
-
-'
   - name: Food
     mode: 0
-    resource: 4
-    targetText: {fileID: 1361904004}
-    showPerTick: 0
+    resourceType: 4
+    target: {fileID: 1361904002}
+    showPerTickInfo: 0
     template: '"{label}: {value} '
     labelOverride: 
-    decimals: 0
     lineTemplate: 
-    separator: '
-
-'
   - name: Clothing
     mode: 0
-    resource: 5
-    targetText: {fileID: 909153416}
-    showPerTick: 0
+    resourceType: 5
+    target: {fileID: 909153414}
+    showPerTickInfo: 0
     template: '"{label}: {value} '
     labelOverride: 
-    decimals: 0
     lineTemplate: 
-    separator: '
-
-'
   - name: Loyalty
     mode: 0
-    resource: 6
-    targetText: {fileID: 1972818588}
-    showPerTick: 0
+    resourceType: 6
+    target: {fileID: 1972818587}
+    showPerTickInfo: 0
     template: '"{label}: {value} '
     labelOverride: 
-    decimals: 0
     lineTemplate: 
-    separator: '
-
-'
+  onResourceChanged:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!224 &1330629023
 RectTransform:
   m_ObjectHideFlags: 0
@@ -1475,8 +1446,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
-  m_sharedMaterial: {fileID: 7482093317642931679, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -1582,14 +1553,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d6d27c1101797434fa7005324cf90414, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RuntimeBuildAndAssignController
-  raycastCamera: {fileID: 0}
+  groundTag: Ground
   fieldTag: WorkArea
   workerTag: Bauer
+  fieldPrefab: {fileID: 0}
+  snapSize: 1
+  placeYOffset: 0
+  buildKey: 98
   assignKey: 97
-  scanUp: 3
-  scanDown: 3
-  scanRadius: 0.6
   debugLogs: 1
+  mode: 1
 --- !u!4 &1393660071
 Transform:
   m_ObjectHideFlags: 0
@@ -1685,8 +1658,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
-  m_sharedMaterial: {fileID: 7482093317642931679, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -2120,8 +2093,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
-  m_sharedMaterial: {fileID: 7482093317642931679, guid: cd15312b9cfd30147959625ff0fdd1f6, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
