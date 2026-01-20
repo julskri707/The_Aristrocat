@@ -9,8 +9,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4046020787865011273}
+  - component: {fileID: 7789746924286439387}
   - component: {fileID: 8484174006818270652}
-  - component: {fileID: 6247265270572103075}
   - component: {fileID: 3331578487721559061}
   m_Layer: 0
   m_Name: Farmarea
@@ -34,6 +34,33 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7789746924286439387
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8619627073657731674}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3c69720ad66780e48a24cfac25fb9bfc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FieldArea
+  groundTag: Ground
+  raycastUp: 50
+  raycastDown: 200
+  autoSortPointsByAngle: 1
+  fillAlpha: 0.18
+  yOffset: 0.03
+  fillNormal: {r: 0, g: 0, b: 0, a: 1}
+  fillSelected: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  lineWidth: 0.08
+  outlineNormal: {r: 0, g: 0, b: 0, a: 1}
+  outlineSelected: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  addMeshCollider: 1
+  alwaysAddSelectionBox: 1
+  selectionBoxHeight: 2
+  selectionBoxPadding: 0.2
 --- !u!114 &8484174006818270652
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -46,7 +73,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 65afedc7990578d4d8d6193e366b5259, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ResourceTickBehaviour
-  tickSystem: {fileID: 0}
+  tickBehaviour: {fileID: 0}
+  autoFindTick: 1
   active: 1
   everyNTicks: 1
   baseMultiplier: 1
@@ -54,16 +82,11 @@ MonoBehaviour:
   assignedWorkers: 0
   maxWorkers: 10
   scaleByWorkers: 1
-  workAreaMode: 1
-  workAreaTag: WorkArea
-  useLayerMask: 1
-  workAreaLayerMask:
-    serializedVersion: 2
-    m_Bits: 128
-  radiusCenter: {fileID: 0}
-  radiusCenterTag: 
-  radius: 5
-  allowIfCenterMissing: 0
+  scaleByFieldArea: 1
+  areaMultiplier: 0.1
+  clampArea: 1
+  minArea: 1
+  maxArea: 200
   inputs:
   - type: 0
     amount: 0
@@ -71,24 +94,9 @@ MonoBehaviour:
   - type: 4
     amount: 10
   missingInputBehaviour: 0
-  allowFreeProductionIfNoInputs: 1
-  debugLogSkips: 1
---- !u!114 &6247265270572103075
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8619627073657731674}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 61be955ec516a664782f62414dddc3ea, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::FieldOutline
-  yOffset: 0.02
-  lineWidth: 0.2
-  normalColor: {r: 0, g: 0, b: 0, a: 1}
-  selectedColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  resourceManagerBehaviour: {fileID: 0}
+  debugAutoTick: 1
+  debugSecondsPerTick: 1
 --- !u!120 &3331578487721559061
 LineRenderer:
   serializedVersion: 2
