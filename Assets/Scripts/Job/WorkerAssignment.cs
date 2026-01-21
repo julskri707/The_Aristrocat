@@ -3,22 +3,16 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class WorkerAssignment : MonoBehaviour
 {
-    public ResourceTickBehaviour assignedSite;
+    [Tooltip("The field/worksite this worker is assigned to.")]
+    public ResourceTickBehaviour assignedField;
 
-    public bool autoRegister = true;
-
-    private void OnEnable()
+    public void AssignTo(ResourceTickBehaviour field)
     {
-        if (!autoRegister) return;
-        JobManager.Instance?.RegisterWorker(this);
+        assignedField = field;
     }
 
-    private void OnDisable()
+    public void Unassign()
     {
-        if (!autoRegister) return;
-        JobManager.Instance?.UnregisterWorker(this);
+        assignedField = null;
     }
-
-    public void AssignTo(ResourceTickBehaviour site) => assignedSite = site;
-    public void Unassign() => assignedSite = null;
 }
