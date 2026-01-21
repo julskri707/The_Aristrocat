@@ -4,15 +4,20 @@ using UnityEngine;
 public class ClosedShape : MonoBehaviour
 {
     public List<Vector3> points = new List<Vector3>();
+void Start()
+{
+    WallMeshGenerator gen = FindFirstObjectByType<WallMeshGenerator>();
+    if (gen != null)
+        gen.Generate(points);
 
-    void Start()
-    {
-        WallMeshGenerator gen = FindObjectOfType<WallMeshGenerator>();
-        if (gen != null)
-        {
-            gen.Generate(points);
-        }
-    }
+    TowerGenerator towers = FindFirstObjectByType<TowerGenerator>();
+    if (towers != null)
+        towers.GenerateTowers(points);
+  
+  RoofMeshGenerator roof = FindFirstObjectByType<RoofMeshGenerator>();
+    if (roof != null) roof.Generate(points);
+}
+
 
     void OnDrawGizmos()
     {
