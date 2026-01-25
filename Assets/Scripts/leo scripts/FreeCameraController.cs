@@ -2,48 +2,85 @@ using UnityEngine;
 
 public class FreeCameraController : MonoBehaviour
 {
+    [Header("Movement")]
     public float moveSpeed = 15f;
+    public float fastMultiplier = 2.5f;
+
+    [Header("Look")]
     public float lookSpeed = 3f;
+    public float pitchMin = -80f;
+    public float pitchMax = 80f;
+
+    [Header("Zoom")]
     public float zoomSpeed = 100f;
 
-    float rotationX;
-    float rotationY;
+    [Header("Keys")]
+    public KeyCode rotateMouseButton = KeyCode.Mouse1; // clic droit
+    public KeyCode ascendKey = KeyCode.Space;          // monter
+    public KeyCode descendKey = KeyCode.LeftShift;     // descendre (LeftShift ou RightShift)
+    public KeyCode fastKey = KeyCode.LeftControl;      // accélérer (Ctrl)
+
+    float yaw;
+    float pitch;
 
     void Start()
     {
         Vector3 rot = transform.eulerAngles;
-        rotationX = rot.y;
-        rotationY = rot.x;
+        yaw = rot.y;
+        pitch = rot.x;
     }
 
     void Update()
     {
+        HandleLook();
+        HandleMove();
+        HandleZoom();
+    }
+
+    void HandleLook()
+    {
         // Rotation avec clic droit
-        if (Input.GetMouseButton(1))
+        if (Input.GetKey(rotateMouseButton))
         {
-            rotationX += Input.GetAxis("Mouse X") * lookSpeed;
-            rotationY -= Input.GetAxis("Mouse Y") * lookSpeed;
-            rotationY = Mathf.Clamp(rotationY, -80f, 80f);
+            yaw += Input.GetAxis("Mouse X") * lookSpeed;
+            pitch -= Input.GetAxis("Mouse Y") * lookSpeed;
+            pitch = Mathf.Clamp(pitch, pitchMin, pitchMax);
 
-            transform.rotation = Quaternion.Euler(rotationY, rotationX, 0);
+            transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
         }
+    }
 
-        // Déplacement
+    void HandleMove()
+    {
+        // Déplacement WASD / ZQSD (géré par les axes Unity)
         Vector3 move = new Vector3(
             Input.GetAxis("Horizontal"),
-            0,
+            0f,
             Input.GetAxis("Vertical")
         );
 
-        if (Input.GetKey(KeyCode.E))
-            move.y += 1;
-        if (Input.GetKey(KeyCode.Q))
-            move.y -= 1;
+        // Monter / descendre (Space / Shift)
+        if (Input.GetKey(ascendKey))
+            move.y += 1f;
 
-        transform.Translate(move * moveSpeed * Time.deltaTime, Space.Self);
+        if (Input.GetKey(descendKey) || Input.GetKey(KeyCode.RightShift))
+            move.y -= 1f;
 
+        // Vitesse boost (Ctrl)
+        float speed = moveSpeed;
+        if (Input.GetKey(fastKey))
+            speed *= fastMultiplier;
+
+        transform.Translate(move * speed * Time.deltaTime, Space.Self);
+    }
+
+    void HandleZoom()
+    {
         // Zoom molette
         float scroll = Input.GetAxis("Mouse ScrollWheel");
-        transform.Translate(Vector3.forward * scroll * zoomSpeed * Time.deltaTime, Space.Self);
+        if (Mathf.Abs(scroll) > 0.0001f)
+        {
+            transform.Translate(Vector3.forward * scroll * zoomSpeed * Time.deltaTime, Space.Self);
+        }
     }
 }
