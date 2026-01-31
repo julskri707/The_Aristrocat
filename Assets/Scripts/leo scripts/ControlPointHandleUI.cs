@@ -4,6 +4,9 @@ using UnityEngine.EventSystems;
 [RequireComponent(typeof(RectTransform))]
 public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
 {
+    // ✅ Flag global : si TRUE, on bloque le dessin de murs
+    public static bool IsDraggingAnyHandle { get; private set; }
+
     [Header("Binding (assigné par le Manager)")]
     public Camera cam;
     public IControlPointProvider provider;
@@ -27,7 +30,6 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     {
         if (cam == null || provider == null) return;
 
-        // Si pas éditable: cacher
         if (!provider.IsControlPointEditable(index))
         {
             if (gameObject.activeSelf) gameObject.SetActive(false);
@@ -35,18 +37,15 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         }
         if (!gameObject.activeSelf) gameObject.SetActive(true);
 
-        // Position écran du point world
         Vector3 world = provider.GetControlPointWorld(index);
         Vector3 screen = cam.WorldToScreenPoint(world);
 
-        // Si derrière la caméra: cacher
         if (screen.z <= 0f)
         {
             if (gameObject.activeSelf) gameObject.SetActive(false);
             return;
         }
 
-        // Overlay: rect.position = screen
         _rect.position = screen;
     }
 
@@ -55,21 +54,15 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         if (cam == null || provider == null) return;
 
         _dragging = true;
+        IsDraggingAnyHandle = true; // ✅ block drawing
 
         Vector3 startWorld = provider.GetControlPointWorld(index);
 
-        // Plan de drag
         if (dragOnGroundPlane)
-        {
-            _dragPlane = new Plane(Vector3.up, new Vector3(0f, groundY, 0f)); // Y = groundY
-        }
+            _dragPlane = new Plane(Vector3.up, new Vector3(0f, groundY, 0f));
         else
-        {
-            // Plan face caméra qui passe par le point
             _dragPlane = new Plane(-cam.transform.forward, startWorld);
-        }
 
-        // Offset anti-snap (pour ne pas "sauter" sous la souris)
         if (TryScreenToPlaneWorld(eventData.position, _dragPlane, out var hit))
             _offsetWorld = startWorld - hit;
         else
@@ -90,6 +83,7 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     public void OnPointerUp(PointerEventData eventData)
     {
         _dragging = false;
+        IsDraggingAnyHandle = false; // ✅ allow drawing again
     }
 
     private bool TryScreenToPlaneWorld(Vector2 screenPos, Plane plane, out Vector3 world)
@@ -103,5 +97,14 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
         world = default;
         return false;
+    }
+
+    void OnDisable()
+    {
+        // sécurité si l'objet est désactivé pendant un drag
+        if (_dragging)
+            IsDraggingAnyHandle = false;
+
+        _dragging = false;
     }
 }

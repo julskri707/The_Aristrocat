@@ -256,6 +256,8 @@ GameObject:
   m_Component:
   - component: {fileID: 436511024}
   - component: {fileID: 436511023}
+  - component: {fileID: 436511025}
+  - component: {fileID: 436511026}
   m_Layer: 0
   m_Name: WallSystem
   m_TagString: Untagged
@@ -278,11 +280,7 @@ MonoBehaviour:
   cam: {fileID: 961739752}
   drawInput: {fileID: 1972683405}
   wallPrefab: {fileID: 8026581915882693225, guid: c6a832b4372fea346a4999bcd5e52029, type: 3}
-  controlPointPrefab: {fileID: 5577401305358156649, guid: 6ef46fac209e66f49bb7ff2f0b66e10e, type: 3}
-  groundCollider: {fileID: 1693507135}
-  controlPointSize: 0.25
-  heightScrollSpeed: 0.4
-  thicknessScrollSpeed: 0.05
+  wallLayer: 0
 --- !u!4 &436511024
 Transform:
   m_ObjectHideFlags: 0
@@ -298,6 +296,37 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &436511025
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 436511022}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2f3891796a64fc0419e2833485e7d809, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WallSelectionManager
+  cam: {fileID: 961739752}
+  overlay: {fileID: 1195328560}
+  wallLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  maxDistance: 500
+--- !u!114 &436511026
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 436511022}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a6ef0fbe2204f341b76bf042bd42240, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WallDrawInputGuard
+  wallDrawInputBehaviour: {fileID: 1972683405}
 --- !u!1 &650654223
 GameObject:
   m_ObjectHideFlags: 0
@@ -568,8 +597,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ControlPointOverlayManager
   cam: {fileID: 961739752}
   handlesRoot: {fileID: 1360271856}
+  linksRoot: {fileID: 0}
   handlePrefab: {fileID: 8250726105603032479, guid: 2d057d9ee81b16844a2b4eaab2450459, type: 3}
+  linkPrefab: {fileID: 6353280019826154621, guid: f570c87757436bd45b622dc10bf17f41, type: 3}
   targetProviderBehaviour: {fileID: 0}
+  connectLoop: 1
+  linkThickness: 4
 --- !u!4 &1195328561
 Transform:
   m_ObjectHideFlags: 0
@@ -651,6 +684,7 @@ RectTransform:
   m_LocalScale: {x: 0, y: 0, z: 0}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 1637475659}
   - {fileID: 1360271856}
   m_Father: {fileID: 1910667200}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -722,6 +756,41 @@ Canvas:
   m_SortingLayerID: 0
   m_SortingOrder: 0
   m_TargetDisplay: 0
+--- !u!1 &1637475658
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1637475659}
+  m_Layer: 0
+  m_Name: LinksRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1637475659
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1637475658}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1525575048}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 100, y: 100}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &1693507134
 GameObject:
   m_ObjectHideFlags: 0
