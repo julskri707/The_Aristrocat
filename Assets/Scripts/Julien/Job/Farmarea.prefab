@@ -61,6 +61,8 @@ MonoBehaviour:
   alwaysAddSelectionBox: 1
   selectionBoxHeight: 2
   selectionBoxPadding: 0.2
+  colliderYOffset: 0
+  disableChildCollidersAndMeshes: 1
 --- !u!114 &8484174006818270652
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -73,14 +75,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 65afedc7990578d4d8d6193e366b5259, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ResourceTickBehaviour
-  tickBehaviour: {fileID: 0}
-  autoFindTick: 1
   active: 1
-  everyNTicks: 1
-  baseMultiplier: 1
   requireWorkers: 1
+  autoCountAssignedWorkers: 1
   assignedWorkers: 0
   maxWorkers: 10
+  everyNTicks: 1
+  baseMultiplier: 1
   scaleByWorkers: 1
   scaleByFieldArea: 1
   areaMultiplier: 0.1
@@ -94,7 +95,9 @@ MonoBehaviour:
   - type: 4
     amount: 10
   missingInputBehaviour: 0
-  resourceManagerBehaviour: {fileID: 0}
+  resourceManager: {fileID: 0}
+  tickSystemLike: {fileID: 0}
+  debugLogs: 1
   debugAutoTick: 1
   debugSecondsPerTick: 1
 --- !u!120 &3331578487721559061

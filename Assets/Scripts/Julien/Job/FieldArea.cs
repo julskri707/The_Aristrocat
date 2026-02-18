@@ -1,22 +1,51 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 [DisallowMultipleComponent]
 public class FieldArea : MonoBehaviour
 {
+    // =========================
+    // Factory (creates a field GameObject)
+    // =========================
+    public static FieldArea CreateField(List<Vector3> worldPoints, string fieldTag = "WorkArea", Transform parent = null)
+    {
+        var go = new GameObject("FieldArea");
+        if (parent != null) go.transform.SetParent(parent, true);
+
+        go.tag = fieldTag;
+
+        // neutral transform (points are stored local)
+        go.transform.position = Vector3.zero;
+        go.transform.rotation = Quaternion.identity;
+        go.transform.localScale = Vector3.one;
+
+        var fa = go.AddComponent<FieldArea>();
+        fa.SetPolygonWorldPoints(worldPoints);
+
+        // Ensure ResourceTickBehaviour exists (field “can” produce)
+        if (go.GetComponent<ResourceTickBehaviour>() == null)
+            go.AddComponent<ResourceTickBehaviour>();
+
+        return fa;
+    }
+
+    // =========================
+    // Settings
+    // =========================
+
     [Header("Ground Projection")]
     public string groundTag = "Ground";
     public float raycastUp = 50f;
     public float raycastDown = 200f;
 
     [Header("Point Handling")]
-    public bool autoSortPointsByAngle = true;
+    [Tooltip("For runtime drawing of concave fields, keep FALSE.")]
+    public bool autoSortPointsByAngle = false;
 
     [Header("Visual - Fill")]
     [Range(0f, 1f)] public float fillAlpha = 0.18f;
-    public float yOffset = 0.03f;
+    public float yOffset = 0.03f; // visual only
     public Color fillNormal = Color.black;
     public Color fillSelected = Color.yellow;
 
@@ -26,26 +55,34 @@ public class FieldArea : MonoBehaviour
     public Color outlineSelected = Color.yellow;
 
     [Header("Colliders")]
-    [Tooltip("Clickable polygon collider. If triangulation fails, it may be empty.")]
     public bool addMeshCollider = true;
 
-    [Tooltip("ALWAYS add a box trigger for reliable clicking (recommended).")]
+    [Tooltip("Always create a BoxCollider trigger for reliable clicking.")]
     public bool alwaysAddSelectionBox = true;
 
-    [Tooltip("Extra height for the selection box (so clicking still works on uneven ground).")]
     public float selectionBoxHeight = 2f;
-
-    [Tooltip("Extra padding around the polygon for selection box.")]
     public float selectionBoxPadding = 0.2f;
+
+    [Header("Collider Offset")]
+    public float colliderYOffset = 0.0f;
+
+    [Header("Prefab Cleanup (optional)")]
+    public bool disableChildCollidersAndMeshes = true;
+
+    // =========================
+    // Runtime
+    // =========================
 
     private readonly List<Vector3> _localPoints = new();
 
-    private Mesh _mesh;
     private MeshFilter _mf;
     private MeshRenderer _mr;
-    private MeshCollider _mc;
     private LineRenderer _lr;
+    private MeshCollider _mc;
     private BoxCollider _selectionBox;
+
+    private Mesh _renderMesh;
+    private Mesh _colliderMesh;
 
     private bool _selected;
 
@@ -70,6 +107,8 @@ public class FieldArea : MonoBehaviour
             _localPoints.Add(transform.InverseTransformPoint(worldPoints[i]));
 
         CleanupPointsInPlace(_localPoints);
+
+        if (_localPoints.Count < 3) return;
 
         if (autoSortPointsByAngle)
             SortByAngleAroundCenter(_localPoints);
@@ -96,13 +135,10 @@ public class FieldArea : MonoBehaviour
             }
         }
 
-        bool meshOk = RebuildMeshFill();   // may fail on self-intersecting polygons
+        bool meshOk = RebuildFillAndCollider();
         RebuildOutline();
-
-        // ✅ Always keep selection working
         RebuildSelectionBox();
 
-        // If mesh triangulation failed, clear mesh collider so it doesn't do weird things
         if (!meshOk)
         {
             if (_mf != null) _mf.sharedMesh = null;
@@ -112,14 +148,29 @@ public class FieldArea : MonoBehaviour
         ApplySelected(_selected);
     }
 
-    // =========================
-    // ✅ NEW: Area calculation
-    // =========================
+    public bool ContainsWorldPoint(Vector3 worldPoint)
+    {
+        if (_localPoints.Count < 3) return false;
 
-    /// <summary>
-    /// Area in WORLD units^2 on the XZ plane, based on the polygon corners.
-    /// This is what you want to scale income by.
-    /// </summary>
+        Vector3 lp = transform.InverseTransformPoint(worldPoint);
+        Vector2 p = new Vector2(lp.x, lp.z);
+
+        bool inside = false;
+        for (int i = 0, j = _localPoints.Count - 1; i < _localPoints.Count; j = i++)
+        {
+            Vector2 a = new Vector2(_localPoints[i].x, _localPoints[i].z);
+            Vector2 b = new Vector2(_localPoints[j].x, _localPoints[j].z);
+
+            bool intersect =
+                ((a.y > p.y) != (b.y > p.y)) &&
+                (p.x < (b.x - a.x) * (p.y - a.y) / Mathf.Max(0.000001f, (b.y - a.y)) + a.x);
+
+            if (intersect) inside = !inside;
+        }
+
+        return inside;
+    }
+
     public float GetAreaWorldXZ()
     {
         if (_localPoints.Count < 3) return 0f;
@@ -132,62 +183,11 @@ public class FieldArea : MonoBehaviour
             Vector3 wi = transform.TransformPoint(_localPoints[i]);
             Vector3 wj = transform.TransformPoint(_localPoints[j]);
 
-            // Shoelace formula on XZ
             sum += (wi.x * wj.z) - (wj.x * wi.z);
         }
-
-        return Mathf.Abs(sum) * 0.5f;
-    }
-    // ✅ Used by RuntimeBuildAndAssignController for precise selection
-    public bool ContainsWorldPoint(Vector3 worldPoint)
-    {
-        if (_localPoints == null || _localPoints.Count < 3)
-            return false;
-
-        // Convert click point to LOCAL space
-        Vector3 lp = transform.InverseTransformPoint(worldPoint);
-        Vector2 p = new Vector2(lp.x, lp.z);
-
-        bool inside = false;
-
-        for (int i = 0, j = _localPoints.Count - 1; i < _localPoints.Count; j = i++)
-        {
-            Vector2 a = new Vector2(_localPoints[i].x, _localPoints[i].z);
-            Vector2 b = new Vector2(_localPoints[j].x, _localPoints[j].z);
-
-            bool intersect =
-                ((a.y > p.y) != (b.y > p.y)) &&
-                (p.x < (b.x - a.x) * (p.y - a.y) / Mathf.Max(0.000001f, (b.y - a.y)) + a.x);
-
-            if (intersect)
-                inside = !inside;
-        }
-
-        return inside;
-    }
-
-    /// <summary>
-    /// Area in LOCAL units^2 on the XZ plane. Usually you want world.
-    /// </summary>
-    public float GetAreaLocalXZ()
-    {
-        if (_localPoints.Count < 3) return 0f;
-
-        float sum = 0f;
-        for (int i = 0; i < _localPoints.Count; i++)
-        {
-            int j = (i + 1) % _localPoints.Count;
-
-            Vector3 a = _localPoints[i];
-            Vector3 b = _localPoints[j];
-
-            sum += (a.x * b.z) - (b.x * a.z);
-        }
-
         return Mathf.Abs(sum) * 0.5f;
     }
 
-    // ---------- Components ----------
     private void EnsureComponents()
     {
         _mf = GetComponent<MeshFilter>();
@@ -196,29 +196,10 @@ public class FieldArea : MonoBehaviour
         _mr = GetComponent<MeshRenderer>();
         if (_mr == null) _mr = gameObject.AddComponent<MeshRenderer>();
 
-        if (_mesh == null) _mesh = new Mesh { name = "FieldAreaMesh" };
-
         if (_mr.sharedMaterial == null)
         {
-            Shader s = Shader.Find("Sprites/Default");
-            if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
-            if (s == null) s = Shader.Find("Unlit/Color");
+            Shader s = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
             _mr.sharedMaterial = new Material(s);
-        }
-
-        if (addMeshCollider)
-        {
-            _mc = GetComponent<MeshCollider>();
-            if (_mc == null) _mc = gameObject.AddComponent<MeshCollider>();
-            _mc.convex = false;
-            _mc.isTrigger = false; // mesh collider not needed for movement; selection box handles clicking
-        }
-
-        if (alwaysAddSelectionBox)
-        {
-            _selectionBox = GetComponent<BoxCollider>();
-            if (_selectionBox == null) _selectionBox = gameObject.AddComponent<BoxCollider>();
-            _selectionBox.isTrigger = true; // ✅ never blocks farmer movement
         }
 
         _lr = GetComponent<LineRenderer>();
@@ -235,17 +216,39 @@ public class FieldArea : MonoBehaviour
             Shader s = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
             _lr.sharedMaterial = new Material(s);
         }
+
+        if (addMeshCollider)
+        {
+            _mc = GetComponent<MeshCollider>();
+            if (_mc == null) _mc = gameObject.AddComponent<MeshCollider>();
+
+            _mc.convex = false;
+            _mc.isTrigger = false; // concave trigger not allowed
+        }
+
+        if (alwaysAddSelectionBox)
+        {
+            _selectionBox = GetComponent<BoxCollider>();
+            if (_selectionBox == null) _selectionBox = gameObject.AddComponent<BoxCollider>();
+            _selectionBox.isTrigger = true;
+        }
+
+        if (_renderMesh == null) _renderMesh = new Mesh { name = "FieldArea_RenderMesh" };
+        if (_colliderMesh == null) _colliderMesh = new Mesh { name = "FieldArea_ColliderMesh" };
+
+        if (disableChildCollidersAndMeshes)
+            CleanupPrefabChildren();
     }
 
     private void ApplySelected(bool selected)
     {
-        var baseFill = selected ? fillSelected : fillNormal;
-        var fill = new Color(baseFill.r, baseFill.g, baseFill.b, fillAlpha);
+        Color baseFill = selected ? fillSelected : fillNormal;
+        Color fill = new Color(baseFill.r, baseFill.g, baseFill.b, fillAlpha);
 
         if (_mr != null && _mr.sharedMaterial != null)
             _mr.sharedMaterial.color = fill;
 
-        var outC = selected ? outlineSelected : outlineNormal;
+        Color outC = selected ? outlineSelected : outlineNormal;
         if (_lr != null)
         {
             _lr.startColor = outC;
@@ -255,7 +258,6 @@ public class FieldArea : MonoBehaviour
         }
     }
 
-    // ---------- Outline ----------
     private void RebuildOutline()
     {
         if (_lr == null || _localPoints.Count < 3) return;
@@ -268,8 +270,25 @@ public class FieldArea : MonoBehaviour
         }
     }
 
-    // ---------- Fill Mesh ----------
-    private bool RebuildMeshFill()
+    private void RebuildSelectionBox()
+    {
+        if (_selectionBox == null || _localPoints.Count < 3) return;
+
+        var b = new Bounds(_localPoints[0], Vector3.zero);
+        for (int i = 1; i < _localPoints.Count; i++)
+            b.Encapsulate(_localPoints[i]);
+
+        b.Expand(new Vector3(selectionBoxPadding * 2f, 0f, selectionBoxPadding * 2f));
+
+        _selectionBox.center = new Vector3(b.center.x, 0f, b.center.z);
+        _selectionBox.size = new Vector3(
+            Mathf.Max(0.1f, b.size.x),
+            Mathf.Max(0.1f, selectionBoxHeight),
+            Mathf.Max(0.1f, b.size.z)
+        );
+    }
+
+    private bool RebuildFillAndCollider()
     {
         if (_localPoints.Count < 3) return false;
 
@@ -283,56 +302,65 @@ public class FieldArea : MonoBehaviour
             poly2.Reverse();
         }
 
-        var indices = EarClipTriangulate(poly2);
-        if (indices.Count < 3) return false;
+        var tris = EarClipTriangulate(poly2);
+        if (tris == null || tris.Count < 3) return false;
 
-        var verts = new Vector3[_localPoints.Count];
+        // Render mesh
+        var vRender = new Vector3[_localPoints.Count];
         for (int i = 0; i < _localPoints.Count; i++)
         {
             var p = _localPoints[i];
-            verts[i] = new Vector3(p.x, p.y + yOffset, p.z);
+            vRender[i] = new Vector3(p.x, p.y + yOffset, p.z);
         }
 
-        _mesh.Clear();
-        _mesh.vertices = verts;
-        _mesh.triangles = indices.ToArray();
-        _mesh.RecalculateNormals();
-        _mesh.RecalculateBounds();
+        _renderMesh.Clear();
+        _renderMesh.vertices = vRender;
+        _renderMesh.triangles = tris.ToArray();
+        _renderMesh.RecalculateNormals();
+        _renderMesh.RecalculateBounds();
 
-        _mf.sharedMesh = _mesh;
+        _mf.sharedMesh = _renderMesh;
 
-        if (_mc != null)
+        // Collider mesh (no render offset)
+        if (addMeshCollider && _mc != null)
         {
+            var vCol = new Vector3[_localPoints.Count];
+            for (int i = 0; i < _localPoints.Count; i++)
+            {
+                var p = _localPoints[i];
+                vCol[i] = new Vector3(p.x, p.y + colliderYOffset, p.z);
+            }
+
+            _colliderMesh.Clear();
+            _colliderMesh.vertices = vCol;
+            _colliderMesh.triangles = tris.ToArray();
+            _colliderMesh.RecalculateNormals();
+            _colliderMesh.RecalculateBounds();
+
             _mc.sharedMesh = null;
-            _mc.sharedMesh = _mesh;
+            _mc.sharedMesh = _colliderMesh;
         }
 
         return true;
     }
 
-    // ---------- Selection Box (ALWAYS works for clicking) ----------
-    private void RebuildSelectionBox()
+    private void CleanupPrefabChildren()
     {
-        if (_selectionBox == null || _localPoints.Count < 3) return;
+        var childColliders = GetComponentsInChildren<Collider>(true);
+        foreach (var c in childColliders)
+        {
+            if (c == null) continue;
+            if (c.gameObject == gameObject) continue;
+            c.enabled = false;
+        }
 
-        // Bounds in LOCAL space from polygon points
-        var b = new Bounds(_localPoints[0], Vector3.zero);
-        for (int i = 1; i < _localPoints.Count; i++)
-            b.Encapsulate(_localPoints[i]);
-
-        // pad
-        b.Expand(new Vector3(selectionBoxPadding * 2f, 0f, selectionBoxPadding * 2f));
-
-        // Put the box centered horizontally, and tall vertically for easy clicking on terrain
-        Vector3 center = b.center;
-        center.y = 0f; // keep around field object origin
-        _selectionBox.center = new Vector3(center.x, 0f, center.z);
-
-        _selectionBox.size = new Vector3(
-            Mathf.Max(0.1f, b.size.x),
-            Mathf.Max(0.1f, selectionBoxHeight),
-            Mathf.Max(0.1f, b.size.z)
-        );
+        var childRenderers = GetComponentsInChildren<MeshRenderer>(true);
+        foreach (var r in childRenderers)
+        {
+            if (r == null) continue;
+            if (r.gameObject == gameObject) continue;
+            r.enabled = false;
+        }
     }
 
     // ---------- Helpers ----------
