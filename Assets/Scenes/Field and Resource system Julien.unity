@@ -1521,20 +1521,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RuntimeBuildAndAssignController
   cam: {fileID: 573742311}
-  buildModeKey: 98
-  assignModeKey: 97
-  cancelKey: 27
   groundTag: Ground
   fieldTag: WorkArea
   workerTag: Bauer
-  fieldPrefab: {fileID: 8619627073657731674, guid: 105fa57b393f3844c80d7fbe1e816ea9, type: 3}
+  buildKey: 98
+  assignKey: 97
+  clearKey: 27
   minPoints: 3
   closeDistance: 0.75
-  snap: 0
+  fieldPrefab: {fileID: 0}
   previewLineWidth: 0.08
   previewYOffset: 0.03
-  autoFindTickBehaviour: 1
-  autoFindResourceManager: 1
   debugLogs: 1
 --- !u!4 &1488033310
 Transform:
@@ -1869,6 +1866,86 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1920487760
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1920487763}
+  - component: {fileID: 1920487762}
+  - component: {fileID: 1920487761}
+  m_Layer: 0
+  m_Name: GameObject
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1920487761
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1920487760}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d6d27c1101797434fa7005324cf90414, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RuntimeBuildAndAssignController
+  cam: {fileID: 573742311}
+  groundTag: Ground
+  fieldTag: WorkArea
+  workerTag: Bauer
+  buildKey: 98
+  assignKey: 97
+  clearKey: 27
+  minPoints: 3
+  closeDistance: 0.75
+  fieldPrefab: {fileID: 8619627073657731674, guid: 105fa57b393f3844c80d7fbe1e816ea9, type: 3}
+  previewLineWidth: 0.08
+  previewYOffset: 0.03
+  debugLogs: 1
+--- !u!114 &1920487762
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1920487760}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1719fd3d049fb024b9e738a501fe05c9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FieldPlacer
+  cam: {fileID: 573742311}
+  buildKey: 98
+  cancelKey: 27
+  groundTag: Ground
+  fieldTag: WorkArea
+  minPoints: 3
+  closeDistance: 0.75
+  previewLineWidth: 0.08
+  previewYOffset: 0.03
+  debugLogs: 1
+--- !u!4 &1920487763
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1920487760}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.60588, y: -0, z: -3.0212}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1972818587
 GameObject:
   m_ObjectHideFlags: 0
@@ -2098,3 +2175,4 @@ SceneRoots:
   - {fileID: 53594292}
   - {fileID: 898303519}
   - {fileID: 1488033310}
+  - {fileID: 1920487763}
