@@ -258,7 +258,6 @@ GameObject:
   - component: {fileID: 436511023}
   - component: {fileID: 436511025}
   - component: {fileID: 436511026}
-  - component: {fileID: 436511027}
   m_Layer: 0
   m_Name: WallSystem
   m_TagString: Untagged
@@ -281,10 +280,7 @@ MonoBehaviour:
   cam: {fileID: 961739752}
   drawInput: {fileID: 1972683405}
   wallPrefab: {fileID: 8026581915882693225, guid: c6a832b4372fea346a4999bcd5e52029, type: 3}
-  wallRaycastMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  rayDistance: 5000
+  wallLayer: 0
 --- !u!4 &436511024
 Transform:
   m_ObjectHideFlags: 0
@@ -313,7 +309,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WallSelectionManager
   cam: {fileID: 961739752}
-  overlay: {fileID: 0}
+  overlay: {fileID: 1195328560}
   wallLayerMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -331,19 +327,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WallDrawInputGuard
   wallDrawInputBehaviour: {fileID: 1972683405}
---- !u!114 &436511027
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 436511022}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a8cdbf25f2876804aaec7091c18d6b28, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SelectedWallControlPointProvider
-  buildController: {fileID: 436511023}
 --- !u!1 &650654223
 GameObject:
   m_ObjectHideFlags: 0
@@ -592,7 +575,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1195328561}
-  - component: {fileID: 1195328562}
+  - component: {fileID: 1195328560}
   m_Layer: 0
   m_Name: ControlPointOverlay
   m_TagString: Untagged
@@ -600,6 +583,26 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &1195328560
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1195328559}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4ef4efa77c2be744b93c04177a077a3e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ControlPointOverlayManager
+  cam: {fileID: 961739752}
+  handlesRoot: {fileID: 1360271856}
+  linksRoot: {fileID: 0}
+  handlePrefab: {fileID: 8250726105603032479, guid: 2d057d9ee81b16844a2b4eaab2450459, type: 3}
+  linkPrefab: {fileID: 6353280019826154621, guid: f570c87757436bd45b622dc10bf17f41, type: 3}
+  targetProviderBehaviour: {fileID: 0}
+  connectLoop: 1
+  linkThickness: 4
 --- !u!4 &1195328561
 Transform:
   m_ObjectHideFlags: 0
@@ -615,26 +618,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1195328562
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1195328559}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b8398dbf37a33ed439e33af0958b4bac, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ControlPointOverlayManager
-  cam: {fileID: 961739752}
-  handlesRoot: {fileID: 1360271856}
-  handlePrefab: {fileID: 8250726105603032479, guid: 2d057d9ee81b16844a2b4eaab2450459, type: 3}
-  targetProviderBehaviour: {fileID: 436511027}
-  showPreviewLine: 1
-  previewLineY: 0.05
-  previewLineWidth: 0.1
-  previewLineMaterial: {fileID: 2100000, guid: 4da1027bd363cc449af798de7b98044b, type: 2}
 --- !u!1 &1360271855
 GameObject:
   m_ObjectHideFlags: 0
@@ -917,8 +900,7 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 10, y: 1, z: 10}
   m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 2117716144}
+  m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1910667198
@@ -1014,7 +996,7 @@ MonoBehaviour:
   autoCircle: 1
   autoRectangle: 1
   autoTriangle: 1
-  circleResolution: 128
+  circleResolution: 48
   rectPointsPerEdge: 10
   squareRatioTolerance: 0.12
   triangleToleranceMultiplier: 2
@@ -1158,123 +1140,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 00e0d202f088d2b4486fa46409fe01db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WallControlPointProvider
-  wall: {fileID: 0}
-  maxEditHandles: 12
-  closedLoop: 1
-  smoothIterations: 3
-  densePointCount: 96
---- !u!1 &2117716143
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2117716144}
-  - component: {fileID: 2117716147}
-  - component: {fileID: 2117716146}
-  - component: {fileID: 2117716145}
-  m_Layer: 0
-  m_Name: Plane
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &2117716144
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2117716143}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0.49999994, w: 0.86602545}
-  m_LocalPosition: {x: -4, y: 3, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1693507138}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: -60}
---- !u!64 &2117716145
-MeshCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2117716143}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 5
-  m_Convex: 0
-  m_CookingOptions: 30
-  m_Mesh: {fileID: 10209, guid: 0000000000000000e000000000000000, type: 0}
---- !u!23 &2117716146
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2117716143}
-  m_Enabled: 1
-  m_CastShadows: 1
-  m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
-  m_StaticShadowCaster: 0
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RayTraceProcedural: 0
-  m_RayTracingAccelStructBuildFlagsOverride: 0
-  m_RayTracingAccelStructBuildFlags: 1
-  m_SmallMeshCulling: 1
-  m_ForceMeshLod: -1
-  m_MeshLodSelectionBias: 0
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_GlobalIlluminationMeshLod: 0
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
-  m_AdditionalVertexStreams: {fileID: 0}
---- !u!33 &2117716147
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2117716143}
-  m_Mesh: {fileID: 10209, guid: 0000000000000000e000000000000000, type: 0}
+  wallDrawInput: {fileID: 1972683405}
+  pointsMemberName: points
+  pointsAreLocal: 0
+  rebuildMethodName: tess
+  callRebuildOnSet: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

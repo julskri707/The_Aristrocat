@@ -3,7 +3,7 @@ using UnityEngine;
 
 [DisallowMultipleComponent]
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider))]
-public class WallObject : MonoBehaviour
+public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPathProvider
 {
     [Header("Wall Settings")]
     [Min(0.1f)] public float height = 2.5f;
@@ -49,6 +49,77 @@ public class WallObject : MonoBehaviour
     private Mesh _mesh;
 
     public IReadOnlyList<Vector3> Points => _points;
+
+    // =========================
+    // IControlPointProvider
+    // =========================
+    public int ControlPointCount
+    {
+        get
+        {
+            if (_points == null) return 0;
+            if (_points.Count < 2) return 0;
+
+            // Si loop fermée et dernier point == premier, on ne veut pas 2 handles au même endroit
+            if (closedLoop && _points.Count >= 3 && Vector3.Distance(_points[0], _points[_points.Count - 1]) < 0.001f)
+                return _points.Count - 1;
+
+            return _points.Count;
+        }
+    }
+
+    public Vector3 GetControlPointWorld(int index)
+    {
+        int count = ControlPointCount;
+        if (count <= 0) return Vector3.zero;
+        index = Mathf.Clamp(index, 0, count - 1);
+        return _points[index];
+    }
+
+    public void SetControlPointWorld(int index, Vector3 worldPos)
+    {
+        int count = ControlPointCount;
+        if (count <= 0) return;
+        if (index < 0 || index >= count) return;
+
+        _points[index] = worldPos;
+
+        // Si closedLoop et dernier point du stockage est un duplicate du premier -> on garde la cohérence
+        if (closedLoop && _points.Count >= 2)
+        {
+            if (Vector3.Distance(_points[0], _points[_points.Count - 1]) < 0.001f)
+                _points[_points.Count - 1] = _points[0];
+        }
+
+        RebuildMesh();
+    }
+
+    public bool IsControlPointEditable(int index)
+    {
+        return index >= 0 && index < ControlPointCount;
+    }
+
+    // =========================
+    // IControlPointPathProvider
+    // =========================
+    public List<Vector3> GetPreviewPathWorld()
+    {
+        int count = ControlPointCount;
+        if (count < 2) return null;
+
+        // Preview = points dans l’ordre (pas de X)
+        var list = new List<Vector3>(count);
+
+        for (int i = 0; i < count; i++)
+            list.Add(_points[i]);
+
+        // Si c'est une boucle fermée, on referme la ligne (LineRenderer.loop peut aussi le faire)
+        // Ici on ajoute le premier point à la fin pour une preview "continue".
+        if (closedLoop)
+            list.Add(_points[0]);
+
+        return list;
+    }
 
     // ---------------------------------------------
     // Unity lifecycle
@@ -105,14 +176,13 @@ public class WallObject : MonoBehaviour
     // ---------------------------------------------
     private void RebuildMesh()
     {
-        if (_mesh == null)
-            return;
+        if (_mesh == null) return;
 
         _mesh.Clear();
 
         if (_points.Count < 2)
         {
-            _mc.sharedMesh = _mesh;
+            SyncCollider();
             return;
         }
 
@@ -120,19 +190,18 @@ public class WallObject : MonoBehaviour
         int count = closedLoop ? _points.Count - 1 : _points.Count;
         if (count < 2)
         {
-            _mc.sharedMesh = _mesh;
+            SyncCollider();
             return;
         }
 
         int segCount = closedLoop ? count : (count - 1);
         if (segCount < 1)
         {
-            _mc.sharedMesh = _mesh;
+            SyncCollider();
             return;
         }
 
         // Decide "outside" for closed loops (CW/CCW in XZ plane)
-        // If open, we just keep a consistent "right = outside" convention.
         float outsideSign = 1f;
         if (closedLoop)
         {
@@ -176,7 +245,7 @@ public class WallObject : MonoBehaviour
 
             bis.Normalize();
 
-            Vector3 rightBis = Vector3.Cross(Vector3.up, bis).normalized;
+            Vector3 rightBis  = Vector3.Cross(Vector3.up, bis).normalized;
             Vector3 rightNext = Vector3.Cross(Vector3.up, dirNext).normalized;
 
             float denom = Mathf.Abs(Vector3.Dot(rightBis, rightNext));
@@ -192,10 +261,11 @@ public class WallObject : MonoBehaviour
             inT[i]  = inB[i]  + Vector3.up * height;
         }
 
-        // Build quads with hard edges (duplicate vertices per face)
         var verts = new List<Vector3>(segCount * 24 + 16);
         var uvs   = new List<Vector2>(segCount * 24 + 16);
         var tris  = new List<int>(segCount * 36 + 24);
+
+        float uAcross = thickness / Mathf.Max(0.01f, uvMetersPerU);
 
         for (int i = 0; i < segCount; i++)
         {
@@ -204,39 +274,37 @@ public class WallObject : MonoBehaviour
             float v0 = dist[i] / Mathf.Max(0.01f, uvMetersPerV);
             float v1 = dist[n] / Mathf.Max(0.01f, uvMetersPerV);
 
-            // OUTER face (outside)
+            // OUTER face
             AddQuad(verts, uvs, tris,
                 outB[i], outT[i], outT[n], outB[n],
-                0f, v0, thickness / Mathf.Max(0.01f, uvMetersPerU), v1);
+                0f, v0, uAcross, v1);
 
-            // INNER face (inside) -> reverse winding so it faces inward
+            // INNER face (reverse)
             AddQuad(verts, uvs, tris,
                 inB[n], inT[n], inT[i], inB[i],
-                0f, v1, thickness / Mathf.Max(0.01f, uvMetersPerU), v0);
+                0f, v1, uAcross, v0);
 
             // TOP face
             AddQuad(verts, uvs, tris,
                 outT[i], inT[i], inT[n], outT[n],
-                0f, v0, thickness / Mathf.Max(0.01f, uvMetersPerU), v1);
+                0f, v0, uAcross, v1);
 
             // BOTTOM face (optional)
             if (addBottom)
             {
                 AddQuad(verts, uvs, tris,
                     outB[n], inB[n], inB[i], outB[i],
-                    0f, v1, thickness / Mathf.Max(0.01f, uvMetersPerU), v0);
+                    0f, v1, uAcross, v0);
             }
         }
 
-        // Caps for open walls (close the thickness at ends)
+        // Caps for open walls
         if (addCaps && !closedLoop && count >= 2)
         {
-            // Start cap at 0
             AddQuad(verts, uvs, tris,
                 inB[0], inT[0], outT[0], outB[0],
                 0f, 0f, 1f, 1f);
 
-            // End cap at last
             int last = count - 1;
             AddQuad(verts, uvs, tris,
                 outB[last], outT[last], inT[last], inB[last],
@@ -250,24 +318,28 @@ public class WallObject : MonoBehaviour
         _mesh.SetUVs(0, uvs);
         _mesh.SetTriangles(tris, 0);
 
-        // Unity 6 compatible
         _mesh.RecalculateNormals();
         _mesh.RecalculateBounds();
         _mesh.RecalculateTangents();
 
-        // Update collider
-        _mc.sharedMesh = null;
-        _mc.sharedMesh = _mesh;
-
+        SyncCollider();
         ApplyMaterial();
 
         if (logWarnings && closedLoop && count >= 3)
         {
-            // quick sanity: if loop area near 0, it might be self-intersecting
             float areaAbs = Mathf.Abs(ComputeSignedAreaXZ(_points, count));
             if (areaAbs < 0.001f)
                 Debug.LogWarning("[WallObject] Closed loop area is near zero (loop might be degenerate/self-intersecting).");
         }
+    }
+
+    private void SyncCollider()
+    {
+        if (_mc == null) _mc = GetComponent<MeshCollider>();
+        if (_mc == null) return;
+
+        _mc.sharedMesh = null;
+        _mc.sharedMesh = _mesh;
     }
 
     // ---------------------------------------------
@@ -330,7 +402,6 @@ public class WallObject : MonoBehaviour
         uvs.Add(new Vector2(u1, v1 + 1f));
         uvs.Add(new Vector2(u1, v1));
 
-        // a-b-c, a-c-d
         tris.Add(start + 0);
         tris.Add(start + 1);
         tris.Add(start + 2);
@@ -376,4 +447,3 @@ public class WallObject : MonoBehaviour
             Gizmos.DrawLine(_points[i], _points[i + 1]);
     }
 }
-

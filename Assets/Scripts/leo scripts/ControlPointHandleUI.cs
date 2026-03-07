@@ -2,9 +2,10 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 
 [RequireComponent(typeof(RectTransform))]
-public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
+public class ControlPointHandleUI : MonoBehaviour,
+    IPointerDownHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
-    // ✅ Flag global : si TRUE, on bloque le dessin de murs
+    // ✅ IMPORTANT: utilisé par WallDrawInputGuard
     public static bool IsDraggingAnyHandle { get; private set; }
 
     [Header("Binding (assigné par le Manager)")]
@@ -13,7 +14,7 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     public int index;
 
     [Header("Drag")]
-    public float groundY = 0f;         // sol = Y=0 (change si besoin)
+    public float groundY = 0f;
     public bool dragOnGroundPlane = true;
 
     private RectTransform _rect;
@@ -29,13 +30,7 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     void LateUpdate()
     {
         if (cam == null || provider == null) return;
-
-        if (!provider.IsControlPointEditable(index))
-        {
-            if (gameObject.activeSelf) gameObject.SetActive(false);
-            return;
-        }
-        if (!gameObject.activeSelf) gameObject.SetActive(true);
+        if (!provider.IsControlPointEditable(index)) return;
 
         Vector3 world = provider.GetControlPointWorld(index);
         Vector3 screen = cam.WorldToScreenPoint(world);
@@ -46,15 +41,24 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
             return;
         }
 
+        if (!gameObject.activeSelf) gameObject.SetActive(true);
         _rect.position = screen;
     }
 
     public void OnPointerDown(PointerEventData eventData)
     {
+        // ✅ Empêche le clic de traverser vers le monde
+        eventData.Use();
+    }
+
+    public void OnBeginDrag(PointerEventData eventData)
+    {
         if (cam == null || provider == null) return;
+        if (!provider.IsControlPointEditable(index)) return;
 
         _dragging = true;
-        IsDraggingAnyHandle = true; // ✅ block drawing
+        IsDraggingAnyHandle = true;   // ✅ pour WallDrawInputGuard
+        eventData.Use();
 
         Vector3 startWorld = provider.GetControlPointWorld(index);
 
@@ -73,6 +77,8 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     {
         if (!_dragging || cam == null || provider == null) return;
 
+        eventData.Use();
+
         if (!TryScreenToPlaneWorld(eventData.position, _dragPlane, out var hit))
             return;
 
@@ -80,10 +86,11 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         provider.SetControlPointWorld(index, newWorld);
     }
 
-    public void OnPointerUp(PointerEventData eventData)
+    public void OnEndDrag(PointerEventData eventData)
     {
         _dragging = false;
-        IsDraggingAnyHandle = false; // ✅ allow drawing again
+        IsDraggingAnyHandle = false;  // ✅ pour WallDrawInputGuard
+        eventData.Use();
     }
 
     private bool TryScreenToPlaneWorld(Vector2 screenPos, Plane plane, out Vector3 world)
@@ -97,14 +104,5 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
         world = default;
         return false;
-    }
-
-    void OnDisable()
-    {
-        // sécurité si l'objet est désactivé pendant un drag
-        if (_dragging)
-            IsDraggingAnyHandle = false;
-
-        _dragging = false;
     }
 }

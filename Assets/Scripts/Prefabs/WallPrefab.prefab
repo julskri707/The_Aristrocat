@@ -127,5 +127,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WallObject
   height: 2.5
   thickness: 0.25
-  wallMaterial: {fileID: 2100000, guid: 5e141735d3c3afe44a2d62e4b7536090, type: 2}
   closedLoop: 0
+  addCaps: 1
+  addBottom: 0
+  doubleSided: 0
+  wallMaterial: {fileID: 2100000, guid: 5e141735d3c3afe44a2d62e4b7536090, type: 2}
+  uvMetersPerV: 2
+  uvMetersPerU: 0.5
+  miterLimit: 3
+  logWarnings: 0
+  drawGizmos: 0
