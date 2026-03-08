@@ -1,0 +1,131 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &6867935713212865468
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5769472642258809008}
+  - component: {fileID: 8555840518643687054}
+  - component: {fileID: 3363063013762364587}
+  - component: {fileID: 3547379822871738720}
+  - component: {fileID: 3708261332695586}
+  m_Layer: 0
+  m_Name: Gamecontroller
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5769472642258809008
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6867935713212865468}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 960, y: 540, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8555840518643687054
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6867935713212865468}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddd082a1c0b27d547bb520e80436c5a4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ResourceManager
+  Gold: 0
+  Holz: 0
+  Stein: 0
+  Eisen: 0
+  Essen: 10
+  Kleidung: 0
+  "Loyalit\xE4t": 0
+  uiBindings:
+  - type: 4
+    tmpText: {fileID: 0}
+    uiText: {fileID: 0}
+    active: 1
+    showName: 1
+    prefix: 
+    format: 0.##
+--- !u!114 &3363063013762364587
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6867935713212865468}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fbfbfc471eb62864d9befb8a98ed9518, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TickSystem
+  secondsPerTick: 1
+  tickIndex: 0
+  debug: 1
+--- !u!114 &3547379822871738720
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6867935713212865468}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1eebb44f462a57f42bd42af8b35205a9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FieldPlacer_NoLayers
+  fieldPrefab: {fileID: 5861965029040414736, guid: b619469e206a78540ac86f223dca6c71, type: 3}
+  buildMode: 0
+  minPoints: 3
+  maxPoints: 2147483647
+  minDistanceBetweenPoints: 0.5
+  autoAddPointsWhileDragging: 1
+  autoPointSpacing: 0.5
+  rejectSelfIntersection: 1
+  minArea: 1
+  finishOnDoubleClick: 1
+  doubleClickMaxDelay: 0.25
+  ignoreClicksOverUI: 1
+  autoExitBuildModeOnFinish: 1
+  snapToTerrain: 1
+  maxSampleDistance: 25
+  previewLine: {fileID: 6504888564872814437, guid: b619469e206a78540ac86f223dca6c71, type: 3}
+  previewHeightOffset: 0.02
+  previewCloseLoop: 1
+  smoothPreview: 1
+  previewMaxSegmentLength: 0.5
+  conformPreviewToTerrain: 1
+  previewConformRayHeight: 50
+  debugLogs: 1
+--- !u!114 &3708261332695586
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6867935713212865468}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f957c280039cf154d9414df4a564fd6d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AssignController_NoLayers
+  assignMode: 0
+  exitModeAfterAssign: 1
+  ignoreClicksOverUI: 1
+  useFieldSelectedVisual: 1
+  debugLogs: 0
