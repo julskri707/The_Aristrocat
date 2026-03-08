@@ -4,22 +4,24 @@ using UnityEngine;
 public class FirstThirdPersonController : MonoBehaviour
 {
     [Header("General")]
-    public Camera playerCamera;
+    public Camera firstPersonCamera;
+    public Camera thirdPersonCamera;
     public KeyCode toggleViewKey = KeyCode.V;
+    public KeyCode sprintKey = KeyCode.LeftShift;
+    public KeyCode jumpKey = KeyCode.Space;
     public bool startInFirstPerson = true;
     [Range(0f, 100f)] public float mouseSensitivity = 50f;
-    [Range(0f, 200f)] public float snappiness = 100f;
 
     [Header("Movement")]
     public float walkSpeed = 3f;
     public float sprintSpeed = 5f;
     public float crouchSpeed = 1.5f;
-    public float jumpSpeed = 3f;
+    public float jumpSpeed = 5f;
     public float gravity = 9.81f;
 
     [Header("Ground Check")]
     public Transform groundCheck;
-    public float groundCheckRadius = 0.2f;
+    public float groundCheckRadius = 0.3f;
     public LayerMask groundMask;
 
     [Header("Coyote Time")]
@@ -37,10 +39,11 @@ public class FirstThirdPersonController : MonoBehaviour
     public float sprintFov = 70f;
     public float fovLerpSpeed = 10f;
 
-    [Header("First Person")]
-    public Transform firstPersonPivot;
+    [Header("Look")]
     public float fpMinPitch = -90f;
     public float fpMaxPitch = 90f;
+    public float thirdPersonMinPitch = -30f;
+    public float thirdPersonMaxPitch = 75f;
 
     [Header("Headbob (First Person)")]
     public bool enableHeadbob = true;
@@ -49,55 +52,39 @@ public class FirstThirdPersonController : MonoBehaviour
     public float sprintBobMultiplier = 1.5f;
     public float headbobMoveThreshold = 0.1f;
 
-    [Header("Third Person")]
-    public Vector3 thirdPersonPivotOffset = new Vector3(0f, 1.6f, 0f);
-    public float thirdPersonDistance = 4f;
-    public float minThirdPersonDistance = 2f;
-    public float maxThirdPersonDistance = 6f;
-    public float thirdPersonScrollSpeed = 2f;
-    public float thirdPersonMinPitch = -30f;
-    public float thirdPersonMaxPitch = 75f;
-    public float cameraFollowSmoothTime = 0.05f;
-    public LayerMask cameraCollisionMask;
-
     private CharacterController controller;
-    private Transform camTransform;
 
     private bool isFirstPerson;
     private bool isGrounded;
     private bool isCrouching;
     private bool isSprinting;
 
-    private float yaw;
-    private float pitch;
-    private float xVelocity;
-    private float yVelocity;
     private float coyoteTimer;
+    private float currentFov;
+    private float pitch;
 
     private Vector3 velocity;
-    private Vector3 cameraSmoothVelocity;
-    private float currentFov;
 
-    // Headbob intern
     private float headbobTimer;
     private float currentHeadbobOffset;
+    private Vector3 firstPersonCameraBaseLocalPos;
 
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
 
-        if (playerCamera == null)
+        if (firstPersonCamera != null)
         {
-            if (Camera.main != null)
-                playerCamera = Camera.main;
+            firstPersonCamera.fieldOfView = normalFov;
+            firstPersonCameraBaseLocalPos = firstPersonCamera.transform.localPosition;
         }
 
-        if (playerCamera != null)
+        if (thirdPersonCamera != null)
         {
-            camTransform = playerCamera.transform;
-            currentFov = normalFov;
-            playerCamera.fieldOfView = normalFov;
+            thirdPersonCamera.fieldOfView = normalFov;
         }
+
+        currentFov = normalFov;
 
         if (controller != null)
         {
@@ -113,16 +100,17 @@ public class FirstThirdPersonController : MonoBehaviour
 
         isFirstPerson = startInFirstPerson;
 
-        yaw = transform.rotation.eulerAngles.y;
-        pitch = camTransform != null ? camTransform.localRotation.eulerAngles.x : 0f;
+        if (firstPersonCamera != null)
+            firstPersonCameraBaseLocalPos = firstPersonCamera.transform.localPosition;
 
-        xVelocity = yaw;
-        yVelocity = pitch;
+        UpdateActiveCamera();
+        ApplyCameraPitch();
+        ApplyHeadbobOffset();
     }
 
     private void Update()
     {
-        if (camTransform == null || controller == null)
+        if (controller == null)
             return;
 
         HandleGroundCheck();
@@ -131,7 +119,7 @@ public class FirstThirdPersonController : MonoBehaviour
         HandleMovementAndJump();
         HandleCrouch();
         HandleFov();
-        HandleCameraPosition();
+        ApplyHeadbobOffset();
     }
 
     private void HandleGroundCheck()
@@ -150,11 +138,12 @@ public class FirstThirdPersonController : MonoBehaviour
             isGrounded = controller.isGrounded;
         }
 
-        if (isGrounded && velocity.y < 0f)
+        if (isGrounded)
         {
-            velocity.y = -2f;
-            if (coyoteTimeEnabled)
-                coyoteTimer = coyoteTimeDuration;
+            coyoteTimer = coyoteTimeEnabled ? coyoteTimeDuration : 0f;
+
+            if (velocity.y < 0f)
+                velocity.y = -2f;
         }
         else if (coyoteTimeEnabled)
         {
@@ -169,6 +158,9 @@ public class FirstThirdPersonController : MonoBehaviour
             isFirstPerson = !isFirstPerson;
             headbobTimer = 0f;
             currentHeadbobOffset = 0f;
+            UpdateActiveCamera();
+            ApplyCameraPitch();
+            ApplyHeadbobOffset();
         }
     }
 
@@ -177,62 +169,59 @@ public class FirstThirdPersonController : MonoBehaviour
         float mouseX = Input.GetAxis("Mouse X") * 10f * mouseSensitivity * Time.deltaTime;
         float mouseY = Input.GetAxis("Mouse Y") * 10f * mouseSensitivity * Time.deltaTime;
 
-        yaw += mouseX;
+        transform.Rotate(Vector3.up * mouseX);
+
         pitch -= mouseY;
 
         if (isFirstPerson)
-        {
             pitch = Mathf.Clamp(pitch, fpMinPitch, fpMaxPitch);
-        }
         else
-        {
             pitch = Mathf.Clamp(pitch, thirdPersonMinPitch, thirdPersonMaxPitch);
-        }
 
-        xVelocity = Mathf.Lerp(xVelocity, yaw, snappiness * Time.deltaTime);
-        yVelocity = Mathf.Lerp(yVelocity, pitch, snappiness * Time.deltaTime);
+        ApplyCameraPitch();
+    }
 
-        transform.rotation = Quaternion.Euler(0f, xVelocity, 0f);
+    private void ApplyCameraPitch()
+    {
+        Quaternion targetRotation = Quaternion.Euler(pitch, 0f, 0f);
+
+        if (firstPersonCamera != null)
+            firstPersonCamera.transform.localRotation = targetRotation;
+
+        if (thirdPersonCamera != null)
+            thirdPersonCamera.transform.localRotation = targetRotation;
     }
 
     private void HandleMovementAndJump()
     {
-        float inputX = Input.GetAxis("Horizontal");
-        float inputZ = Input.GetAxis("Vertical");
+        float inputX = Input.GetAxisRaw("Horizontal");
+        float inputZ = Input.GetAxisRaw("Vertical");
 
-        bool wantsToSprint = Input.GetKey(KeyCode.LeftShift) && inputZ > 0.1f && !isCrouching && isGrounded;
+        bool wantsToSprint = Input.GetKey(sprintKey) && inputZ > 0.1f && !isCrouching;
         isSprinting = wantsToSprint;
 
         float targetSpeed = isCrouching ? crouchSpeed : (isSprinting ? sprintSpeed : walkSpeed);
 
         Vector3 move = transform.right * inputX + transform.forward * inputZ;
-        Vector3 horizontal = move.normalized * targetSpeed;
+        move = Vector3.ClampMagnitude(move, 1f);
 
-        velocity.x = horizontal.x;
-        velocity.z = horizontal.z;
+        velocity.x = move.x * targetSpeed;
+        velocity.z = move.z * targetSpeed;
 
         bool onGroundOrCoyote = isGrounded || (coyoteTimeEnabled && coyoteTimer > 0f);
 
-        if (onGroundOrCoyote)
+        if (Input.GetKeyDown(jumpKey) && onGroundOrCoyote && !isCrouching)
         {
-            if (Input.GetButtonDown("Jump") && !isCrouching)
-            {
-                velocity.y = jumpSpeed;
-                coyoteTimer = 0f;
-            }
-            else if (velocity.y < 0f)
-            {
-                velocity.y = -2f;
-            }
+            velocity.y = jumpSpeed;
+            isGrounded = false;
+            coyoteTimer = 0f;
         }
-        else
-        {
-            velocity.y -= gravity * Time.deltaTime;
-        }
+
+        velocity.y -= gravity * Time.deltaTime;
 
         controller.Move(velocity * Time.deltaTime);
 
-        Vector3 horizontalVelocity = new Vector3(velocity.x, 0f, velocity.z);
+        Vector3 horizontalVelocity = new Vector3(controller.velocity.x, 0f, controller.velocity.z);
         UpdateHeadbob(horizontalVelocity);
     }
 
@@ -242,12 +231,19 @@ public class FirstThirdPersonController : MonoBehaviour
 
         float targetHeight = crouchPressed ? crouchHeight : standHeight;
 
-        // Decken-Check beim Aufstehen
         if (!crouchPressed && isCrouching)
         {
             float checkDistance = standHeight - controller.height + 0.1f;
             Vector3 top = transform.position + controller.center + Vector3.up * (controller.height * 0.5f);
-            if (Physics.SphereCast(top, controller.radius * 0.95f, Vector3.up, out RaycastHit hit, checkDistance, groundMask))
+
+            if (Physics.SphereCast(
+                top,
+                controller.radius * 0.95f,
+                Vector3.up,
+                out RaycastHit hit,
+                checkDistance,
+                groundMask,
+                QueryTriggerInteraction.Ignore))
             {
                 targetHeight = crouchHeight;
             }
@@ -264,75 +260,12 @@ public class FirstThirdPersonController : MonoBehaviour
     {
         float targetFov = isSprinting ? sprintFov : normalFov;
         currentFov = Mathf.Lerp(currentFov, targetFov, Time.deltaTime * fovLerpSpeed);
-        playerCamera.fieldOfView = currentFov;
-    }
 
-    private void HandleCameraPosition()
-    {
-        if (isFirstPerson)
-        {
-            HandleFirstPersonCamera();
-        }
-        else
-        {
-            HandleThirdPersonCamera();
-        }
-    }
+        if (firstPersonCamera != null)
+            firstPersonCamera.fieldOfView = currentFov;
 
-    private void HandleFirstPersonCamera()
-    {
-        Vector3 basePos;
-        if (firstPersonPivot != null)
-        {
-            basePos = firstPersonPivot.position;
-        }
-        else
-        {
-            basePos = transform.position + Vector3.up * controller.height * 0.8f;
-        }
-
-        Vector3 targetPos = basePos + Vector3.up * currentHeadbobOffset;
-
-        camTransform.position = targetPos;
-        camTransform.localRotation = Quaternion.Euler(yVelocity, 0f, 0f);
-        // Yaw kommt von transform.rotation (xVelocity)
-    }
-
-    private void HandleThirdPersonCamera()
-    {
-        Vector3 pivot = transform.position + thirdPersonPivotOffset;
-
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
-        thirdPersonDistance -= scroll * thirdPersonScrollSpeed;
-        thirdPersonDistance = Mathf.Clamp(thirdPersonDistance, minThirdPersonDistance, maxThirdPersonDistance);
-
-        Quaternion rotation = Quaternion.Euler(yVelocity, xVelocity, 0f);
-        Vector3 desiredPos = pivot - (rotation * Vector3.forward * thirdPersonDistance);
-
-        if (cameraCollisionMask != 0)
-        {
-            Vector3 dir = (desiredPos - pivot).normalized;
-            float dist = thirdPersonDistance;
-            if (Physics.SphereCast(
-                pivot,
-                0.2f,
-                dir,
-                out RaycastHit hit,
-                dist,
-                cameraCollisionMask,
-                QueryTriggerInteraction.Ignore))
-            {
-                desiredPos = pivot + dir * (hit.distance - 0.1f);
-            }
-        }
-
-        camTransform.position = Vector3.SmoothDamp(
-            camTransform.position,
-            desiredPos,
-            ref cameraSmoothVelocity,
-            cameraFollowSmoothTime
-        );
-        camTransform.rotation = rotation;
+        if (thirdPersonCamera != null)
+            thirdPersonCamera.fieldOfView = currentFov;
     }
 
     private void UpdateHeadbob(Vector3 horizontalVelocity)
@@ -360,6 +293,28 @@ public class FirstThirdPersonController : MonoBehaviour
         }
     }
 
+    private void ApplyHeadbobOffset()
+    {
+        if (firstPersonCamera == null)
+            return;
+
+        Vector3 targetLocalPos = firstPersonCameraBaseLocalPos;
+
+        if (isFirstPerson)
+            targetLocalPos.y += currentHeadbobOffset;
+
+        firstPersonCamera.transform.localPosition = targetLocalPos;
+    }
+
+    private void UpdateActiveCamera()
+    {
+        if (firstPersonCamera != null)
+            firstPersonCamera.gameObject.SetActive(isFirstPerson);
+
+        if (thirdPersonCamera != null)
+            thirdPersonCamera.gameObject.SetActive(!isFirstPerson);
+    }
+
     private void OnDrawGizmosSelected()
     {
         if (groundCheck != null)
@@ -367,9 +322,5 @@ public class FirstThirdPersonController : MonoBehaviour
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
         }
-
-        Gizmos.color = Color.cyan;
-        Vector3 pivot = transform.position + thirdPersonPivotOffset;
-        Gizmos.DrawWireSphere(pivot, 0.1f);
     }
 }
