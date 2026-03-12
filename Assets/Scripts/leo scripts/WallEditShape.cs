@@ -36,6 +36,31 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
     public int maxFreeHandles = 12;
     public int freeWallResolution = 64;
 
+    [Header("Closed Free Shapes")]
+    [Tooltip("Plus petit = plus de points gardés pour les formes libres fermées")]
+    [Range(0.2f, 1.0f)] public float closedFreeHandleSpacingMultiplier = 0.5f;
+
+    [Tooltip("Minimum de points de contrôle pour un gribouillis fermé")]
+    [Range(6, 48)] public int closedFreeMinHandles = 10;
+
+    [Tooltip("Maximum de points de contrôle pour un gribouillis fermé")]
+    [Range(8, 64)] public int closedFreeMaxHandles = 24;
+
+    [Tooltip("Résolution finale minimum pour un gribouillis fermé")]
+    [Range(32, 256)] public int closedFreeWallResolution = 128;
+
+    [Tooltip("Nombre d'itérations de Chaikin pour les formes libres fermées")]
+    [Range(1, 5)] public int closedFreeSmoothIterations = 3;
+
+    [Header("Open Free Shapes")]
+    [Tooltip("Si une forme ouverte est presque une ligne droite, on garde ses coins nets")]
+    [Range(1.0f, 1.5f)] public float mostlyStraightArcRatioThreshold = 1.06f;
+
+    [Range(0f, 30f)] public float mostlyStraightAverageTurnThreshold = 8f;
+
+    [Tooltip("Nombre d'itérations de Chaikin pour les formes libres ouvertes courbes")]
+    [Range(1, 5)] public int openFreeSmoothIterations = 2;
+
     private bool _closedLoop = true;
 
     void Awake()
@@ -44,9 +69,6 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             wall = GetComponent<WallObject>();
     }
 
-    // =====================================================
-    // INIT
-    // =====================================================
     public void InitFromPath(List<Vector3> points)
     {
         if (wall == null)
@@ -81,9 +103,6 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         ApplyToWall();
     }
 
-    // =====================================================
-    // PROVIDER
-    // =====================================================
     public int ControlPointCount
     {
         get
@@ -92,10 +111,8 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             {
                 case ShapeKind.Ellipse:
                     return 4;
-
                 case ShapeKind.Rectangle:
                     return 8;
-
                 default:
                     return freeControlPoints.Count;
             }
@@ -147,9 +164,6 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         return index >= 0 && index < ControlPointCount;
     }
 
-    // =====================================================
-    // PREVIEW PATH
-    // =====================================================
     public List<Vector3> GetPreviewPathWorld()
     {
         switch (shapeKind)
@@ -165,13 +179,14 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         }
     }
 
-    // =====================================================
-    // ELLIPSE
-    // =====================================================
     bool TrySetupEllipse(List<Vector3> points)
     {
         if (!_closedLoop) return false;
         if (points.Count < 10) return false;
+
+        List<Vector2> hull = ComputeConvexHullXZ(points);
+        if (hull.Count < 5)
+            return false;
 
         shapeY = points[0].y;
         ComputeBounds(points);
@@ -197,7 +212,7 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         }
 
         float avgError = error / Mathf.Max(1, count);
-        return avgError <= 0.25f;
+        return avgError <= 0.20f;
     }
 
     Vector3 GetEllipseControlPoint(int index)
@@ -206,10 +221,10 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
 
         switch (index)
         {
-            case 0: return new Vector3(maxX, shapeY, c.z); // right
-            case 1: return new Vector3(c.x, shapeY, maxZ); // top
-            case 2: return new Vector3(minX, shapeY, c.z); // left
-            case 3: return new Vector3(c.x, shapeY, minZ); // bottom
+            case 0: return new Vector3(maxX, shapeY, c.z);
+            case 1: return new Vector3(c.x, shapeY, maxZ);
+            case 2: return new Vector3(minX, shapeY, c.z);
+            case 3: return new Vector3(c.x, shapeY, minZ);
             default: return c;
         }
     }
@@ -242,22 +257,19 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             pts.Add(new Vector3(c.x + x, shapeY, c.z + z));
         }
 
-        // ferme la boucle
         pts.Add(pts[0]);
-
-        // IMPORTANT: forcer CCW propre pour éviter faces invisibles
         EnsureCounterClockwiseXZ(pts);
-
         return pts;
     }
 
-    // =====================================================
-    // RECTANGLE
-    // =====================================================
     bool TrySetupRectangle(List<Vector3> points)
     {
         if (!_closedLoop) return false;
         if (points.Count < 4) return false;
+
+        List<Vector2> hull = ComputeConvexHullXZ(points);
+        if (hull.Count != 4)
+            return false;
 
         shapeY = points[0].y;
         ComputeBounds(points);
@@ -268,31 +280,31 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         if (width < 0.1f || depth < 0.1f)
             return false;
 
-        float tolerance = Mathf.Max(width, depth) * 0.15f;
+        float borderTolerance = Mathf.Max(width, depth) * 0.10f;
         int nearBorder = 0;
 
         for (int i = 0; i < points.Count; i++)
         {
             Vector3 p = points[i];
-            bool onLeft   = Mathf.Abs(p.x - minX) <= tolerance;
-            bool onRight  = Mathf.Abs(p.x - maxX) <= tolerance;
-            bool onBottom = Mathf.Abs(p.z - minZ) <= tolerance;
-            bool onTop    = Mathf.Abs(p.z - maxZ) <= tolerance;
+            bool onLeft = Mathf.Abs(p.x - minX) <= borderTolerance;
+            bool onRight = Mathf.Abs(p.x - maxX) <= borderTolerance;
+            bool onBottom = Mathf.Abs(p.z - minZ) <= borderTolerance;
+            bool onTop = Mathf.Abs(p.z - maxZ) <= borderTolerance;
 
             if (onLeft || onRight || onBottom || onTop)
                 nearBorder++;
         }
 
         float ratio = nearBorder / (float)Mathf.Max(1, points.Count);
-        return ratio >= 0.7f;
+        return ratio >= 0.85f;
     }
 
     Vector3 GetRectangleControlPoint(int index)
     {
-        Vector3 topLeft     = new Vector3(minX, shapeY, maxZ);
-        Vector3 topRight    = new Vector3(maxX, shapeY, maxZ);
+        Vector3 topLeft = new Vector3(minX, shapeY, maxZ);
+        Vector3 topRight = new Vector3(maxX, shapeY, maxZ);
         Vector3 bottomRight = new Vector3(maxX, shapeY, minZ);
-        Vector3 bottomLeft  = new Vector3(minX, shapeY, minZ);
+        Vector3 bottomLeft = new Vector3(minX, shapeY, minZ);
 
         switch (index)
         {
@@ -312,39 +324,39 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
     {
         switch (index)
         {
-            case 0: // top-left
+            case 0:
                 minX = Mathf.Min(worldPos.x, maxX - 0.1f);
                 maxZ = Mathf.Max(worldPos.z, minZ + 0.1f);
                 break;
 
-            case 2: // top-right
+            case 2:
                 maxX = Mathf.Max(worldPos.x, minX + 0.1f);
                 maxZ = Mathf.Max(worldPos.z, minZ + 0.1f);
                 break;
 
-            case 4: // bottom-right
+            case 4:
                 maxX = Mathf.Max(worldPos.x, minX + 0.1f);
                 minZ = Mathf.Min(worldPos.z, maxZ - 0.1f);
                 break;
 
-            case 6: // bottom-left
+            case 6:
                 minX = Mathf.Min(worldPos.x, maxX - 0.1f);
                 minZ = Mathf.Min(worldPos.z, maxZ - 0.1f);
                 break;
 
-            case 1: // top
+            case 1:
                 maxZ = Mathf.Max(worldPos.z, minZ + 0.1f);
                 break;
 
-            case 3: // right
+            case 3:
                 maxX = Mathf.Max(worldPos.x, minX + 0.1f);
                 break;
 
-            case 5: // bottom
+            case 5:
                 minZ = Mathf.Min(worldPos.z, maxZ - 0.1f);
                 break;
 
-            case 7: // left
+            case 7:
                 minX = Mathf.Min(worldPos.x, maxX - 0.1f);
                 break;
         }
@@ -352,13 +364,10 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
 
     List<Vector3> BuildRectanglePath()
     {
-        // IMPORTANT:
-        // On génère dans un ordre CCW en XZ
-        // pour éviter qu’un côté soit culled / invisible.
-        Vector3 topLeft     = new Vector3(minX, shapeY, maxZ);
-        Vector3 bottomLeft  = new Vector3(minX, shapeY, minZ);
+        Vector3 topLeft = new Vector3(minX, shapeY, maxZ);
+        Vector3 bottomLeft = new Vector3(minX, shapeY, minZ);
         Vector3 bottomRight = new Vector3(maxX, shapeY, minZ);
-        Vector3 topRight    = new Vector3(maxX, shapeY, maxZ);
+        Vector3 topRight = new Vector3(maxX, shapeY, maxZ);
 
         List<Vector3> pts = new List<Vector3>
         {
@@ -373,16 +382,24 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         return pts;
     }
 
-    // =====================================================
-    // FREE SHAPE
-    // =====================================================
     void SetupFree(List<Vector3> points)
     {
         freeControlPoints.Clear();
 
+        float localSpacing = freeHandleSpacing;
+        int localMin = minFreeHandles;
+        int localMax = maxFreeHandles;
+
+        if (_closedLoop)
+        {
+            localSpacing *= closedFreeHandleSpacingMultiplier;
+            localMin = Mathf.Max(localMin, closedFreeMinHandles);
+            localMax = Mathf.Max(localMax, closedFreeMaxHandles);
+        }
+
         float perimeter = ComputePerimeter(points, _closedLoop);
-        int wantedHandles = Mathf.RoundToInt(perimeter / Mathf.Max(0.1f, freeHandleSpacing));
-        wantedHandles = Mathf.Clamp(wantedHandles, minFreeHandles, maxFreeHandles);
+        int wantedHandles = Mathf.RoundToInt(perimeter / Mathf.Max(0.1f, localSpacing));
+        wantedHandles = Mathf.Clamp(wantedHandles, localMin, localMax);
 
         if (points.Count <= wantedHandles)
         {
@@ -392,11 +409,20 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         {
             for (int i = 0; i < wantedHandles; i++)
             {
-                float t = i / (float)(wantedHandles - 1);
+                float t = _closedLoop
+                    ? i / (float)wantedHandles
+                    : i / (float)(wantedHandles - 1);
+
                 int idx = Mathf.RoundToInt(t * (points.Count - 1));
                 idx = Mathf.Clamp(idx, 0, points.Count - 1);
                 freeControlPoints.Add(points[idx]);
             }
+        }
+
+        if (_closedLoop && freeControlPoints.Count > 1)
+        {
+            if (Vector3.Distance(freeControlPoints[0], freeControlPoints[freeControlPoints.Count - 1]) < 0.0001f)
+                freeControlPoints.RemoveAt(freeControlPoints.Count - 1);
         }
 
         if (freeControlPoints.Count > 0)
@@ -408,59 +434,199 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         if (freeControlPoints == null || freeControlPoints.Count < 2)
             return null;
 
-        List<Vector3> path = new List<Vector3>();
-
-        if (freeControlPoints.Count == 2)
+        if (_closedLoop)
         {
-            path.AddRange(freeControlPoints);
-            return path;
+            List<Vector3> smoothClosed = Chaikin(freeControlPoints, closedFreeSmoothIterations, true);
+            int targetCount = Mathf.Max(closedFreeWallResolution, freeControlPoints.Count * 10);
+            List<Vector3> denseClosed = ResampleClosedByCount(smoothClosed, targetCount);
+
+            if (denseClosed.Count > 0 && Vector3.Distance(denseClosed[0], denseClosed[denseClosed.Count - 1]) > 0.001f)
+                denseClosed.Add(denseClosed[0]);
+
+            return denseClosed;
         }
 
-        int resolution = Mathf.Max(freeWallResolution, freeControlPoints.Count * 4);
-
-        for (int i = 0; i < resolution; i++)
+        if (IsMostlyStraightOpen(freeControlPoints))
         {
-            float t = i / (float)(resolution - 1);
-            path.Add(GetPointOnCatmullRom(t));
+            return new List<Vector3>(freeControlPoints);
         }
 
-        if (_closedLoop && path.Count > 0)
-            path.Add(path[0]);
-
-        return path;
+        List<Vector3> smoothOpen = Chaikin(freeControlPoints, openFreeSmoothIterations, false);
+        int openTargetCount = Mathf.Max(freeWallResolution, freeControlPoints.Count * 8);
+        return ResampleOpenByCount(smoothOpen, openTargetCount);
     }
 
-    Vector3 GetPointOnCatmullRom(float t)
+    static List<Vector3> Chaikin(List<Vector3> pts, int iterations, bool closed)
     {
-        int count = freeControlPoints.Count;
-        if (count == 0) return Vector3.zero;
-        if (count == 1) return freeControlPoints[0];
+        if (pts == null || pts.Count < 2)
+            return pts == null ? new List<Vector3>() : new List<Vector3>(pts);
 
-        float scaledT = t * (count - 1);
-        int i = Mathf.FloorToInt(scaledT);
-        float localT = scaledT - i;
+        List<Vector3> work = new List<Vector3>(pts);
 
-        int p0 = Mathf.Clamp(i - 1, 0, count - 1);
-        int p1 = Mathf.Clamp(i,     0, count - 1);
-        int p2 = Mathf.Clamp(i + 1, 0, count - 1);
-        int p3 = Mathf.Clamp(i + 2, 0, count - 1);
+        if (closed && work.Count > 1 && Vector3.Distance(work[0], work[work.Count - 1]) < 0.0001f)
+            work.RemoveAt(work.Count - 1);
 
-        Vector3 P0 = freeControlPoints[p0];
-        Vector3 P1 = freeControlPoints[p1];
-        Vector3 P2 = freeControlPoints[p2];
-        Vector3 P3 = freeControlPoints[p3];
+        for (int it = 0; it < iterations; it++)
+        {
+            List<Vector3> res = new List<Vector3>(work.Count * 2);
+            int n = work.Count;
 
-        return 0.5f * (
-            (2f * P1) +
-            (-P0 + P2) * localT +
-            (2f * P0 - 5f * P1 + 4f * P2 - P3) * localT * localT +
-            (-P0 + 3f * P1 - 3f * P2 + P3) * localT * localT * localT
-        );
+            if (closed)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    Vector3 a = work[i];
+                    Vector3 b = work[(i + 1) % n];
+                    res.Add(Vector3.Lerp(a, b, 0.25f));
+                    res.Add(Vector3.Lerp(a, b, 0.75f));
+                }
+            }
+            else
+            {
+                res.Add(work[0]);
+
+                for (int i = 0; i < n - 1; i++)
+                {
+                    Vector3 a = work[i];
+                    Vector3 b = work[i + 1];
+                    res.Add(Vector3.Lerp(a, b, 0.25f));
+                    res.Add(Vector3.Lerp(a, b, 0.75f));
+                }
+
+                res.Add(work[n - 1]);
+            }
+
+            work = res;
+        }
+
+        return work;
     }
 
-    // =====================================================
-    // APPLY
-    // =====================================================
+    static List<Vector3> ResampleOpenByCount(List<Vector3> pts, int count)
+    {
+        if (pts == null || pts.Count == 0)
+            return new List<Vector3>();
+
+        if (pts.Count == 1)
+            return new List<Vector3>(pts);
+
+        count = Mathf.Max(2, count);
+
+        float[] dist = new float[pts.Count];
+        dist[0] = 0f;
+
+        for (int i = 1; i < pts.Count; i++)
+            dist[i] = dist[i - 1] + Vector3.Distance(pts[i - 1], pts[i]);
+
+        float total = dist[pts.Count - 1];
+        if (total < 1e-6f)
+            return new List<Vector3>(pts);
+
+        List<Vector3> res = new List<Vector3>(count);
+
+        for (int k = 0; k < count; k++)
+        {
+            float t = (k / (float)(count - 1)) * total;
+            int i = 1;
+
+            while (i < dist.Length && dist[i] < t)
+                i++;
+
+            i = Mathf.Clamp(i, 1, dist.Length - 1);
+            float segT = Mathf.InverseLerp(dist[i - 1], dist[i], t);
+            res.Add(Vector3.Lerp(pts[i - 1], pts[i], segT));
+        }
+
+        return res;
+    }
+
+    static List<Vector3> ResampleClosedByCount(List<Vector3> pts, int count)
+    {
+        if (pts == null || pts.Count == 0)
+            return new List<Vector3>();
+
+        if (pts.Count == 1)
+            return new List<Vector3>(pts);
+
+        count = Mathf.Max(3, count);
+
+        List<Vector3> work = new List<Vector3>(pts);
+        if (Vector3.Distance(work[0], work[work.Count - 1]) < 0.0001f)
+            work.RemoveAt(work.Count - 1);
+
+        int n = work.Count;
+        if (n < 2)
+            return new List<Vector3>(work);
+
+        float[] dist = new float[n + 1];
+        dist[0] = 0f;
+
+        for (int i = 1; i < n; i++)
+            dist[i] = dist[i - 1] + Vector3.Distance(work[i - 1], work[i]);
+
+        dist[n] = dist[n - 1] + Vector3.Distance(work[n - 1], work[0]);
+
+        float total = dist[n];
+        if (total < 1e-6f)
+            return new List<Vector3>(work);
+
+        List<Vector3> res = new List<Vector3>(count);
+
+        for (int k = 0; k < count; k++)
+        {
+            float t = (k / (float)count) * total;
+            int seg = 1;
+
+            while (seg < dist.Length && dist[seg] < t)
+                seg++;
+
+            seg = Mathf.Clamp(seg, 1, dist.Length - 1);
+
+            int aIndex = seg - 1;
+            int bIndex = seg % n;
+
+            float segT = Mathf.InverseLerp(dist[seg - 1], dist[seg], t);
+            res.Add(Vector3.Lerp(work[aIndex], work[bIndex], segT));
+        }
+
+        return res;
+    }
+
+    bool IsMostlyStraightOpen(List<Vector3> points)
+    {
+        if (points == null || points.Count < 3)
+            return true;
+
+        float pathLen = 0f;
+        for (int i = 0; i < points.Count - 1; i++)
+            pathLen += Vector3.Distance(points[i], points[i + 1]);
+
+        float chord = Vector3.Distance(points[0], points[points.Count - 1]);
+        if (chord < 0.0001f)
+            return false;
+
+        float arcRatio = pathLen / chord;
+
+        float turnSum = 0f;
+        int turnCount = 0;
+
+        for (int i = 1; i < points.Count - 1; i++)
+        {
+            Vector3 a = (points[i] - points[i - 1]).normalized;
+            Vector3 b = (points[i + 1] - points[i]).normalized;
+
+            if (a.sqrMagnitude < 0.0001f || b.sqrMagnitude < 0.0001f)
+                continue;
+
+            turnSum += Vector3.Angle(a, b);
+            turnCount++;
+        }
+
+        float avgTurn = turnCount > 0 ? turnSum / turnCount : 0f;
+
+        return arcRatio <= mostlyStraightArcRatioThreshold && avgTurn <= mostlyStraightAverageTurnThreshold;
+    }
+
     public void ApplyToWall()
     {
         if (wall == null)
@@ -490,9 +656,6 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         }
     }
 
-    // =====================================================
-    // UTILS
-    // =====================================================
     void ComputeBounds(List<Vector3> points)
     {
         minX = float.MaxValue;
@@ -538,12 +701,60 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         return len;
     }
 
+    List<Vector2> ComputeConvexHullXZ(List<Vector3> pts3)
+    {
+        List<Vector2> pts = new List<Vector2>(pts3.Count);
+        for (int i = 0; i < pts3.Count; i++)
+            pts.Add(new Vector2(pts3[i].x, pts3[i].z));
+
+        if (pts.Count <= 3)
+            return new List<Vector2>(pts);
+
+        pts.Sort(delegate (Vector2 p1, Vector2 p2)
+        {
+            int cmp = p1.x.CompareTo(p2.x);
+            return cmp == 0 ? p1.y.CompareTo(p2.y) : cmp;
+        });
+
+        List<Vector2> lower = new List<Vector2>();
+        foreach (Vector2 p in pts)
+        {
+            while (lower.Count >= 2 &&
+                   Cross(lower[lower.Count - 1] - lower[lower.Count - 2], p - lower[lower.Count - 1]) <= 0)
+            {
+                lower.RemoveAt(lower.Count - 1);
+            }
+            lower.Add(p);
+        }
+
+        List<Vector2> upper = new List<Vector2>();
+        for (int i = pts.Count - 1; i >= 0; i--)
+        {
+            Vector2 p = pts[i];
+            while (upper.Count >= 2 &&
+                   Cross(upper[upper.Count - 1] - upper[upper.Count - 2], p - upper[upper.Count - 1]) <= 0)
+            {
+                upper.RemoveAt(upper.Count - 1);
+            }
+            upper.Add(p);
+        }
+
+        lower.RemoveAt(lower.Count - 1);
+        upper.RemoveAt(upper.Count - 1);
+        lower.AddRange(upper);
+        return lower;
+    }
+
+    float Cross(Vector2 a, Vector2 b)
+    {
+        return a.x * b.y - a.y * b.x;
+    }
+
     void EnsureCounterClockwiseXZ(List<Vector3> pts)
     {
         if (pts == null || pts.Count < 4)
             return;
 
-        // si fermé avec point dupliqué à la fin, on ignore le dernier pour l'aire
         int count = pts.Count;
         bool duplicatedClose = Vector3.Distance(pts[0], pts[count - 1]) < 0.0001f;
         int effectiveCount = duplicatedClose ? count - 1 : count;
@@ -556,7 +767,6 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             area += (a.x * b.z - b.x * a.z);
         }
 
-        // area > 0 => CCW ; area < 0 => CW
         if (area < 0f)
         {
             if (duplicatedClose)
