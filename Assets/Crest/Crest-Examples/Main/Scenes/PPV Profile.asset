@@ -13,7 +13,6 @@ MonoBehaviour:
   m_Name: PPV Profile
   m_EditorClassIdentifier: 
   components:
-  - {fileID: 114585516111172560}
   - {fileID: 114063732640162742}
 --- !u!114 &114063732640162742
 MonoBehaviour:
@@ -31,9 +30,34 @@ MonoBehaviour:
   skyType:
     m_OverrideState: 1
     m_Value: 2
+  cloudType:
+    m_OverrideState: 0
+    m_Value: 0
+  skyAmbientMode:
+    m_OverrideState: 0
+    m_Value: 1
+  planetRadius:
+    m_OverrideState: 0
+    m_Value: 6378.1
+  renderingSpace:
+    m_OverrideState: 0
+    m_Value: 1
+  centerMode:
+    m_OverrideState: 0
+    m_Value: 0
+  planetCenter:
+    m_OverrideState: 0
+    m_Value: {x: 0, y: -6378.1, z: 0}
+  windOrientation:
+    m_OverrideState: 0
+    m_Value: 0
+  windSpeed:
+    m_OverrideState: 0
+    m_Value: 0
   fogType:
     m_OverrideState: 1
     m_Value: 2
+  m_Version: 1
 --- !u!114 &114585516111172560
 MonoBehaviour:
   m_ObjectHideFlags: 3
