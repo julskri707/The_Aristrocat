@@ -37,6 +37,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
     [Tooltip("Max miter length multiplier to avoid extreme spikes on sharp angles.")]
     [Range(1f, 10f)] public float miterLimit = 3.0f;
 
+    [Tooltip("Below this dot threshold, corners use bevel fallback instead of long miters.")]
+    [Range(0.05f, 0.95f)] public float sharpCornerThreshold = 0.35f;
+
     [Header("Debug")]
     public bool logWarnings = false;
     public bool drawGizmos = false;
@@ -60,7 +63,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             if (_points == null) return 0;
             if (_points.Count < 2) return 0;
 
-            // Si loop fermée et dernier point == premier, on ne veut pas 2 handles au même endroit
             if (closedLoop && _points.Count >= 3 && Vector3.Distance(_points[0], _points[_points.Count - 1]) < 0.001f)
                 return _points.Count - 1;
 
@@ -84,7 +86,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
 
         _points[index] = worldPos;
 
-        // Si closedLoop et dernier point du stockage est un duplicate du premier -> on garde la cohérence
         if (closedLoop && _points.Count >= 2)
         {
             if (Vector3.Distance(_points[0], _points[_points.Count - 1]) < 0.001f)
@@ -107,14 +108,11 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         int count = ControlPointCount;
         if (count < 2) return null;
 
-        // Preview = points dans l’ordre (pas de X)
-        var list = new List<Vector3>(count);
+        var list = new List<Vector3>(count + 1);
 
         for (int i = 0; i < count; i++)
             list.Add(_points[i]);
 
-        // Si c'est une boucle fermée, on referme la ligne (LineRenderer.loop peut aussi le faire)
-        // Ici on ajoute le premier point à la fin pour une preview "continue".
         if (closedLoop)
             list.Add(_points[0]);
 
@@ -145,7 +143,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         _points.Clear();
         if (points != null) _points.AddRange(points);
 
-        // auto-detect closed loop if last is almost first
         if (_points.Count >= 3 && Vector3.Distance(_points[0], _points[_points.Count - 1]) < 0.001f)
             closedLoop = true;
 
@@ -186,7 +183,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             return;
         }
 
-        // If closed loop, we assume last point duplicates first
         int count = closedLoop ? _points.Count - 1 : _points.Count;
         if (count < 2)
         {
@@ -201,28 +197,24 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             return;
         }
 
-        // Decide "outside" for closed loops (CW/CCW in XZ plane)
         float outsideSign = 1f;
         if (closedLoop)
         {
             bool isCCW = ComputeIsCCW_XZ(_points, count);
-            // Convention: for CCW loop, outside is RIGHT of segment direction
             outsideSign = isCCW ? 1f : -1f;
         }
 
         float halfT = thickness * 0.5f;
 
-        // Precompute cumulative distance for UV continuity
         float[] dist = new float[count];
         dist[0] = 0f;
         for (int i = 1; i < count; i++)
             dist[i] = dist[i - 1] + Vector3.Distance(_points[i - 1], _points[i]);
 
-        // Compute per-point mitered offsets (no cracks)
         var outB = new Vector3[count];
-        var inB  = new Vector3[count];
+        var inB = new Vector3[count];
         var outT = new Vector3[count];
-        var inT  = new Vector3[count];
+        var inT = new Vector3[count];
 
         for (int i = 0; i < count; i++)
         {
@@ -231,39 +223,82 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             Vector3 dirPrev = GetDirPrev(i, count);
             Vector3 dirNext = GetDirNext(i, count);
 
-            if (!closedLoop)
+            // open wall endpoints: use segment normal directly
+            if (!closedLoop && i == 0)
             {
-                if (i == 0) dirPrev = dirNext;
-                if (i == count - 1) dirNext = dirPrev;
+                Vector3 right = Vector3.Cross(Vector3.up, dirNext).normalized;
+                Vector3 outsideOffset = right * (halfT * outsideSign);
+                Vector3 insideOffset = -outsideOffset;
+
+                outB[i] = p + outsideOffset;
+                inB[i] = p + insideOffset;
+                outT[i] = outB[i] + Vector3.up * height;
+                inT[i] = inB[i] + Vector3.up * height;
+                continue;
             }
 
-            // bisector for miter
+            if (!closedLoop && i == count - 1)
+            {
+                Vector3 right = Vector3.Cross(Vector3.up, dirPrev).normalized;
+                Vector3 outsideOffset = right * (halfT * outsideSign);
+                Vector3 insideOffset = -outsideOffset;
+
+                outB[i] = p + outsideOffset;
+                inB[i] = p + insideOffset;
+                outT[i] = outB[i] + Vector3.up * height;
+                inT[i] = inB[i] + Vector3.up * height;
+                continue;
+            }
+
             Vector3 bis = dirPrev + dirNext;
             bis.y = 0f;
+
             if (bis.sqrMagnitude < 0.000001f)
-                bis = dirNext;
+            {
+                Vector3 right = Vector3.Cross(Vector3.up, dirNext).normalized;
+                Vector3 outsideOffset = right * (halfT * outsideSign);
+                Vector3 insideOffset = -outsideOffset;
+
+                outB[i] = p + outsideOffset;
+                inB[i] = p + insideOffset;
+                outT[i] = outB[i] + Vector3.up * height;
+                inT[i] = inB[i] + Vector3.up * height;
+                continue;
+            }
 
             bis.Normalize();
 
-            Vector3 rightBis  = Vector3.Cross(Vector3.up, bis).normalized;
+            Vector3 rightBis = Vector3.Cross(Vector3.up, bis).normalized;
             Vector3 rightNext = Vector3.Cross(Vector3.up, dirNext).normalized;
 
             float denom = Mathf.Abs(Vector3.Dot(rightBis, rightNext));
-            float miterLen = (denom < 0.2f) ? halfT : (halfT / denom);
-            miterLen = Mathf.Min(miterLen, halfT * miterLimit);
 
-            Vector3 outsideOffset = rightBis * (miterLen * outsideSign);
-            Vector3 insideOffset  = -outsideOffset;
+            Vector3 outside;
+            Vector3 inside;
 
-            outB[i] = p + outsideOffset;
-            inB[i]  = p + insideOffset;
+            // sharp angles -> bevel fallback
+            if (denom < sharpCornerThreshold)
+            {
+                Vector3 right = Vector3.Cross(Vector3.up, dirNext).normalized;
+                outside = right * (halfT * outsideSign);
+                inside = -outside;
+            }
+            else
+            {
+                float miterLen = Mathf.Min(halfT / denom, halfT * miterLimit);
+                outside = rightBis * (miterLen * outsideSign);
+                inside = -outside;
+            }
+
+            outB[i] = p + outside;
+            inB[i] = p + inside;
             outT[i] = outB[i] + Vector3.up * height;
-            inT[i]  = inB[i]  + Vector3.up * height;
+            inT[i] = inB[i] + Vector3.up * height;
         }
 
         var verts = new List<Vector3>(segCount * 24 + 16);
-        var uvs   = new List<Vector2>(segCount * 24 + 16);
-        var tris  = new List<int>(segCount * 36 + 24);
+        var uvs = new List<Vector2>(segCount * 24 + 16);
+        var tris = new List<int>(segCount * 36 + 24);
 
         float uAcross = thickness / Mathf.Max(0.01f, uvMetersPerU);
 
@@ -272,14 +307,19 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             int n = (i + 1) % count;
 
             float v0 = dist[i] / Mathf.Max(0.01f, uvMetersPerV);
-            float v1 = dist[n] / Mathf.Max(0.01f, uvMetersPerV);
+            float v1;
+
+            if (closedLoop && n == 0)
+                v1 = (dist[count - 1] + Vector3.Distance(_points[count - 1], _points[0])) / Mathf.Max(0.01f, uvMetersPerV);
+            else
+                v1 = dist[n] / Mathf.Max(0.01f, uvMetersPerV);
 
             // OUTER face
             AddQuad(verts, uvs, tris,
                 outB[i], outT[i], outT[n], outB[n],
                 0f, v0, uAcross, v1);
 
-            // INNER face (reverse)
+            // INNER face
             AddQuad(verts, uvs, tris,
                 inB[n], inT[n], inT[i], inB[i],
                 0f, v1, uAcross, v0);
@@ -289,7 +329,7 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
                 outT[i], inT[i], inT[n], outT[n],
                 0f, v0, uAcross, v1);
 
-            // BOTTOM face (optional)
+            // BOTTOM face
             if (addBottom)
             {
                 AddQuad(verts, uvs, tris,
