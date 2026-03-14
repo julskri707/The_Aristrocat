@@ -64,6 +64,71 @@ public class WallSelectionManager : MonoBehaviour
             Debug.Log($"[WallSelectionManager] Selected {wall.name} with {provider.GetType().Name}");
     }
 
+    public bool TryInsertPointAtScreenPosition(Vector2 screenPosition, MonoBehaviour preferredProviderBehaviour = null)
+    {
+        if (cam == null)
+            return false;
+
+        WallObject wall = null;
+        MonoBehaviour providerBehaviour = preferredProviderBehaviour;
+
+        if (providerBehaviour is Component providerComponent)
+            wall = providerComponent.GetComponent<WallObject>();
+
+        Ray ray = cam.ScreenPointToRay(screenPosition);
+
+        if (wall == null && Physics.Raycast(ray, out RaycastHit hit, maxDistance, wallLayerMask, QueryTriggerInteraction.Ignore))
+            wall = hit.collider.GetComponentInParent<WallObject>();
+
+        if (wall == null && buildController != null)
+            wall = buildController.SelectedWall;
+
+        if (wall == null)
+            return false;
+
+        if (providerBehaviour == null)
+            providerBehaviour = ResolveProvider(wall);
+
+        if (providerBehaviour is not WallEditShape editShape)
+            return false;
+
+        Vector3 insertWorldPos = GetInsertWorldPosition(ray, wall);
+        bool inserted = editShape.InsertFreeControlPointAtWorld(insertWorldPos);
+
+        if (!inserted)
+            return false;
+
+        if (buildController != null)
+            buildController.ForceSelectWall(wall);
+        else if (overlay != null)
+            overlay.SetTarget(editShape);
+
+        if (overlay != null)
+            overlay.RebuildOverlay();
+
+        if (logDebug)
+            Debug.Log($"[WallSelectionManager] Inserted point on {wall.name}");
+
+        return true;
+    }
+
+    Vector3 GetInsertWorldPosition(Ray ray, WallObject wall)
+    {
+        if (wall != null && wall.Points != null && wall.Points.Count >= 2)
+        {
+            float y = wall.Points[0].y;
+            Plane plane = new Plane(Vector3.up, new Vector3(0f, y, 0f));
+            if (plane.Raycast(ray, out float enter))
+                return ray.GetPoint(enter);
+        }
+
+        Plane fallbackPlane = new Plane(Vector3.up, Vector3.zero);
+        if (fallbackPlane.Raycast(ray, out float fallbackEnter))
+            return ray.GetPoint(fallbackEnter);
+
+        return wall != null ? wall.transform.position : Vector3.zero;
+    }
+
     MonoBehaviour ResolveProvider(WallObject wall)
     {
         if (wall == null)

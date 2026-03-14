@@ -636,7 +636,8 @@ MonoBehaviour:
   linksRoot: {fileID: 1637475659}
   linkPrefab: {fileID: 6353280019826154621, guid: f570c87757436bd45b622dc10bf17f41, type: 3}
   showLinks: 1
-  usePreviewPathForLinks: 0
+  usePreviewPathForLinks: 1
+  selectionManager: {fileID: 0}
   targetProviderBehaviour: {fileID: 436511027}
   useSeparateSortingCanvases: 1
   baseSortingOrder: 5000

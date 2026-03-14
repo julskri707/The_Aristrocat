@@ -32,13 +32,13 @@ public class WallBuildController : MonoBehaviour
     void OnEnable()
     {
         if (drawInput != null)
-            drawInput.OnShapeCommitted += HandleShapeCommitted;
+            drawInput.OnShapeCommittedDetailed += HandleShapeCommittedDetailed;
     }
 
     void OnDisable()
     {
         if (drawInput != null)
-            drawInput.OnShapeCommitted -= HandleShapeCommitted;
+            drawInput.OnShapeCommittedDetailed -= HandleShapeCommittedDetailed;
     }
 
     void Update()
@@ -53,7 +53,7 @@ public class WallBuildController : MonoBehaviour
             TrySelectWallUnderMouse();
     }
 
-    void HandleShapeCommitted(List<Vector3> points)
+    void HandleShapeCommittedDetailed(List<Vector3> points, WallDrawInput.DetectedShapeKind detectedKind, string detectedName)
     {
         if (wallPrefab == null) return;
         if (points == null || points.Count < 2) return;
@@ -67,7 +67,7 @@ public class WallBuildController : MonoBehaviour
             editShape = wall.gameObject.AddComponent<WallEditShape>();
 
         editShape.wall = wall;
-        editShape.InitFromPath(points);
+        editShape.InitFromDetectedPath(points, detectedKind);
 
         WallSelectable selectable = wall.GetComponent<WallSelectable>();
         if (selectable == null)

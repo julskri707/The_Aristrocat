@@ -14,6 +14,9 @@ public class ControlPointOverlayManager : MonoBehaviour
     public bool showLinks = true;
     public bool usePreviewPathForLinks = true;
 
+    [Header("Selection")]
+    public WallSelectionManager selectionManager;
+
     [Header("Target Provider Behaviour")]
     public MonoBehaviour targetProviderBehaviour;
 
@@ -35,6 +38,9 @@ public class ControlPointOverlayManager : MonoBehaviour
     {
         if (cam == null)
             cam = Camera.main;
+
+        if (selectionManager == null)
+            selectionManager = FindFirstObjectByType<WallSelectionManager>();
 
         RefreshProvider();
         EnsureRootCanvasSorting();
@@ -188,6 +194,8 @@ public class ControlPointOverlayManager : MonoBehaviour
 
             link.cam = cam;
             link.provider = _provider;
+            link.providerBehaviour = targetProviderBehaviour;
+            link.selectionManager = selectionManager;
             link.indexA = i;
             link.indexB = i + 1;
 
@@ -224,6 +232,9 @@ public class ControlPointOverlayManager : MonoBehaviour
                 continue;
 
             _links[i].cam = cam;
+            _links[i].provider = _provider;
+            _links[i].providerBehaviour = targetProviderBehaviour;
+            _links[i].selectionManager = selectionManager;
             _links[i].SetDirectWorldPoints(path[i], path[i + 1]);
         }
     }
@@ -240,6 +251,9 @@ public class ControlPointOverlayManager : MonoBehaviour
         }
 
         link.cam = cam;
+        link.provider = _provider;
+        link.providerBehaviour = targetProviderBehaviour;
+        link.selectionManager = selectionManager;
         link.SetDirectWorldPoints(a, b);
 
         go.transform.SetAsLastSibling();

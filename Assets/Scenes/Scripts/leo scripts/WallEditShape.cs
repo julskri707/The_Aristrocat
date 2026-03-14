@@ -116,6 +116,72 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         ApplyToWall();
     }
 
+    public void InitFromDetectedPath(List<Vector3> points, WallDrawInput.DetectedShapeKind detectedKind)
+    {
+        if (wall == null)
+            wall = GetComponent<WallObject>();
+
+        if (points == null || points.Count < 2)
+            return;
+
+        List<Vector3> src = new List<Vector3>(points);
+
+        _closedLoop = IsClosed(src);
+
+        if (_closedLoop && src.Count > 1 && Vector3.Distance(src[0], src[src.Count - 1]) < 0.001f)
+            src.RemoveAt(src.Count - 1);
+
+        _freeRawPath.Clear();
+        _freePathWasEdited = false;
+
+        bool wantsRectangle =
+            detectedKind == WallDrawInput.DetectedShapeKind.Rectangle ||
+            detectedKind == WallDrawInput.DetectedShapeKind.Square;
+
+        if (wantsRectangle)
+        {
+            if (TrySetupRectangleForcedFromDetected(src))
+            {
+                shapeKind = ShapeKind.Rectangle;
+                ApplyToWall();
+                return;
+            }
+
+            if (TrySetupRectangle(src))
+            {
+                shapeKind = ShapeKind.Rectangle;
+                ApplyToWall();
+                return;
+            }
+
+            SetupFree(src);
+            CacheInitialFreeRawPath(src);
+            shapeKind = ShapeKind.Free;
+            ApplyToWall();
+            return;
+        }
+
+        // Important:
+        // - on n'autorise plus de 2e passe rectangle ici
+        // - mais on réautorise la 2e passe ellipse pour retrouver
+        //   les vrais cercles / ovales avec 4 handles.
+        // Donc:
+        //   cercle détecté -> ellipse
+        //   ovale dessiné mais classé Free -> ellipse si le fit passe
+        //   triangle / free non-elliptique -> restent Free
+        if (_closedLoop && TrySetupEllipse(src))
+        {
+            shapeKind = ShapeKind.Ellipse;
+            ApplyToWall();
+            return;
+        }
+
+        SetupFree(src);
+        CacheInitialFreeRawPath(src);
+        shapeKind = ShapeKind.Free;
+        ApplyToWall();
+    }
+
     public int ControlPointCount
     {
         get
@@ -194,6 +260,89 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             default:
                 return BuildFreePreviewPath();
         }
+    }
+
+
+
+    public bool InsertFreeControlPointAtWorld(Vector3 worldPos)
+    {
+        if (shapeKind != ShapeKind.Free)
+            return false;
+
+        if (freeControlPoints == null || freeControlPoints.Count < 2)
+            return false;
+
+        Vector3 insertPos = new Vector3(worldPos.x, shapeY, worldPos.z);
+
+        int bestInsertIndex = FindBestInsertIndexForFreePoint(insertPos);
+        if (bestInsertIndex < 0)
+            return false;
+
+        freeControlPoints.Insert(bestInsertIndex, insertPos);
+        _freePathWasEdited = true;
+
+        ApplyToWall();
+        return true;
+    }
+
+    int FindBestInsertIndexForFreePoint(Vector3 worldPos)
+    {
+        if (freeControlPoints == null || freeControlPoints.Count < 2)
+            return -1;
+
+        float bestDist = float.MaxValue;
+        int bestInsertIndex = -1;
+
+        if (_closedLoop)
+        {
+            int count = freeControlPoints.Count;
+
+            for (int i = 0; i < count; i++)
+            {
+                int next = (i + 1) % count;
+                float dist = DistancePointToSegmentXZ(worldPos, freeControlPoints[i], freeControlPoints[next]);
+
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestInsertIndex = i + 1;
+                }
+            }
+
+            return bestInsertIndex;
+        }
+
+        for (int i = 0; i < freeControlPoints.Count - 1; i++)
+        {
+            float dist = DistancePointToSegmentXZ(worldPos, freeControlPoints[i], freeControlPoints[i + 1]);
+
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                bestInsertIndex = i + 1;
+            }
+        }
+
+        return bestInsertIndex;
+    }
+
+    static float DistancePointToSegmentXZ(Vector3 p, Vector3 a, Vector3 b)
+    {
+        Vector2 pp = new Vector2(p.x, p.z);
+        Vector2 aa = new Vector2(a.x, a.z);
+        Vector2 bb = new Vector2(b.x, b.z);
+
+        Vector2 ab = bb - aa;
+        float len2 = ab.sqrMagnitude;
+
+        if (len2 < 0.000001f)
+            return Vector2.Distance(pp, aa);
+
+        float t = Vector2.Dot(pp - aa, ab) / len2;
+        t = Mathf.Clamp01(t);
+
+        Vector2 proj = aa + ab * t;
+        return Vector2.Distance(pp, proj);
     }
 
     bool TrySetupEllipse(List<Vector3> points)
@@ -330,8 +479,89 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         return true;
     }
 
+    bool TrySetupRectangleForcedFromDetected(List<Vector3> points)
+    {
+        if (!_closedLoop) return false;
+        if (points == null || points.Count < 4) return false;
+
+        List<Vector3> work = new List<Vector3>(points);
+        if (work.Count > 1 && Vector3.Distance(work[0], work[work.Count - 1]) < 0.001f)
+            work.RemoveAt(work.Count - 1);
+
+        if (work.Count < 4)
+            return false;
+
+        if (!TryBuildOrientedRectangleFromPathRelaxed(
+                work,
+                out Vector2 origin,
+                out Vector2 axisX,
+                out Vector2 axisY,
+                out float localMinX,
+                out float localMaxX,
+                out float localMinY,
+                out float localMaxY))
+            return false;
+
+        shapeY = work[0].y;
+        rectangleOriginXZ = origin;
+        rectangleAxisX = axisX;
+        rectangleAxisY = axisY;
+        rectangleMinX = localMinX;
+        rectangleMaxX = localMaxX;
+        rectangleMinY = localMinY;
+        rectangleMaxY = localMaxY;
+
+        ComputeBounds(BuildRectanglePath());
+        return true;
+    }
+
     bool TryBuildOrientedRectangleFromPath(
         List<Vector3> work,
+        out Vector2 origin,
+        out Vector2 axisX,
+        out Vector2 axisY,
+        out float localMinX,
+        out float localMaxX,
+        out float localMinY,
+        out float localMaxY)
+    {
+        return TryBuildOrientedRectangleFromPathInternal(
+            work,
+            0.68f,
+            out origin,
+            out axisX,
+            out axisY,
+            out localMinX,
+            out localMaxX,
+            out localMinY,
+            out localMaxY);
+    }
+
+    bool TryBuildOrientedRectangleFromPathRelaxed(
+        List<Vector3> work,
+        out Vector2 origin,
+        out Vector2 axisX,
+        out Vector2 axisY,
+        out float localMinX,
+        out float localMaxX,
+        out float localMinY,
+        out float localMaxY)
+    {
+        return TryBuildOrientedRectangleFromPathInternal(
+            work,
+            0.20f,
+            out origin,
+            out axisX,
+            out axisY,
+            out localMinX,
+            out localMaxX,
+            out localMinY,
+            out localMaxY);
+    }
+
+    bool TryBuildOrientedRectangleFromPathInternal(
+        List<Vector3> work,
+        float minScore,
         out Vector2 origin,
         out Vector2 axisX,
         out Vector2 axisY,
@@ -500,7 +730,7 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         if (!found)
             return false;
 
-        if (bestScore < 0.68f)
+        if (bestScore < minScore)
             return false;
 
         origin = bestOrigin;

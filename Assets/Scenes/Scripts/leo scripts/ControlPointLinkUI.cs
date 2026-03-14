@@ -1,23 +1,28 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 [RequireComponent(typeof(RectTransform))]
-public class ControlPointLinkUI : MonoBehaviour
+public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
 {
     [Header("Binding")]
     public Camera cam;
 
-    // Mode provider + indices
     public IControlPointProvider provider;
+    public MonoBehaviour providerBehaviour;
+    public WallSelectionManager selectionManager;
     public int indexA;
     public int indexB;
 
-    // Mode points directs
     public bool useDirectWorldPoints = false;
     public Vector3 worldA;
     public Vector3 worldB;
 
     [Header("Look")]
-    public float thickness = 4f;
+    public float thickness = 10f;
+
+    [Header("Click")]
+    public bool autoCreateRaycastImage = true;
 
     private RectTransform _rect;
     private Canvas _rootCanvas;
@@ -27,11 +32,13 @@ public class ControlPointLinkUI : MonoBehaviour
     void Awake()
     {
         CacheCanvas();
+        EnsureRaycastGraphic();
     }
 
     void OnEnable()
     {
         CacheCanvas();
+        EnsureRaycastGraphic();
     }
 
     void CacheCanvas()
@@ -50,14 +57,26 @@ public class ControlPointLinkUI : MonoBehaviour
         _rootCanvas = parentCanvas.rootCanvas;
         _canvasRect = _rootCanvas.transform as RectTransform;
 
-        if (_rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
-            _uiCamera = null;
-        else
-            _uiCamera = _rootCanvas.worldCamera;
+        _uiCamera = _rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : _rootCanvas.worldCamera;
 
         _rect.anchorMin = new Vector2(0.5f, 0.5f);
         _rect.anchorMax = new Vector2(0.5f, 0.5f);
         _rect.pivot = new Vector2(0.5f, 0.5f);
+    }
+
+    void EnsureRaycastGraphic()
+    {
+        Graphic g = GetComponent<Graphic>();
+        if (g == null && autoCreateRaycastImage)
+        {
+            Image img = gameObject.AddComponent<Image>();
+            img.color = new Color(1f, 1f, 1f, 0.001f);
+            img.raycastTarget = true;
+            g = img;
+        }
+
+        if (g != null)
+            g.raycastTarget = true;
     }
 
     void LateUpdate()
@@ -114,11 +133,8 @@ public class ControlPointLinkUI : MonoBehaviour
             return;
         }
 
-        Vector2 localA;
-        Vector2 localB;
-
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, sa, _uiCamera, out localA) ||
-            !RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, sb, _uiCamera, out localB))
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, sa, _uiCamera, out Vector2 localA) ||
+            !RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, sb, _uiCamera, out Vector2 localB))
         {
             if (gameObject.activeSelf)
                 gameObject.SetActive(false);
@@ -146,5 +162,19 @@ public class ControlPointLinkUI : MonoBehaviour
         useDirectWorldPoints = true;
         worldA = a;
         worldB = b;
+    }
+
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        if (eventData.button != PointerEventData.InputButton.Right)
+            return;
+
+        if (selectionManager == null)
+            selectionManager = FindFirstObjectByType<WallSelectionManager>();
+
+        if (selectionManager == null)
+            return;
+
+        selectionManager.TryInsertPointAtScreenPosition(eventData.position, providerBehaviour);
     }
 }
