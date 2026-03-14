@@ -3874,7 +3874,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NPCTimeSystem
   autoTick: 1
   secondsPerTick: 0.5
-  timeOfDay: 11.6
+  timeOfDay: 1.01
   hoursPerTick: 0.01
   tickIndex: 0
   settlementDangerActive: 0
@@ -7181,7 +7181,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1131231067425066048, guid: 1046cd2bbd2aff04f8aef5f5dc5aecd6, type: 3}
       propertyPath: m_Loop
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8242433660243627890, guid: 1046cd2bbd2aff04f8aef5f5dc5aecd6, type: 3}
       propertyPath: m_Name
@@ -7983,7 +7983,7 @@ MonoBehaviour:
   autoFindReferences: 1
   starDomeRenderer: {fileID: 2117061421}
   disableRendererInDaylight: 1
-  starsTint: {r: 1, g: 1, b: 1, a: 1}
+  starsTint: {r: 0, g: 0.017888907, b: 0.15471691, a: 1}
   starsMaxEmission: 0.3
   starsVisibilityOverDay:
     serializedVersion: 2
