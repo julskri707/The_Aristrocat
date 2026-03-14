@@ -24,6 +24,15 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
     public float maxZ;
     public float shapeY = 0f;
 
+    [Header("Rectangle Shape Data")]
+    public Vector2 rectangleOriginXZ;
+    public Vector2 rectangleAxisX = Vector2.right;
+    public Vector2 rectangleAxisY = Vector2.up;
+    public float rectangleMinX = -0.5f;
+    public float rectangleMaxX = 0.5f;
+    public float rectangleMinY = -0.5f;
+    public float rectangleMaxY = 0.5f;
+
     [Header("Ellipse")]
     public int ellipseWallResolution = 64;
 
@@ -36,32 +45,32 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
     public int maxFreeHandles = 12;
     public int freeWallResolution = 64;
 
+    [Header("Preserve Drawn Freeform")]
+    public bool preserveInitialFreeDrawnPath = true;
+    [Range(0.02f, 1.0f)] public float rawFreeMinPointSpacing = 0.08f;
+
     [Header("Closed Free Shapes")]
-    [Tooltip("Plus petit = plus de points gardés pour les formes libres fermées")]
     [Range(0.2f, 1.0f)] public float closedFreeHandleSpacingMultiplier = 0.5f;
-
-    [Tooltip("Minimum de points de contrôle pour un gribouillis fermé")]
     [Range(6, 48)] public int closedFreeMinHandles = 10;
-
-    [Tooltip("Maximum de points de contrôle pour un gribouillis fermé")]
     [Range(8, 64)] public int closedFreeMaxHandles = 24;
-
-    [Tooltip("Résolution finale minimum pour un gribouillis fermé")]
     [Range(32, 256)] public int closedFreeWallResolution = 128;
+    [Range(0, 4)] public int closedFreeSmoothIterations = 0;
 
-    [Tooltip("Nombre d'itérations de Chaikin pour les formes libres fermées")]
-    [Range(1, 5)] public int closedFreeSmoothIterations = 3;
+    [Header("Closed Free Shape Safety")]
+    [Tooltip("Distance minimale entre deux points consécutifs pour éviter les micro-segments")]
+    [Range(0.02f, 1.0f)] public float minClosedSegmentLength = 0.18f;
+
+    [Tooltip("Si une boucle fermée brute est invalide, on retombe sur un contour sûr")]
+    public bool useSafeClosedFallback = true;
 
     [Header("Open Free Shapes")]
-    [Tooltip("Si une forme ouverte est presque une ligne droite, on garde ses coins nets")]
     [Range(1.0f, 1.5f)] public float mostlyStraightArcRatioThreshold = 1.06f;
-
     [Range(0f, 30f)] public float mostlyStraightAverageTurnThreshold = 8f;
-
-    [Tooltip("Nombre d'itérations de Chaikin pour les formes libres ouvertes courbes")]
-    [Range(1, 5)] public int openFreeSmoothIterations = 2;
+    [Range(0, 4)] public int openFreeSmoothIterations = 1;
 
     private bool _closedLoop = true;
+    private readonly List<Vector3> _freeRawPath = new List<Vector3>();
+    private bool _freePathWasEdited = false;
 
     void Awake()
     {
@@ -84,6 +93,9 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         if (_closedLoop && src.Count > 1 && Vector3.Distance(src[0], src[src.Count - 1]) < 0.001f)
             src.RemoveAt(src.Count - 1);
 
+        _freeRawPath.Clear();
+        _freePathWasEdited = false;
+
         if (TrySetupEllipse(src))
         {
             shapeKind = ShapeKind.Ellipse;
@@ -99,6 +111,7 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         }
 
         SetupFree(src);
+        CacheInitialFreeRawPath(src);
         shapeKind = ShapeKind.Free;
         ApplyToWall();
     }
@@ -111,10 +124,12 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             {
                 case ShapeKind.Ellipse:
                     return 4;
+
                 case ShapeKind.Rectangle:
                     return 8;
+
                 default:
-                    return freeControlPoints.Count;
+                    return freeControlPoints != null ? freeControlPoints.Count : 0;
             }
         }
     }
@@ -130,8 +145,9 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
                 return GetRectangleControlPoint(index);
 
             default:
-                if (index < 0 || index >= freeControlPoints.Count)
+                if (freeControlPoints == null || index < 0 || index >= freeControlPoints.Count)
                     return Vector3.zero;
+
                 return freeControlPoints[index];
         }
     }
@@ -149,10 +165,11 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
                 break;
 
             default:
-                if (index < 0 || index >= freeControlPoints.Count)
+                if (freeControlPoints == null || index < 0 || index >= freeControlPoints.Count)
                     return;
 
                 freeControlPoints[index] = new Vector3(worldPos.x, shapeY, worldPos.z);
+                _freePathWasEdited = true;
                 break;
         }
 
@@ -182,7 +199,7 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
     bool TrySetupEllipse(List<Vector3> points)
     {
         if (!_closedLoop) return false;
-        if (points.Count < 10) return false;
+        if (points == null || points.Count < 10) return false;
 
         List<Vector2> hull = ComputeConvexHullXZ(points);
         if (hull.Count < 5)
@@ -233,10 +250,21 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
     {
         switch (index)
         {
-            case 0: maxX = Mathf.Max(worldPos.x, minX + 0.1f); break;
-            case 1: maxZ = Mathf.Max(worldPos.z, minZ + 0.1f); break;
-            case 2: minX = Mathf.Min(worldPos.x, maxX - 0.1f); break;
-            case 3: minZ = Mathf.Min(worldPos.z, maxZ - 0.1f); break;
+            case 0:
+                maxX = Mathf.Max(worldPos.x, minX + 0.1f);
+                break;
+
+            case 1:
+                maxZ = Mathf.Max(worldPos.z, minZ + 0.1f);
+                break;
+
+            case 2:
+                minX = Mathf.Min(worldPos.x, maxX - 0.1f);
+                break;
+
+            case 3:
+                minZ = Mathf.Min(worldPos.z, maxZ - 0.1f);
+                break;
         }
     }
 
@@ -265,46 +293,247 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
     bool TrySetupRectangle(List<Vector3> points)
     {
         if (!_closedLoop) return false;
-        if (points.Count < 4) return false;
+        if (points == null || points.Count < 4) return false;
 
-        List<Vector2> hull = ComputeConvexHullXZ(points);
-        if (hull.Count != 4)
+        List<Vector3> work = new List<Vector3>(points);
+        if (work.Count > 1 && Vector3.Distance(work[0], work[work.Count - 1]) < 0.001f)
+            work.RemoveAt(work.Count - 1);
+
+        if (work.Count < 4)
             return false;
 
-        shapeY = points[0].y;
-        ComputeBounds(points);
-
-        float width = maxX - minX;
-        float depth = maxZ - minZ;
-
-        if (width < 0.1f || depth < 0.1f)
+        List<Vector2> hull = ComputeConvexHullXZ(work);
+        if (hull == null || hull.Count < 4 || hull.Count > 10)
             return false;
 
-        float borderTolerance = Mathf.Max(width, depth) * 0.10f;
-        int nearBorder = 0;
+        if (!TryBuildOrientedRectangleFromPath(
+                work,
+                out Vector2 origin,
+                out Vector2 axisX,
+                out Vector2 axisY,
+                out float localMinX,
+                out float localMaxX,
+                out float localMinY,
+                out float localMaxY))
+            return false;
 
-        for (int i = 0; i < points.Count; i++)
+        shapeY = work[0].y;
+        rectangleOriginXZ = origin;
+        rectangleAxisX = axisX;
+        rectangleAxisY = axisY;
+        rectangleMinX = localMinX;
+        rectangleMaxX = localMaxX;
+        rectangleMinY = localMinY;
+        rectangleMaxY = localMaxY;
+
+        ComputeBounds(BuildRectanglePath());
+        return true;
+    }
+
+    bool TryBuildOrientedRectangleFromPath(
+        List<Vector3> work,
+        out Vector2 origin,
+        out Vector2 axisX,
+        out Vector2 axisY,
+        out float localMinX,
+        out float localMaxX,
+        out float localMinY,
+        out float localMaxY)
+    {
+        origin = Vector2.zero;
+        axisX = Vector2.right;
+        axisY = Vector2.up;
+        localMinX = localMaxX = localMinY = localMaxY = 0f;
+
+        if (work == null || work.Count < 4)
+            return false;
+
+        List<Vector2> hull = ComputeConvexHullXZ(work);
+        if (hull == null || hull.Count < 4)
+            return false;
+
+        Vector2 hullCenter = Vector2.zero;
+        for (int i = 0; i < hull.Count; i++)
+            hullCenter += hull[i];
+        hullCenter /= hull.Count;
+
+        float bestScore = -1f;
+        bool found = false;
+
+        Vector2 bestOrigin = Vector2.zero;
+        Vector2 bestAxisX = Vector2.right;
+        Vector2 bestAxisY = Vector2.up;
+        float bestMinX = 0f;
+        float bestMaxX = 0f;
+        float bestMinY = 0f;
+        float bestMaxY = 0f;
+
+        for (int i = 0; i < hull.Count; i++)
         {
-            Vector3 p = points[i];
-            bool onLeft = Mathf.Abs(p.x - minX) <= borderTolerance;
-            bool onRight = Mathf.Abs(p.x - maxX) <= borderTolerance;
-            bool onBottom = Mathf.Abs(p.z - minZ) <= borderTolerance;
-            bool onTop = Mathf.Abs(p.z - maxZ) <= borderTolerance;
+            Vector2 a = hull[i];
+            Vector2 b = hull[(i + 1) % hull.Count];
+            Vector2 edge = b - a;
 
-            if (onLeft || onRight || onBottom || onTop)
-                nearBorder++;
+            if (edge.sqrMagnitude < 0.0001f)
+                continue;
+
+            Vector2 candidateAxisX = edge.normalized;
+            Vector2 candidateAxisY = new Vector2(-candidateAxisX.y, candidateAxisX.x);
+
+            List<Vector2> localPts = new List<Vector2>(work.Count);
+
+            float minPX = float.PositiveInfinity;
+            float maxPX = float.NegativeInfinity;
+            float minPY = float.PositiveInfinity;
+            float maxPY = float.NegativeInfinity;
+
+            for (int p = 0; p < work.Count; p++)
+            {
+                Vector2 wp = new Vector2(work[p].x, work[p].z);
+                Vector2 v = wp - hullCenter;
+
+                float px = Vector2.Dot(v, candidateAxisX);
+                float py = Vector2.Dot(v, candidateAxisY);
+
+                localPts.Add(new Vector2(px, py));
+
+                if (px < minPX) minPX = px;
+                if (px > maxPX) maxPX = px;
+                if (py < minPY) minPY = py;
+                if (py > maxPY) maxPY = py;
+            }
+
+            float width = maxPX - minPX;
+            float height = maxPY - minPY;
+
+            if (width < 0.1f || height < 0.1f)
+                continue;
+
+            float edgeTol = Mathf.Max(width, height) * 0.10f;
+            edgeTol = Mathf.Max(edgeTol, 0.08f);
+
+            float cornerTol = edgeTol * 1.75f;
+
+            int nearEdgeCount = 0;
+            bool hitLeft = false;
+            bool hitRight = false;
+            bool hitBottom = false;
+            bool hitTop = false;
+
+            for (int p = 0; p < localPts.Count; p++)
+            {
+                Vector2 lp = localPts[p];
+
+                float dLeft = Mathf.Abs(lp.x - minPX);
+                float dRight = Mathf.Abs(lp.x - maxPX);
+                float dBottom = Mathf.Abs(lp.y - minPY);
+                float dTop = Mathf.Abs(lp.y - maxPY);
+
+                float minEdge = Mathf.Min(Mathf.Min(dLeft, dRight), Mathf.Min(dBottom, dTop));
+                if (minEdge <= edgeTol)
+                    nearEdgeCount++;
+
+                if (dLeft <= edgeTol) hitLeft = true;
+                if (dRight <= edgeTol) hitRight = true;
+                if (dBottom <= edgeTol) hitBottom = true;
+                if (dTop <= edgeTol) hitTop = true;
+            }
+
+            float edgeRatio = nearEdgeCount / (float)Mathf.Max(1, localPts.Count);
+
+            int edgesHit = 0;
+            if (hitLeft) edgesHit++;
+            if (hitRight) edgesHit++;
+            if (hitBottom) edgesHit++;
+            if (hitTop) edgesHit++;
+
+            float edgeCoverage = edgesHit / 4f;
+
+            int cornersHit = 0;
+            if (HasPointNearLocalCorner(localPts, minPX, maxPY, cornerTol)) cornersHit++;
+            if (HasPointNearLocalCorner(localPts, maxPX, maxPY, cornerTol)) cornersHit++;
+            if (HasPointNearLocalCorner(localPts, maxPX, minPY, cornerTol)) cornersHit++;
+            if (HasPointNearLocalCorner(localPts, minPX, minPY, cornerTol)) cornersHit++;
+
+            float cornerCoverage = cornersHit / 4f;
+
+            float boxArea = width * height;
+            float polyArea = ComputeAbsoluteSignedAreaXZ(work);
+            float fillRatio = 0f;
+            if (boxArea > 0.0001f)
+                fillRatio = Mathf.Clamp01(polyArea / boxArea);
+
+            float score =
+                edgeRatio * 0.45f +
+                edgeCoverage * 0.20f +
+                cornerCoverage * 0.20f +
+                fillRatio * 0.15f;
+
+            if (edgesHit < 4)
+                score -= 0.20f;
+
+            if (cornerCoverage < 0.50f)
+                score -= 0.15f;
+
+            if (edgeRatio < 0.70f)
+                score -= 0.15f;
+
+            if (score > bestScore)
+            {
+                float midX = (minPX + maxPX) * 0.5f;
+                float midY = (minPY + maxPY) * 0.5f;
+
+                bestScore = score;
+                bestAxisX = candidateAxisX;
+                bestAxisY = candidateAxisY;
+                bestOrigin = hullCenter + candidateAxisX * midX + candidateAxisY * midY;
+
+                bestMinX = minPX - midX;
+                bestMaxX = maxPX - midX;
+                bestMinY = minPY - midY;
+                bestMaxY = maxPY - midY;
+
+                found = true;
+            }
         }
 
-        float ratio = nearBorder / (float)Mathf.Max(1, points.Count);
-        return ratio >= 0.85f;
+        if (!found)
+            return false;
+
+        if (bestScore < 0.68f)
+            return false;
+
+        origin = bestOrigin;
+        axisX = bestAxisX;
+        axisY = bestAxisY;
+        localMinX = bestMinX;
+        localMaxX = bestMaxX;
+        localMinY = bestMinY;
+        localMaxY = bestMaxY;
+
+        return true;
+    }
+
+    bool HasPointNearLocalCorner(List<Vector2> localPts, float x, float y, float tolerance)
+    {
+        float sqrTol = tolerance * tolerance;
+        Vector2 corner = new Vector2(x, y);
+
+        for (int i = 0; i < localPts.Count; i++)
+        {
+            if ((localPts[i] - corner).sqrMagnitude <= sqrTol)
+                return true;
+        }
+
+        return false;
     }
 
     Vector3 GetRectangleControlPoint(int index)
     {
-        Vector3 topLeft = new Vector3(minX, shapeY, maxZ);
-        Vector3 topRight = new Vector3(maxX, shapeY, maxZ);
-        Vector3 bottomRight = new Vector3(maxX, shapeY, minZ);
-        Vector3 bottomLeft = new Vector3(minX, shapeY, minZ);
+        Vector3 topLeft = RectangleLocalToWorld(rectangleMinX, rectangleMaxY);
+        Vector3 topRight = RectangleLocalToWorld(rectangleMaxX, rectangleMaxY);
+        Vector3 bottomRight = RectangleLocalToWorld(rectangleMaxX, rectangleMinY);
+        Vector3 bottomLeft = RectangleLocalToWorld(rectangleMinX, rectangleMinY);
 
         switch (index)
         {
@@ -316,58 +545,62 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             case 5: return (bottomRight + bottomLeft) * 0.5f;
             case 6: return bottomLeft;
             case 7: return (bottomLeft + topLeft) * 0.5f;
-            default: return GetBoundsCenter();
+            default: return GetRectangleCenterWorld();
         }
     }
 
     void SetRectangleControlPoint(int index, Vector3 worldPos)
     {
+        Vector2 local = RectangleWorldToLocal(worldPos);
+
         switch (index)
         {
             case 0:
-                minX = Mathf.Min(worldPos.x, maxX - 0.1f);
-                maxZ = Mathf.Max(worldPos.z, minZ + 0.1f);
+                rectangleMinX = Mathf.Min(local.x, rectangleMaxX - 0.1f);
+                rectangleMaxY = Mathf.Max(local.y, rectangleMinY + 0.1f);
                 break;
 
             case 2:
-                maxX = Mathf.Max(worldPos.x, minX + 0.1f);
-                maxZ = Mathf.Max(worldPos.z, minZ + 0.1f);
+                rectangleMaxX = Mathf.Max(local.x, rectangleMinX + 0.1f);
+                rectangleMaxY = Mathf.Max(local.y, rectangleMinY + 0.1f);
                 break;
 
             case 4:
-                maxX = Mathf.Max(worldPos.x, minX + 0.1f);
-                minZ = Mathf.Min(worldPos.z, maxZ - 0.1f);
+                rectangleMaxX = Mathf.Max(local.x, rectangleMinX + 0.1f);
+                rectangleMinY = Mathf.Min(local.y, rectangleMaxY - 0.1f);
                 break;
 
             case 6:
-                minX = Mathf.Min(worldPos.x, maxX - 0.1f);
-                minZ = Mathf.Min(worldPos.z, maxZ - 0.1f);
+                rectangleMinX = Mathf.Min(local.x, rectangleMaxX - 0.1f);
+                rectangleMinY = Mathf.Min(local.y, rectangleMaxY - 0.1f);
                 break;
 
             case 1:
-                maxZ = Mathf.Max(worldPos.z, minZ + 0.1f);
+                rectangleMaxY = Mathf.Max(local.y, rectangleMinY + 0.1f);
                 break;
 
             case 3:
-                maxX = Mathf.Max(worldPos.x, minX + 0.1f);
+                rectangleMaxX = Mathf.Max(local.x, rectangleMinX + 0.1f);
                 break;
 
             case 5:
-                minZ = Mathf.Min(worldPos.z, maxZ - 0.1f);
+                rectangleMinY = Mathf.Min(local.y, rectangleMaxY - 0.1f);
                 break;
 
             case 7:
-                minX = Mathf.Min(worldPos.x, maxX - 0.1f);
+                rectangleMinX = Mathf.Min(local.x, rectangleMaxX - 0.1f);
                 break;
         }
+
+        ComputeBounds(BuildRectanglePath());
     }
 
     List<Vector3> BuildRectanglePath()
     {
-        Vector3 topLeft = new Vector3(minX, shapeY, maxZ);
-        Vector3 bottomLeft = new Vector3(minX, shapeY, minZ);
-        Vector3 bottomRight = new Vector3(maxX, shapeY, minZ);
-        Vector3 topRight = new Vector3(maxX, shapeY, maxZ);
+        Vector3 topLeft = RectangleLocalToWorld(rectangleMinX, rectangleMaxY);
+        Vector3 bottomLeft = RectangleLocalToWorld(rectangleMinX, rectangleMinY);
+        Vector3 bottomRight = RectangleLocalToWorld(rectangleMaxX, rectangleMinY);
+        Vector3 topRight = RectangleLocalToWorld(rectangleMaxX, rectangleMaxY);
 
         List<Vector3> pts = new List<Vector3>
         {
@@ -380,6 +613,25 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
 
         EnsureCounterClockwiseXZ(pts);
         return pts;
+    }
+
+    Vector3 RectangleLocalToWorld(float x, float y)
+    {
+        Vector2 p = rectangleOriginXZ + rectangleAxisX * x + rectangleAxisY * y;
+        return new Vector3(p.x, shapeY, p.y);
+    }
+
+    Vector2 RectangleWorldToLocal(Vector3 worldPos)
+    {
+        Vector2 v = new Vector2(worldPos.x, worldPos.z) - rectangleOriginXZ;
+        return new Vector2(Vector2.Dot(v, rectangleAxisX), Vector2.Dot(v, rectangleAxisY));
+    }
+
+    Vector3 GetRectangleCenterWorld()
+    {
+        float cx = (rectangleMinX + rectangleMaxX) * 0.5f;
+        float cy = (rectangleMinY + rectangleMaxY) * 0.5f;
+        return RectangleLocalToWorld(cx, cy);
     }
 
     void SetupFree(List<Vector3> points)
@@ -429,31 +681,157 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             shapeY = freeControlPoints[0].y;
     }
 
+    void CacheInitialFreeRawPath(List<Vector3> points)
+    {
+        _freeRawPath.Clear();
+        _freePathWasEdited = false;
+
+        if (points == null || points.Count < 2)
+            return;
+
+        for (int i = 0; i < points.Count; i++)
+            _freeRawPath.Add(new Vector3(points[i].x, shapeY, points[i].z));
+    }
+
     List<Vector3> BuildFreePreviewPath()
     {
         if (freeControlPoints == null || freeControlPoints.Count < 2)
             return null;
 
+        if (preserveInitialFreeDrawnPath && !_freePathWasEdited)
+        {
+            List<Vector3> rawPreserved = BuildPreservedRawFreePath();
+            if (rawPreserved != null && rawPreserved.Count >= 2)
+                return rawPreserved;
+        }
+
+        return BuildHandleDrivenFreePath();
+    }
+
+    List<Vector3> BuildPreservedRawFreePath()
+    {
+        if (_freeRawPath == null || _freeRawPath.Count < 2)
+            return null;
+
         if (_closedLoop)
         {
-            List<Vector3> smoothClosed = Chaikin(freeControlPoints, closedFreeSmoothIterations, true);
-            int targetCount = Mathf.Max(closedFreeWallResolution, freeControlPoints.Count * 10);
-            List<Vector3> denseClosed = ResampleClosedByCount(smoothClosed, targetCount);
+            List<Vector3> raw = new List<Vector3>(_freeRawPath);
+            if (raw.Count > 1 && Vector3.Distance(raw[0], raw[raw.Count - 1]) < 0.001f)
+                raw.RemoveAt(raw.Count - 1);
 
-            if (denseClosed.Count > 0 && Vector3.Distance(denseClosed[0], denseClosed[denseClosed.Count - 1]) > 0.001f)
-                denseClosed.Add(denseClosed[0]);
+            raw = RemoveTooShortSegmentsClosed(raw, Mathf.Min(minClosedSegmentLength, Mathf.Max(0.02f, rawFreeMinPointSpacing)));
 
-            return denseClosed;
+            List<Vector3> validated = ValidateClosedCandidate(raw);
+            if (validated != null)
+                return validated;
+
+            if (useSafeClosedFallback)
+                return BuildHandleDrivenFreePath();
+
+            return null;
         }
+
+        return SimplifyOpenByMinSpacing(_freeRawPath, rawFreeMinPointSpacing);
+    }
+
+    List<Vector3> BuildHandleDrivenFreePath()
+    {
+        if (_closedLoop)
+            return BuildHandleDrivenClosedFreePath();
 
         if (IsMostlyStraightOpen(freeControlPoints))
-        {
             return new List<Vector3>(freeControlPoints);
-        }
 
         List<Vector3> smoothOpen = Chaikin(freeControlPoints, openFreeSmoothIterations, false);
-        int openTargetCount = Mathf.Max(freeWallResolution, freeControlPoints.Count * 8);
+        int openTargetCount = Mathf.Max(freeWallResolution, smoothOpen.Count * 6);
         return ResampleOpenByCount(smoothOpen, openTargetCount);
+    }
+
+    List<Vector3> BuildHandleDrivenClosedFreePath()
+    {
+        List<Vector3> work = new List<Vector3>(freeControlPoints);
+        work = RemoveTooShortSegmentsClosed(work, minClosedSegmentLength);
+
+        if (work.Count < 3)
+            return BuildSafeClosedFallbackFromControls();
+
+        if (closedFreeSmoothIterations > 0)
+            work = Chaikin(work, closedFreeSmoothIterations, true);
+
+        work = RemoveTooShortSegmentsClosed(work, minClosedSegmentLength);
+        if (work.Count < 3)
+            return BuildSafeClosedFallbackFromControls();
+
+        int targetCount = Mathf.Max(work.Count, Mathf.Max(closedFreeWallResolution, work.Count * 3));
+        List<Vector3> denseClosed = ResampleClosedByCount(work, targetCount);
+        denseClosed = RemoveTooShortSegmentsClosed(denseClosed, minClosedSegmentLength);
+
+        List<Vector3> validated = ValidateClosedCandidate(denseClosed);
+        if (validated != null)
+            return validated;
+
+        if (useSafeClosedFallback)
+            return BuildSafeClosedFallbackFromControls();
+
+        return null;
+    }
+
+    List<Vector3> BuildSafeClosedFallbackFromControls()
+    {
+        if (freeControlPoints == null || freeControlPoints.Count < 3)
+            return null;
+
+        List<Vector3> raw = new List<Vector3>(freeControlPoints);
+        raw = RemoveTooShortSegmentsClosed(raw, minClosedSegmentLength);
+
+        List<Vector3> validated = ValidateClosedCandidate(raw);
+        if (validated != null)
+            return validated;
+
+        return BuildConvexHullClosedFallbackFromControls();
+    }
+
+    List<Vector3> BuildConvexHullClosedFallbackFromControls()
+    {
+        if (freeControlPoints == null || freeControlPoints.Count < 3)
+            return null;
+
+        List<Vector2> hull = ComputeConvexHullXZ(freeControlPoints);
+        if (hull == null || hull.Count < 3)
+            return null;
+
+        List<Vector3> pts = new List<Vector3>(hull.Count + 1);
+        for (int i = 0; i < hull.Count; i++)
+            pts.Add(new Vector3(hull[i].x, shapeY, hull[i].y));
+
+        pts.Add(pts[0]);
+        EnsureCounterClockwiseXZ(pts);
+        return pts;
+    }
+
+    List<Vector3> ValidateClosedCandidate(List<Vector3> candidate)
+    {
+        if (candidate == null || candidate.Count < 3)
+            return null;
+
+        List<Vector3> work = new List<Vector3>(candidate);
+
+        if (work.Count > 1 && Vector3.Distance(work[0], work[work.Count - 1]) < 0.0001f)
+            work.RemoveAt(work.Count - 1);
+
+        work = RemoveTooShortSegmentsClosed(work, minClosedSegmentLength);
+        if (work.Count < 3)
+            return null;
+
+        if (ComputeAbsoluteSignedAreaXZ(work) < 0.0025f)
+            return null;
+
+        if (HasSelfIntersectionXZ(work))
+            return null;
+
+        work.Add(work[0]);
+        EnsureCounterClockwiseXZ(work);
+        return work;
     }
 
     static List<Vector3> Chaikin(List<Vector3> pts, int iterations, bool closed)
@@ -590,6 +968,144 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         }
 
         return res;
+    }
+
+    static List<Vector3> RemoveTooShortSegmentsClosed(List<Vector3> pts, float minLen)
+    {
+        List<Vector3> work = new List<Vector3>();
+        if (pts == null || pts.Count == 0)
+            return work;
+
+        work.AddRange(pts);
+
+        if (work.Count > 1 && Vector3.Distance(work[0], work[work.Count - 1]) < 0.0001f)
+            work.RemoveAt(work.Count - 1);
+
+        if (work.Count < 3)
+            return work;
+
+        bool changed = true;
+        int guard = 0;
+
+        while (changed && work.Count >= 3 && guard < 64)
+        {
+            changed = false;
+            guard++;
+
+            for (int i = work.Count - 1; i >= 0; i--)
+            {
+                int next = (i + 1) % work.Count;
+                if (Vector3.Distance(work[i], work[next]) < minLen)
+                {
+                    work.RemoveAt(next);
+                    changed = true;
+                    if (work.Count < 3)
+                        break;
+                }
+            }
+        }
+
+        return work;
+    }
+
+    static List<Vector3> SimplifyOpenByMinSpacing(List<Vector3> pts, float minSpacing)
+    {
+        List<Vector3> res = new List<Vector3>();
+        if (pts == null || pts.Count == 0)
+            return res;
+
+        minSpacing = Mathf.Max(0.001f, minSpacing);
+
+        res.Add(pts[0]);
+        Vector3 last = pts[0];
+
+        for (int i = 1; i < pts.Count - 1; i++)
+        {
+            if (Vector3.Distance(last, pts[i]) >= minSpacing)
+            {
+                res.Add(pts[i]);
+                last = pts[i];
+            }
+        }
+
+        if (pts.Count > 1)
+        {
+            Vector3 end = pts[pts.Count - 1];
+            if (res.Count == 0 || Vector3.Distance(res[res.Count - 1], end) > 0.0001f)
+                res.Add(end);
+        }
+
+        return res;
+    }
+
+    static float ComputeAbsoluteSignedAreaXZ(List<Vector3> pts)
+    {
+        if (pts == null || pts.Count < 3)
+            return 0f;
+
+        int count = pts.Count;
+        if (Vector3.Distance(pts[0], pts[count - 1]) < 0.0001f)
+            count--;
+
+        if (count < 3)
+            return 0f;
+
+        float area = 0f;
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 a = pts[i];
+            Vector3 b = pts[(i + 1) % count];
+            area += (a.x * b.z - b.x * a.z);
+        }
+
+        return Mathf.Abs(area) * 0.5f;
+    }
+
+    static bool HasSelfIntersectionXZ(List<Vector3> pts)
+    {
+        if (pts == null || pts.Count < 4)
+            return false;
+
+        List<Vector3> work = new List<Vector3>(pts);
+        if (work.Count > 1 && Vector3.Distance(work[0], work[work.Count - 1]) < 0.0001f)
+            work.RemoveAt(work.Count - 1);
+
+        int n = work.Count;
+        if (n < 4)
+            return false;
+
+        for (int i = 0; i < n; i++)
+        {
+            int nextI = (i + 1) % n;
+
+            for (int j = i + 1; j < n; j++)
+            {
+                int nextJ = (j + 1) % n;
+
+                if (i == j || nextI == j || nextJ == i)
+                    continue;
+
+                if (SegmentsIntersectXZ(work[i], work[nextI], work[j], work[nextJ]))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    static bool SegmentsIntersectXZ(Vector3 a1, Vector3 a2, Vector3 b1, Vector3 b2)
+    {
+        float o1 = OrientationXZ(a1, a2, b1);
+        float o2 = OrientationXZ(a1, a2, b2);
+        float o3 = OrientationXZ(b1, b2, a1);
+        float o4 = OrientationXZ(b1, b2, a2);
+
+        return (o1 * o2 < 0f) && (o3 * o4 < 0f);
+    }
+
+    static float OrientationXZ(Vector3 a, Vector3 b, Vector3 c)
+    {
+        return (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
     }
 
     bool IsMostlyStraightOpen(List<Vector3> points)

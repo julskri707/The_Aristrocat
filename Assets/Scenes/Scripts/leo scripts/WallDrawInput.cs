@@ -5,6 +5,16 @@ using UnityEngine;
 [RequireComponent(typeof(LineRenderer))]
 public class WallDrawInput : MonoBehaviour
 {
+    public enum DetectedShapeKind
+    {
+        Free,
+        StraightLine,
+        Rectangle,
+        Square,
+        Circle,
+        Triangle
+    }
+
     [Header("References")]
     public Camera cam;
     public Collider groundCollider;
@@ -20,57 +30,58 @@ public class WallDrawInput : MonoBehaviour
     [Header("Auto Shapes")]
     public bool enableAutoShapes = true;
     public bool requireClosedLoop = true;
-
     [Range(0.01f, 0.5f)] public float tolerance = 0.12f;
-
     public bool autoStraightLine = true;
     public bool autoCircle = true;
     public bool autoRectangle = true;
     public bool autoTriangle = true;
 
     [Header("Straight Line")]
-    [Tooltip("Plus petit = ligne plus stricte")]
     [Range(0.005f, 0.2f)] public float straightLineToleranceMultiplier = 0.45f;
 
     [Header("Circle")]
     [Range(16, 128)] public int circleResolution = 48;
-    [Range(0.01f, 0.5f)] public float circleStrictnessMultiplier = 0.35f;
-    [Tooltip("1.15 = environ 15% plus facile à reconnaître")]
-    [Range(1.0f, 1.5f)] public float circleDetectionBoost = 1.15f;
+    [Range(0.01f, 0.5f)] public float circleStrictnessMultiplier = 0.18f;
+    [Range(1.0f, 1.5f)] public float circleDetectionBoost = 1.10f;
 
     [Header("Rectangle")]
     [Range(2, 30)] public int rectPointsPerEdge = 10;
     [Range(0.0f, 0.4f)] public float squareRatioTolerance = 0.12f;
+    [Range(0.20f, 0.80f)] public float minRectangleProbability = 0.40f;
+    [Range(0.20f, 0.98f)] public float rectangleCornerBoost = 0.70f;
+    [Range(0.0f, 1.0f)] public float rectangleRoundPenalty = 0.45f;
 
     [Header("Triangle")]
-    [Tooltip("Plus grand = triangle plus tolérant")]
-    [Range(0.5f, 8.0f)] public float triangleToleranceMultiplier = 2.6f;
-
-    [Tooltip("Conservé pour compatibilité UI")]
+    [Range(0.5f, 8.0f)] public float triangleToleranceMultiplier = 4.4f;
     [Range(4, 32)] public int roundedTriangleMaxCurvePoints = 12;
-
-    [Tooltip("Angle maximal (en degrés) du coin le plus pointu")]
-    [Range(40f, 170f)] public float roundedTriangleMaxApexAngle = 120f;
+    [Range(40f, 170f)] public float roundedTriangleMaxApexAngle = 142f;
+    [Range(0.10f, 0.80f)] public float minTriangleProbability = 0.18f;
 
     [Header("Shape Decision")]
-    [Tooltip("Score absolu minimum pour accepter une forme fermée. 0.25 = 25%")]
-    [Range(0.0f, 1.0f)] public float minClosedShapeConfidence = 0.25f;
-
-    [Tooltip("Écart minimum entre la meilleure forme et la deuxième")]
-    [Range(0.0f, 0.5f)] public float minClosedShapeLead = 0.04f;
+    [Range(0.0f, 1.0f)] public float minClosedShapeConfidence = 0.22f;
+    [Range(0.0f, 0.5f)] public float minClosedShapeLead = 0.05f;
+    [Range(0.10f, 0.80f)] public float minCircleProbability = 0.30f;
 
     [Header("Closed Shape Rejection")]
-    [Tooltip("Si le tracé est trop long par rapport à son contour global, on garde la forme libre")]
-    [Range(1.0f, 2.5f)] public float maxPathToHullPerimeterRatio = 1.35f;
-
-    [Tooltip("Si le tracé s'auto-croise, on garde la forme libre")]
+    [Range(1.0f, 2.5f)] public float maxPathToHullPerimeterRatio = 1.55f;
     public bool rejectSelfIntersectingClosedShapes = true;
 
-    [Header("Debug")]
+    [Header("Probability Debug")]
+    public bool alwaysShowProbabilities = true;
     public bool logDetectedShape = true;
     public bool logShapeScores = true;
 
+    [Header("Live Scores (runtime)")]
+    public string lastDetectedClosedShape = "None";
+    [Range(0f, 100f)] public float lastRectangleProbability = 0f;
+    [Range(0f, 100f)] public float lastTriangleProbability = 0f;
+    [Range(0f, 100f)] public float lastCircleProbability = 0f;
+
     public event Action<List<Vector3>> OnShapeCommitted;
+    public event Action<List<Vector3>, DetectedShapeKind, string> OnShapeCommittedDetailed;
+
+    public DetectedShapeKind LastCommittedShape { get; private set; } = DetectedShapeKind.Free;
+    public string LastCommittedShapeName { get; private set; } = "None";
 
     public IReadOnlyList<Vector3> CurrentPoints => _points;
 
@@ -101,6 +112,14 @@ public class WallDrawInput : MonoBehaviour
         public float height => maxY - minY;
     }
 
+    struct CornerSample
+    {
+        public int index;
+        public float turn;
+        public float sharpness;
+        public Vector2 point;
+    }
+
     void Reset()
     {
         cam = Camera.main;
@@ -114,12 +133,26 @@ public class WallDrawInput : MonoBehaviour
 
     void OnValidate()
     {
-        triangleToleranceMultiplier = Mathf.Clamp(triangleToleranceMultiplier, 0.5f, 8.0f);
-        roundedTriangleMaxApexAngle = Mathf.Clamp(roundedTriangleMaxApexAngle, 40f, 170f);
+        pointSpacing = Mathf.Max(0.01f, pointSpacing);
+        snapCloseDistance = Mathf.Max(0.01f, snapCloseDistance);
+        lineWidth = Mathf.Max(0.001f, lineWidth);
+        tolerance = Mathf.Clamp(tolerance, 0.01f, 0.5f);
+        straightLineToleranceMultiplier = Mathf.Clamp(straightLineToleranceMultiplier, 0.005f, 0.2f);
+        circleResolution = Mathf.Clamp(circleResolution, 16, 128);
         circleStrictnessMultiplier = Mathf.Clamp(circleStrictnessMultiplier, 0.01f, 0.5f);
         circleDetectionBoost = Mathf.Clamp(circleDetectionBoost, 1.0f, 1.5f);
+        rectPointsPerEdge = Mathf.Clamp(rectPointsPerEdge, 2, 30);
+        squareRatioTolerance = Mathf.Clamp(squareRatioTolerance, 0f, 0.4f);
+        minRectangleProbability = Mathf.Clamp(minRectangleProbability, 0.20f, 0.80f);
+        rectangleCornerBoost = Mathf.Clamp(rectangleCornerBoost, 0.20f, 0.98f);
+        rectangleRoundPenalty = Mathf.Clamp01(rectangleRoundPenalty);
+        triangleToleranceMultiplier = Mathf.Clamp(triangleToleranceMultiplier, 0.5f, 8.0f);
+        roundedTriangleMaxCurvePoints = Mathf.Clamp(roundedTriangleMaxCurvePoints, 4, 32);
+        roundedTriangleMaxApexAngle = Mathf.Clamp(roundedTriangleMaxApexAngle, 40f, 170f);
+        minTriangleProbability = Mathf.Clamp(minTriangleProbability, 0.10f, 0.80f);
         minClosedShapeConfidence = Mathf.Clamp01(minClosedShapeConfidence);
         minClosedShapeLead = Mathf.Clamp(minClosedShapeLead, 0f, 0.5f);
+        minCircleProbability = Mathf.Clamp(minCircleProbability, 0.10f, 0.80f);
         maxPathToHullPerimeterRatio = Mathf.Clamp(maxPathToHullPerimeterRatio, 1f, 2.5f);
 
         if (_lr == null)
@@ -182,6 +215,9 @@ public class WallDrawInput : MonoBehaviour
     void BeginDraw()
     {
         _points.Clear();
+        ResetLiveScores();
+        LastCommittedShape = DetectedShapeKind.Free;
+        LastCommittedShapeName = "None";
 
         if (_lr != null)
             _lr.positionCount = 0;
@@ -221,6 +257,8 @@ public class WallDrawInput : MonoBehaviour
         if (_points.Count < 2)
             return;
 
+        string committedShapeName = "Free";
+
         bool closed = false;
 
         if (_points.Count >= 3)
@@ -245,15 +283,26 @@ public class WallDrawInput : MonoBehaviour
                     _points.Clear();
                     _points.AddRange(fitted);
                     RefreshLine();
+                    committedShapeName = shapeName;
 
                     if (logDetectedShape)
                         Debug.Log($"AutoShape ✅ : {shapeName}");
+                }
+                else
+                {
+                    committedShapeName = closed ? "Free" : "Free";
                 }
             }
         }
 
         RefreshLine();
-        OnShapeCommitted?.Invoke(new List<Vector3>(_points));
+
+        LastCommittedShape = ShapeNameToKind(committedShapeName);
+        LastCommittedShapeName = committedShapeName;
+
+        List<Vector3> committedPoints = new List<Vector3>(_points);
+        OnShapeCommittedDetailed?.Invoke(committedPoints, LastCommittedShape, LastCommittedShapeName);
+        OnShapeCommitted?.Invoke(committedPoints);
     }
 
     bool TryGetMouseWorldPoint(out Vector3 worldPoint)
@@ -297,6 +346,41 @@ public class WallDrawInput : MonoBehaviour
             _lr.SetPosition(i, _points[i]);
     }
 
+    void ResetLiveScores()
+    {
+        lastDetectedClosedShape = "None";
+        lastRectangleProbability = 0f;
+        lastTriangleProbability = 0f;
+        lastCircleProbability = 0f;
+    }
+
+    void SetLiveScores(float rect, float tri, float circ, string detected)
+    {
+        lastRectangleProbability = Mathf.Clamp01(rect) * 100f;
+        lastTriangleProbability = Mathf.Clamp01(tri) * 100f;
+        lastCircleProbability = Mathf.Clamp01(circ) * 100f;
+        lastDetectedClosedShape = string.IsNullOrEmpty(detected) ? "None" : detected;
+    }
+
+    DetectedShapeKind ShapeNameToKind(string shapeName)
+    {
+        switch (shapeName)
+        {
+            case "Straight Line":
+                return DetectedShapeKind.StraightLine;
+            case "Rectangle":
+                return DetectedShapeKind.Rectangle;
+            case "Square":
+                return DetectedShapeKind.Square;
+            case "Circle":
+                return DetectedShapeKind.Circle;
+            case "Triangle":
+                return DetectedShapeKind.Triangle;
+            default:
+                return DetectedShapeKind.Free;
+        }
+    }
+
     bool TryAutoFitShape(List<Vector3> rawPoints, bool closed, out List<Vector3> fittedPoints, out string shapeName)
     {
         fittedPoints = null;
@@ -308,13 +392,18 @@ public class WallDrawInput : MonoBehaviour
         float y = rawPoints[0].y;
 
         List<Vector2> pts2 = ToXZ(rawPoints);
-        pts2 = SimplifyBySpacing(pts2, pointSpacing * 0.9f);
+        pts2 = SimplifyBySpacing(pts2, pointSpacing * 0.85f);
 
         if (pts2.Count < 2)
+        {
+            ResetLiveScores();
             return false;
+        }
 
         if (!closed)
         {
+            ResetLiveScores();
+
             if (autoStraightLine &&
                 TryFitStraightLine(
                     pts2,
@@ -334,34 +423,42 @@ public class WallDrawInput : MonoBehaviour
             pts2.Add(pts2[0]);
 
         if (pts2.Count < 6)
-            return false;
-
-        if (ShouldRejectClosedShapeAsFreeform(pts2))
         {
-            if (logShapeScores)
-                Debug.Log("Shape scores → Rectangle: 0% | Triangle: 0% | Circle: 0% (rejeté: forme libre)");
+            SetLiveScores(0f, 0f, 0f, "Free");
             return false;
         }
+
+        List<Vector2> rawClosed = new List<Vector2>(pts2);
+        List<Vector2> rawOpen = GetOpenLoop(rawClosed);
+
+        if (rejectSelfIntersectingClosedShapes && HasSelfIntersection(rawClosed))
+        {
+            SetLiveScores(0f, 0f, 0f, "Free");
+            if (logShapeScores)
+                Debug.Log("Shape scores → Rectangle: 0% | Triangle: 0% | Circle: 0% (auto-intersection)");
+            return false;
+        }
+
+        List<Vector2> sample = ResampleClosedEvenly(rawClosed, 48);
+        List<CornerSample> corners = DetectCorners(sample);
 
         ShapeCandidate rectangle = default;
         ShapeCandidate triangle = default;
         ShapeCandidate circle = default;
 
         if (autoRectangle)
-            rectangle = BuildRectangleCandidate(pts2, y);
+            rectangle = BuildRectangleCandidate(rawClosed, sample, corners, y);
 
         if (autoTriangle)
-            triangle = BuildTriangleCandidate(pts2, y);
+            triangle = BuildTriangleCandidate(rawClosed, sample, corners, y);
 
         if (autoCircle)
-            circle = BuildCircleCandidate(pts2, y);
+            circle = BuildCircleCandidate(rawClosed, sample, corners, y);
 
-        float rectPct = rectangle.score * 100f;
-        float triPct = triangle.score * 100f;
-        float circPct = circle.score * 100f;
+        SetLiveScores(rectangle.score, triangle.score, circle.score, "Free");
 
         if (logShapeScores)
-            Debug.Log($"Shape scores → Rectangle: {rectPct:0.#}% | Triangle: {triPct:0.#}% | Circle: {circPct:0.#}%");
+            Debug.Log($"Shape scores → Rectangle: {rectangle.score * 100f:0.#}% | Triangle: {triangle.score * 100f:0.#}% | Circle: {circle.score * 100f:0.#}%");
 
         ShapeCandidate best = rectangle;
         ShapeCandidate second = triangle;
@@ -386,59 +483,50 @@ public class WallDrawInput : MonoBehaviour
             second = circle;
         }
 
-        if (best.points == null)
+        if (best.points == null || best.score <= 0f)
+        {
+            lastDetectedClosedShape = "Free";
             return false;
+        }
 
-        if (best.score < minClosedShapeConfidence)
-            return false;
+        float perShapeMin = GetPerShapeMinimum(best.name);
+        float globalMin = Mathf.Max(minClosedShapeConfidence, perShapeMin);
+        bool accepted = best.score >= globalMin && (best.score - second.score) >= minClosedShapeLead;
 
-        if ((best.score - second.score) < minClosedShapeLead)
+        if (!accepted)
+        {
+            lastDetectedClosedShape = "Free";
             return false;
+        }
 
         fittedPoints = best.points;
         shapeName = best.name;
+        lastDetectedClosedShape = best.name;
         return true;
     }
 
-    bool ShouldRejectClosedShapeAsFreeform(List<Vector2> ptsClosed)
+    float GetPerShapeMinimum(string shapeName)
     {
-        if (ptsClosed == null || ptsClosed.Count < 6)
-            return true;
-
-        int n = ptsClosed.Count - 1;
-        if (n < 5)
-            return true;
-
-        List<Vector2> raw = new List<Vector2>(n);
-        for (int i = 0; i < n; i++)
-            raw.Add(ptsClosed[i]);
-
-        if (rejectSelfIntersectingClosedShapes && HasSelfIntersection(ptsClosed))
-            return true;
-
-        List<Vector2> hull = ComputeConvexHull(new List<Vector2>(raw));
-        if (hull.Count < 3)
-            return true;
-
-        float pathPerimeter = ComputePolylineLength(raw, true);
-        float hullPerimeter = ComputePolylineLength(hull, true);
-
-        if (hullPerimeter < 0.0001f)
-            return true;
-
-        float pathToHullRatio = pathPerimeter / hullPerimeter;
-        if (pathToHullRatio > maxPathToHullPerimeterRatio)
-            return true;
-
-        return false;
+        switch (shapeName)
+        {
+            case "Rectangle":
+            case "Square":
+                return minRectangleProbability;
+            case "Triangle":
+                return minTriangleProbability;
+            case "Circle":
+                return minCircleProbability;
+            default:
+                return minClosedShapeConfidence;
+        }
     }
 
-    ShapeCandidate BuildCircleCandidate(List<Vector2> ptsClosed, float y)
+    ShapeCandidate BuildCircleCandidate(List<Vector2> ptsClosed, List<Vector2> sample, List<CornerSample> corners, float y)
     {
         ShapeCandidate c = default;
         c.name = "Circle";
 
-        if (!EvaluateCircleFit(ptsClosed, out Vector2 center, out float radius, out float score))
+        if (!EvaluateCircleFit(ptsClosed, sample, corners, out Vector2 center, out float radius, out float score))
             return c;
 
         c.score = score;
@@ -446,12 +534,12 @@ public class WallDrawInput : MonoBehaviour
         return c;
     }
 
-    ShapeCandidate BuildRectangleCandidate(List<Vector2> ptsClosed, float y)
+    ShapeCandidate BuildRectangleCandidate(List<Vector2> ptsClosed, List<Vector2> sample, List<CornerSample> corners, float y)
     {
         ShapeCandidate c = default;
         c.name = "Rectangle";
 
-        if (!EvaluateRectangleFit(ptsClosed, out RectFit fit, out float score))
+        if (!EvaluateRectangleFit(ptsClosed, sample, corners, out RectFit fit, out float score))
             return c;
 
         bool forceSquare =
@@ -464,12 +552,12 @@ public class WallDrawInput : MonoBehaviour
         return c;
     }
 
-    ShapeCandidate BuildTriangleCandidate(List<Vector2> ptsClosed, float y)
+    ShapeCandidate BuildTriangleCandidate(List<Vector2> ptsClosed, List<Vector2> sample, List<CornerSample> corners, float y)
     {
         ShapeCandidate c = default;
         c.name = "Triangle";
 
-        if (!EvaluateTriangleFit(ptsClosed, out List<Vector2> triPts, out float score))
+        if (!EvaluateTriangleFit(ptsClosed, sample, corners, out List<Vector2> triPts, out float score))
             return c;
 
         c.score = score;
@@ -496,7 +584,7 @@ public class WallDrawInput : MonoBehaviour
     List<Vector2> SimplifyBySpacing(List<Vector2> pts, float spacing)
     {
         var res = new List<Vector2>();
-        if (pts.Count == 0)
+        if (pts == null || pts.Count == 0)
             return res;
 
         res.Add(pts[0]);
@@ -581,61 +669,55 @@ public class WallDrawInput : MonoBehaviour
         };
     }
 
-    bool EvaluateCircleFit(List<Vector2> ptsClosed, out Vector2 center, out float radius, out float score)
+    bool EvaluateCircleFit(List<Vector2> ptsClosed, List<Vector2> sample, List<CornerSample> corners, out Vector2 center, out float radius, out float score)
     {
         center = Vector2.zero;
         radius = 0f;
         score = 0f;
 
-        int n = ptsClosed.Count - 1;
-        if (n < 6)
+        int n = sample.Count;
+        if (n < 12)
             return false;
 
         for (int i = 0; i < n; i++)
-            center += ptsClosed[i];
+            center += sample[i];
         center /= n;
 
-        float sum = 0f;
+        float sumRadius = 0f;
+        float minDist = float.PositiveInfinity;
+        float maxDist = float.NegativeInfinity;
         for (int i = 0; i < n; i++)
-            sum += Vector2.Distance(center, ptsClosed[i]);
+        {
+            float d = Vector2.Distance(center, sample[i]);
+            sumRadius += d;
+            minDist = Mathf.Min(minDist, d);
+            maxDist = Mathf.Max(maxDist, d);
+        }
 
-        radius = sum / n;
+        radius = sumRadius / n;
         if (radius < 0.15f)
             return false;
 
-        float err = 0f;
-        float minX = float.PositiveInfinity;
-        float maxX = float.NegativeInfinity;
-        float minY = float.PositiveInfinity;
-        float maxY = float.NegativeInfinity;
-
+        float radialErr = 0f;
         for (int i = 0; i < n; i++)
-        {
-            float d = Vector2.Distance(center, ptsClosed[i]);
-            err += Mathf.Abs(d - radius);
+            radialErr += Mathf.Abs(Vector2.Distance(center, sample[i]) - radius);
+        radialErr = (radialErr / n) / Mathf.Max(0.0001f, radius);
 
-            minX = Mathf.Min(minX, ptsClosed[i].x);
-            maxX = Mathf.Max(maxX, ptsClosed[i].x);
-            minY = Mathf.Min(minY, ptsClosed[i].y);
-            maxY = Mathf.Max(maxY, ptsClosed[i].y);
-        }
-
-        float radialErr = (err / n) / Mathf.Max(0.0001f, radius);
-
-        float w = maxX - minX;
-        float h = maxY - minY;
-        if (w < 0.001f || h < 0.001f)
+        ComputeAabb(sample, out float minX, out float maxX, out float minY, out float maxY);
+        float width = maxX - minX;
+        float height = maxY - minY;
+        if (width < 0.001f || height < 0.001f)
             return false;
 
-        float ratio = Mathf.Min(w, h) / Mathf.Max(w, h);
+        float aspect = Mathf.Min(width, height) / Mathf.Max(width, height);
+        float cornerPenalty = Mathf.Clamp01((corners.Count - 2) / 5f);
+        float radialScore = Mathf.Clamp01(1f - radialErr / Mathf.Max(0.02f, circleStrictnessMultiplier));
+        float aspectScore = Mathf.InverseLerp(0.55f, 0.98f, aspect);
+        float rangeScore = Mathf.Clamp01(1f - ((maxDist - minDist) / Mathf.Max(0.0001f, radius)) / 0.55f);
 
-        float effectiveTol = Mathf.Max(0.035f, tolerance * Mathf.Max(0.95f, circleStrictnessMultiplier * 4.0f));
-        effectiveTol *= circleDetectionBoost;
-
-        float errorScore = Mathf.Clamp01(1f - (radialErr / effectiveTol));
-        float ratioScore = Mathf.InverseLerp(0.36f, 0.98f, ratio);
-
-        score = errorScore * 0.72f + ratioScore * 0.28f;
+        score = (radialScore * 0.55f + aspectScore * 0.25f + rangeScore * 0.20f) * circleDetectionBoost;
+        score *= Mathf.Lerp(1f, 1f - rectangleRoundPenalty * 0.60f, cornerPenalty);
+        score = Mathf.Clamp01(score);
         return true;
     }
 
@@ -655,112 +737,117 @@ public class WallDrawInput : MonoBehaviour
         return res;
     }
 
-    bool EvaluateRectangleFit(List<Vector2> ptsClosed, out RectFit fit, out float score)
+    bool EvaluateRectangleFit(List<Vector2> ptsClosed, List<Vector2> sample, List<CornerSample> corners, out RectFit fit, out float score)
     {
         fit = default;
         score = 0f;
 
-        int n = ptsClosed.Count - 1;
-        if (n < 8)
+        if (sample == null || sample.Count < 10)
             return false;
 
-        var pts = new List<Vector2>(n);
-        for (int i = 0; i < n; i++)
-            pts.Add(ptsClosed[i]);
-
-        var hull = ComputeConvexHull(new List<Vector2>(pts));
-        if (hull.Count < 4)
+        if (!ComputeBestRectFit(sample, out fit))
             return false;
 
-        float bestArea = float.PositiveInfinity;
-        RectFit bestFit = default;
-        bool found = false;
+        float maxDim = Mathf.Max(fit.width, fit.height);
+        if (maxDim < 0.25f || fit.width < 0.15f || fit.height < 0.15f)
+            return false;
 
-        Vector2 centroid = Vector2.zero;
-        for (int i = 0; i < n; i++)
-            centroid += ptsClosed[i];
-        centroid /= n;
+        float borderErr = 0f;
+        float cornerSupport = 0f;
+        int nearBorderCount = 0;
+        float borderThreshold = Mathf.Max(0.03f, maxDim * 0.09f);
 
-        for (int i = 0; i < hull.Count; i++)
+        for (int i = 0; i < sample.Count; i++)
         {
-            Vector2 a = hull[i];
-            Vector2 b = hull[(i + 1) % hull.Count];
-            Vector2 axisX = (b - a).normalized;
-            if (axisX.sqrMagnitude < 0.0001f)
-                continue;
+            Vector2 v = sample[i] - fit.center;
+            float x = Vector2.Dot(v, fit.axisX);
+            float yy = Vector2.Dot(v, fit.axisY);
 
-            Vector2 axisY = new Vector2(-axisX.y, axisX.x);
+            float dx = Mathf.Min(Mathf.Abs(x - fit.minX), Mathf.Abs(x - fit.maxX));
+            float dy = Mathf.Min(Mathf.Abs(yy - fit.minY), Mathf.Abs(yy - fit.maxY));
+            float d = Mathf.Min(dx, dy);
+            borderErr += d;
 
-            float minx = float.PositiveInfinity;
-            float maxx = float.NegativeInfinity;
-            float miny = float.PositiveInfinity;
-            float maxy = float.NegativeInfinity;
-
-            for (int k = 0; k < hull.Count; k++)
-            {
-                Vector2 v = hull[k] - centroid;
-                float x = Vector2.Dot(v, axisX);
-                float yy = Vector2.Dot(v, axisY);
-                minx = Mathf.Min(minx, x);
-                maxx = Mathf.Max(maxx, x);
-                miny = Mathf.Min(miny, yy);
-                maxy = Mathf.Max(maxy, yy);
-            }
-
-            float w = maxx - minx;
-            float h = maxy - miny;
-            if (w < 0.0001f || h < 0.0001f)
-                continue;
-
-            float area = w * h;
-            if (area < bestArea)
-            {
-                bestArea = area;
-                bestFit.center = centroid;
-                bestFit.axisX = axisX;
-                bestFit.axisY = axisY;
-                bestFit.minX = minx;
-                bestFit.maxX = maxx;
-                bestFit.minY = miny;
-                bestFit.maxY = maxy;
-                found = true;
-            }
+            if (d <= borderThreshold)
+                nearBorderCount++;
         }
 
-        if (!found)
-            return false;
+        Vector2 c0 = fit.center + fit.axisX * fit.minX + fit.axisY * fit.minY;
+        Vector2 c1 = fit.center + fit.axisX * fit.maxX + fit.axisY * fit.minY;
+        Vector2 c2 = fit.center + fit.axisX * fit.maxX + fit.axisY * fit.maxY;
+        Vector2 c3 = fit.center + fit.axisX * fit.minX + fit.axisY * fit.maxY;
+        Vector2[] rectCorners = { c0, c1, c2, c3 };
 
-        float wBest = bestFit.width;
-        float hBest = bestFit.height;
-        if (wBest < 0.3f || hBest < 0.3f)
-            return false;
-
-        float total = 0f;
-        for (int i = 0; i < n; i++)
+        float cornerThreshold = Mathf.Max(0.04f, maxDim * 0.14f);
+        for (int k = 0; k < rectCorners.Length; k++)
         {
-            Vector2 v = ptsClosed[i] - bestFit.center;
-            float x = Vector2.Dot(v, bestFit.axisX);
-            float yy = Vector2.Dot(v, bestFit.axisY);
+            float bestDist = float.PositiveInfinity;
+            for (int i = 0; i < corners.Count; i++)
+                bestDist = Mathf.Min(bestDist, Vector2.Distance(rectCorners[k], corners[i].point));
 
-            float dx = Mathf.Min(Mathf.Abs(x - bestFit.minX), Mathf.Abs(x - bestFit.maxX));
-            float dy = Mathf.Min(Mathf.Abs(yy - bestFit.minY), Mathf.Abs(yy - bestFit.maxY));
-            total += Mathf.Min(dx, dy);
+            float support = corners.Count == 0 ? 0f : Mathf.Clamp01(1f - bestDist / cornerThreshold);
+            cornerSupport += support;
         }
+        cornerSupport /= 4f;
 
-        float norm = (total / n) / Mathf.Max(wBest, hBest);
-        float effectiveTol = Mathf.Max(0.025f, tolerance * 1.10f);
+        float borderScore = Mathf.Clamp01(1f - ((borderErr / sample.Count) / Mathf.Max(0.0001f, maxDim)) / Mathf.Max(0.02f, tolerance * 0.95f));
+        float edgeCoverage = nearBorderCount / (float)sample.Count;
+        float angleScore = EvaluateRectangleCornerAngles(corners, rectCorners);
+        float circleLikePenalty = ComputeCircleLikeness(sample);
 
-        score = Mathf.Clamp01(1f - (norm / effectiveTol));
+        score = borderScore * 0.48f;
+        score += edgeCoverage * 0.22f;
+        score += cornerSupport * rectangleCornerBoost * 0.18f;
+        score += angleScore * 0.12f;
+        score *= Mathf.Lerp(1f, 1f - rectangleRoundPenalty, circleLikePenalty);
 
-        float aspect = Mathf.Min(wBest, hBest) / Mathf.Max(wBest, hBest);
-        if (aspect > 0.70f)
-            score *= 0.90f;
+        if (corners.Count < 3)
+            score *= 0.65f;
+        else if (corners.Count > 6)
+            score *= 0.82f;
 
-        if (hull.Count > 5)
-            score *= 0.88f;
-
-        fit = bestFit;
+        score = Mathf.Clamp01(score);
         return true;
+    }
+
+    float EvaluateRectangleCornerAngles(List<CornerSample> corners, Vector2[] rectCorners)
+    {
+        if (corners == null || corners.Count == 0)
+            return 0f;
+
+        float sum = 0f;
+        int count = 0;
+        float maxRectDim = 0f;
+        for (int i = 0; i < rectCorners.Length; i++)
+            for (int j = i + 1; j < rectCorners.Length; j++)
+                maxRectDim = Mathf.Max(maxRectDim, Vector2.Distance(rectCorners[i], rectCorners[j]));
+
+        float threshold = Mathf.Max(0.04f, maxRectDim * 0.18f);
+        for (int k = 0; k < rectCorners.Length; k++)
+        {
+            CornerSample best = default;
+            float bestDist = float.PositiveInfinity;
+            bool found = false;
+            for (int i = 0; i < corners.Count; i++)
+            {
+                float d = Vector2.Distance(rectCorners[k], corners[i].point);
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    best = corners[i];
+                    found = true;
+                }
+            }
+
+            if (!found || bestDist > threshold)
+                continue;
+
+            float angleScore = Mathf.Clamp01(1f - Mathf.Abs(best.turn - 90f) / 45f);
+            sum += angleScore;
+            count++;
+        }
+
+        return count == 0 ? 0f : sum / count;
     }
 
     List<Vector3> MakeRectanglePoints(RectFit fit, int pointsPerEdge, float y, bool forceSquare)
@@ -811,110 +898,105 @@ public class WallDrawInput : MonoBehaviour
         }
     }
 
-    bool EvaluateTriangleFit(List<Vector2> ptsClosed, out List<Vector2> fittedTriangle, out float score)
+    bool EvaluateTriangleFit(List<Vector2> ptsClosed, List<Vector2> sample, List<CornerSample> corners, out List<Vector2> fittedTriangle, out float score)
     {
         fittedTriangle = null;
         score = 0f;
 
-        int n = ptsClosed.Count - 1;
-        if (n < 5)
+        if (sample == null || sample.Count < 9)
             return false;
 
-        List<Vector2> raw = new List<Vector2>(n);
-        for (int i = 0; i < n; i++)
-            raw.Add(ptsClosed[i]);
-
-        List<Vector2> hull = ComputeConvexHull(new List<Vector2>(raw));
-        if (hull.Count < 3 || hull.Count > 5)
-            return false;
-
-        float bestError = float.PositiveInfinity;
-        Vector2 bestA = Vector2.zero;
-        Vector2 bestB = Vector2.zero;
-        Vector2 bestC = Vector2.zero;
-        bool found = false;
-
-        for (int i = 0; i < hull.Count - 2; i++)
+        List<CornerSample> dominant = GetDominantCorners(corners, 6, sample.Count / 10);
+        if (dominant.Count < 3)
         {
-            for (int j = i + 1; j < hull.Count - 1; j++)
-            {
-                for (int k = j + 1; k < hull.Count; k++)
-                {
-                    Vector2 a = hull[i];
-                    Vector2 b = hull[j];
-                    Vector2 c = hull[k];
+            dominant = BuildFallbackCornersFromHull(sample);
+        }
 
-                    float area2 = Mathf.Abs(Cross(b - a, c - a));
-                    if (area2 < 0.08f)
+        if (dominant.Count < 3)
+            return false;
+
+        float bestScore = 0f;
+        List<Vector2> bestTriangle = null;
+
+        for (int i = 0; i < dominant.Count - 2; i++)
+        {
+            for (int j = i + 1; j < dominant.Count - 1; j++)
+            {
+                for (int k = j + 1; k < dominant.Count; k++)
+                {
+                    Vector2 a = dominant[i].point;
+                    Vector2 b = dominant[j].point;
+                    Vector2 c = dominant[k].point;
+
+                    float doubleArea = Mathf.Abs(Cross(b - a, c - a));
+                    if (doubleArea < 0.05f)
                         continue;
 
                     float perimeter = Vector2.Distance(a, b) + Vector2.Distance(b, c) + Vector2.Distance(c, a);
-                    if (perimeter < 0.8f)
+                    if (perimeter < 0.60f)
                         continue;
 
                     float angleA = AngleDeg(b - a, c - a);
                     float angleB = AngleDeg(a - b, c - b);
                     float angleC = AngleDeg(a - c, b - c);
-
+                    float maxAngle = Mathf.Max(angleA, Mathf.Max(angleB, angleC));
                     float minAngle = Mathf.Min(angleA, Mathf.Min(angleB, angleC));
-                    float maxAllowedSharpness = Mathf.Min(roundedTriangleMaxApexAngle + 10f, 150f);
 
-                    if (minAngle > maxAllowedSharpness)
+                    if (maxAngle > roundedTriangleMaxApexAngle)
+                        continue;
+                    if (minAngle < 14f)
                         continue;
 
-                    float errorSum = 0f;
-                    int outsideCount = 0;
-
-                    for (int p = 0; p < raw.Count; p++)
+                    float edgeErr = 0f;
+                    int insideCount = 0;
+                    for (int p = 0; p < sample.Count; p++)
                     {
-                        Vector2 pt = raw[p];
-
+                        Vector2 pt = sample[p];
                         float d1 = DistancePointSegment(pt, a, b);
                         float d2 = DistancePointSegment(pt, b, c);
                         float d3 = DistancePointSegment(pt, c, a);
-                        float d = Mathf.Min(d1, Mathf.Min(d2, d3));
-
-                        bool inside = PointInTriangleInclusive(pt, a, b, c);
-                        if (!inside)
-                            outsideCount++;
-
-                        errorSum += inside ? d : d * 2.4f;
+                        float edgeDist = Mathf.Min(d1, Mathf.Min(d2, d3));
+                        edgeErr += edgeDist;
+                        if (PointInTriangleInclusive(pt, a, b, c))
+                            insideCount++;
                     }
 
-                    float outsideRatio = outsideCount / (float)raw.Count;
-                    if (outsideRatio > 0.18f)
-                        continue;
+                    float outsideRatio = 1f - insideCount / (float)sample.Count;
+                    float edgeNorm = (edgeErr / sample.Count) / Mathf.Max(0.0001f, perimeter / 3f);
+                    float edgeScore = Mathf.Clamp01(1f - edgeNorm / Mathf.Max(0.03f, tolerance * triangleToleranceMultiplier));
+                    float insideScore = Mathf.Clamp01(1f - outsideRatio / 0.45f);
+                    float cornerSharpness = 0f;
+                    cornerSharpness += FindNearestCornerSharpness(dominant[i], a);
+                    cornerSharpness += FindNearestCornerSharpness(dominant[j], b);
+                    cornerSharpness += FindNearestCornerSharpness(dominant[k], c);
+                    cornerSharpness /= 3f;
 
-                    float normErr = (errorSum / raw.Count) / Mathf.Max(0.0001f, perimeter / 3f);
+                    float circlePenalty = ComputeCircleLikeness(sample);
+                    float triScore = edgeScore * 0.50f + insideScore * 0.30f + cornerSharpness * 0.20f;
+                    triScore *= Mathf.Lerp(1f, 0.80f, circlePenalty);
+                    triScore = Mathf.Clamp01(triScore);
 
-                    if (normErr < bestError)
+                    if (triScore > bestScore)
                     {
-                        bestError = normErr;
-                        bestA = a;
-                        bestB = b;
-                        bestC = c;
-                        found = true;
+                        bestScore = triScore;
+                        bestTriangle = new List<Vector2> { a, b, c, a };
                     }
                 }
             }
         }
 
-        if (!found)
+        if (bestTriangle == null)
             return false;
 
-        float effectiveTol = Mathf.Max(0.03f, tolerance * triangleToleranceMultiplier * 0.75f);
-        score = Mathf.Clamp01(1f - (bestError / effectiveTol));
-
-        fittedTriangle = new List<Vector2>
-        {
-            bestA,
-            bestB,
-            bestC,
-            bestA
-        };
-
+        score = bestScore;
+        fittedTriangle = bestTriangle;
         EnsureCounterClockwiseXZ(fittedTriangle);
         return true;
+    }
+
+    float FindNearestCornerSharpness(CornerSample sample, Vector2 point)
+    {
+        return Mathf.Clamp01(sample.sharpness / 120f);
     }
 
     bool PointInTriangleInclusive(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
@@ -951,20 +1033,255 @@ public class WallDrawInput : MonoBehaviour
         return Vector2.Distance(p, a + ab * t);
     }
 
-    float ComputePolylineLength(List<Vector2> pts, bool closed)
+    bool ComputeBestRectFit(List<Vector2> pts, out RectFit bestFit)
     {
-        if (pts == null || pts.Count < 2)
+        bestFit = default;
+        if (pts == null || pts.Count < 4)
+            return false;
+
+        List<Vector2> hull = ComputeConvexHull(new List<Vector2>(pts));
+        if (hull.Count < 4)
+            return false;
+
+        Vector2 centroid = Vector2.zero;
+        for (int i = 0; i < pts.Count; i++)
+            centroid += pts[i];
+        centroid /= pts.Count;
+
+        float bestArea = float.PositiveInfinity;
+        bool found = false;
+
+        for (int i = 0; i < hull.Count; i++)
+        {
+            Vector2 a = hull[i];
+            Vector2 b = hull[(i + 1) % hull.Count];
+            Vector2 axisX = (b - a).normalized;
+            if (axisX.sqrMagnitude < 0.0001f)
+                continue;
+
+            Vector2 axisY = new Vector2(-axisX.y, axisX.x);
+            float minx = float.PositiveInfinity;
+            float maxx = float.NegativeInfinity;
+            float miny = float.PositiveInfinity;
+            float maxy = float.NegativeInfinity;
+
+            for (int p = 0; p < pts.Count; p++)
+            {
+                Vector2 v = pts[p] - centroid;
+                float x = Vector2.Dot(v, axisX);
+                float yy = Vector2.Dot(v, axisY);
+                minx = Mathf.Min(minx, x);
+                maxx = Mathf.Max(maxx, x);
+                miny = Mathf.Min(miny, yy);
+                maxy = Mathf.Max(maxy, yy);
+            }
+
+            float area = (maxx - minx) * (maxy - miny);
+            if (area < bestArea)
+            {
+                bestArea = area;
+                bestFit.center = centroid;
+                bestFit.axisX = axisX;
+                bestFit.axisY = axisY;
+                bestFit.minX = minx;
+                bestFit.maxX = maxx;
+                bestFit.minY = miny;
+                bestFit.maxY = maxy;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    List<Vector2> GetOpenLoop(List<Vector2> closed)
+    {
+        List<Vector2> res = new List<Vector2>(closed);
+        if (res.Count > 1 && Vector2.Distance(res[0], res[res.Count - 1]) < 0.0001f)
+            res.RemoveAt(res.Count - 1);
+        return res;
+    }
+
+    List<Vector2> ResampleClosedEvenly(List<Vector2> closed, int count)
+    {
+        List<Vector2> open = GetOpenLoop(closed);
+        List<Vector2> res = new List<Vector2>();
+        if (open.Count < 3)
+            return res;
+
+        float[] cumulative = new float[open.Count + 1];
+        cumulative[0] = 0f;
+        for (int i = 1; i < open.Count; i++)
+            cumulative[i] = cumulative[i - 1] + Vector2.Distance(open[i - 1], open[i]);
+        cumulative[open.Count] = cumulative[open.Count - 1] + Vector2.Distance(open[open.Count - 1], open[0]);
+
+        float total = cumulative[open.Count];
+        if (total < 0.0001f)
+            return new List<Vector2>(open);
+
+        for (int k = 0; k < count; k++)
+        {
+            float t = (k / (float)count) * total;
+            int seg = 1;
+            while (seg < cumulative.Length && cumulative[seg] < t)
+                seg++;
+            seg = Mathf.Clamp(seg, 1, cumulative.Length - 1);
+
+            int aIndex = seg - 1;
+            int bIndex = seg % open.Count;
+            float segT = Mathf.InverseLerp(cumulative[seg - 1], cumulative[seg], t);
+            res.Add(Vector2.Lerp(open[aIndex], open[bIndex], segT));
+        }
+
+        return res;
+    }
+
+    List<CornerSample> DetectCorners(List<Vector2> sample)
+    {
+        List<CornerSample> corners = new List<CornerSample>();
+        if (sample == null || sample.Count < 6)
+            return corners;
+
+        int n = sample.Count;
+        for (int i = 0; i < n; i++)
+        {
+            Vector2 prev = sample[(i - 2 + n) % n];
+            Vector2 cur = sample[i];
+            Vector2 next = sample[(i + 2) % n];
+            Vector2 v1 = (prev - cur).normalized;
+            Vector2 v2 = (next - cur).normalized;
+            if (v1.sqrMagnitude < 0.0001f || v2.sqrMagnitude < 0.0001f)
+                continue;
+
+            float angle = AngleDeg(v1, v2);
+            float sharpness = Mathf.Clamp(180f - angle, 0f, 180f);
+            if (sharpness < 18f)
+                continue;
+
+            bool isPeak = true;
+            for (int offset = -2; offset <= 2; offset++)
+            {
+                if (offset == 0)
+                    continue;
+
+                int j = (i + offset + n) % n;
+                Vector2 prev2 = sample[(j - 2 + n) % n];
+                Vector2 cur2 = sample[j];
+                Vector2 next2 = sample[(j + 2) % n];
+                Vector2 a = (prev2 - cur2).normalized;
+                Vector2 b = (next2 - cur2).normalized;
+                float otherSharpness = Mathf.Clamp(180f - AngleDeg(a, b), 0f, 180f);
+                if (otherSharpness > sharpness)
+                {
+                    isPeak = false;
+                    break;
+                }
+            }
+
+            if (!isPeak)
+                continue;
+
+            corners.Add(new CornerSample
+            {
+                index = i,
+                turn = angle,
+                sharpness = sharpness,
+                point = cur
+            });
+        }
+
+        corners.Sort((a, b) => b.sharpness.CompareTo(a.sharpness));
+        return corners;
+    }
+
+    List<CornerSample> GetDominantCorners(List<CornerSample> corners, int maxCount, int minIndexGap)
+    {
+        List<CornerSample> result = new List<CornerSample>();
+        if (corners == null)
+            return result;
+
+        for (int i = 0; i < corners.Count; i++)
+        {
+            bool tooClose = false;
+            for (int k = 0; k < result.Count; k++)
+            {
+                if (Mathf.Abs(corners[i].index - result[k].index) < minIndexGap)
+                {
+                    tooClose = true;
+                    break;
+                }
+            }
+
+            if (tooClose)
+                continue;
+
+            result.Add(corners[i]);
+            if (result.Count >= maxCount)
+                break;
+        }
+
+        return result;
+    }
+
+    List<CornerSample> BuildFallbackCornersFromHull(List<Vector2> sample)
+    {
+        List<CornerSample> result = new List<CornerSample>();
+        List<Vector2> hull = ComputeConvexHull(new List<Vector2>(sample));
+        for (int i = 0; i < hull.Count; i++)
+        {
+            Vector2 prev = hull[(i - 1 + hull.Count) % hull.Count];
+            Vector2 cur = hull[i];
+            Vector2 next = hull[(i + 1) % hull.Count];
+            result.Add(new CornerSample
+            {
+                index = i,
+                point = cur,
+                turn = AngleDeg(prev - cur, next - cur),
+                sharpness = Mathf.Clamp(180f - AngleDeg(prev - cur, next - cur), 0f, 180f)
+            });
+        }
+        result.Sort((a, b) => b.sharpness.CompareTo(a.sharpness));
+        return result;
+    }
+
+    float ComputeCircleLikeness(List<Vector2> sample)
+    {
+        if (sample == null || sample.Count < 8)
             return 0f;
 
-        float len = 0f;
+        Vector2 center = Vector2.zero;
+        for (int i = 0; i < sample.Count; i++)
+            center += sample[i];
+        center /= sample.Count;
 
-        for (int i = 0; i < pts.Count - 1; i++)
-            len += Vector2.Distance(pts[i], pts[i + 1]);
+        float avg = 0f;
+        for (int i = 0; i < sample.Count; i++)
+            avg += Vector2.Distance(center, sample[i]);
+        avg /= sample.Count;
+        if (avg < 0.0001f)
+            return 0f;
 
-        if (closed)
-            len += Vector2.Distance(pts[pts.Count - 1], pts[0]);
+        float err = 0f;
+        for (int i = 0; i < sample.Count; i++)
+            err += Mathf.Abs(Vector2.Distance(center, sample[i]) - avg);
+        float radial = (err / sample.Count) / avg;
+        return Mathf.Clamp01(1f - radial / 0.35f);
+    }
 
-        return len;
+    void ComputeAabb(List<Vector2> pts, out float minX, out float maxX, out float minY, out float maxY)
+    {
+        minX = float.PositiveInfinity;
+        maxX = float.NegativeInfinity;
+        minY = float.PositiveInfinity;
+        maxY = float.NegativeInfinity;
+
+        for (int i = 0; i < pts.Count; i++)
+        {
+            minX = Mathf.Min(minX, pts[i].x);
+            maxX = Mathf.Max(maxX, pts[i].x);
+            minY = Mathf.Min(minY, pts[i].y);
+            maxY = Mathf.Max(maxY, pts[i].y);
+        }
     }
 
     List<Vector2> ComputeConvexHull(List<Vector2> pts)

@@ -1,6 +1,5 @@
 using UnityEngine;
 using System.Collections.Generic;
-using System.Reflection;
 
 [DisallowMultipleComponent]
 public class SelectedWallControlPointProvider : MonoBehaviour, IControlPointProvider, IControlPointPathProvider
@@ -29,17 +28,37 @@ public class SelectedWallControlPointProvider : MonoBehaviour, IControlPointProv
                     buildController.ForceSelectWall(w);
             }
 
-            if (w == null) return null;
+            if (w == null)
+                return null;
 
-            // priorité : un composant qui implémente déjà IControlPointProvider
-            var monos = w.GetComponents<MonoBehaviour>();
-            foreach (var mb in monos)
+            WallEditShape editShape = w.GetComponent<WallEditShape>();
+            if (editShape != null)
+                return editShape;
+
+            WallSelectable selectable = w.GetComponent<WallSelectable>();
+            if (selectable != null)
             {
-                if (mb is IControlPointProvider)
-                    return mb;
+                if (selectable.providerBehaviour == null)
+                    selectable.AutoFindProvider();
+
+                if (selectable.providerBehaviour != null && selectable.providerBehaviour is IControlPointProvider)
+                    return selectable.providerBehaviour;
             }
 
-            return null;
+            MonoBehaviour[] monos = w.GetComponents<MonoBehaviour>();
+            for (int i = 0; i < monos.Length; i++)
+            {
+                MonoBehaviour mb = monos[i];
+                if (mb == null || !(mb is IControlPointProvider))
+                    continue;
+
+                if (mb is WallObject)
+                    continue;
+
+                return mb;
+            }
+
+            return w;
         }
     }
 
@@ -47,36 +66,30 @@ public class SelectedWallControlPointProvider : MonoBehaviour, IControlPointProv
     {
         get
         {
-            var c = CurrentProviderComponent;
+            Component c = CurrentProviderComponent;
             if (c == null) return 0;
-
-            if (c is IControlPointProvider p)
-                return Mathf.Max(0, p.ControlPointCount);
-
+            if (c is IControlPointProvider p) return Mathf.Max(0, p.ControlPointCount);
             return 0;
         }
     }
 
     public Vector3 GetControlPointWorld(int index)
     {
-        var c = CurrentProviderComponent;
+        Component c = CurrentProviderComponent;
         if (c == null) return Vector3.zero;
-
         if (c is IControlPointProvider p)
         {
             int count = p.ControlPointCount;
             if (index < 0 || index >= count) return Vector3.zero;
             return p.GetControlPointWorld(index);
         }
-
         return Vector3.zero;
     }
 
     public void SetControlPointWorld(int index, Vector3 worldPos)
     {
-        var c = CurrentProviderComponent;
+        Component c = CurrentProviderComponent;
         if (c == null) return;
-
         if (c is IControlPointProvider p)
         {
             int count = p.ControlPointCount;
@@ -87,23 +100,19 @@ public class SelectedWallControlPointProvider : MonoBehaviour, IControlPointProv
 
     public bool IsControlPointEditable(int index)
     {
-        var c = CurrentProviderComponent;
+        Component c = CurrentProviderComponent;
         if (c == null) return false;
-
         if (c is IControlPointProvider p)
             return index >= 0 && index < p.ControlPointCount && p.IsControlPointEditable(index);
-
         return false;
     }
 
     public List<Vector3> GetPreviewPathWorld()
     {
-        var c = CurrentProviderComponent;
+        Component c = CurrentProviderComponent;
         if (c == null) return null;
-
         if (c is IControlPointPathProvider pathProvider)
             return pathProvider.GetPreviewPathWorld();
-
         return null;
     }
 }

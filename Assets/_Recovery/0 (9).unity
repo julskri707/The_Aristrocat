@@ -636,11 +636,11 @@ MonoBehaviour:
   linksRoot: {fileID: 1637475659}
   linkPrefab: {fileID: 6353280019826154621, guid: f570c87757436bd45b622dc10bf17f41, type: 3}
   showLinks: 1
-  usePreviewPathForLinks: 0
+  usePreviewPathForLinks: 1
   targetProviderBehaviour: {fileID: 436511027}
   useSeparateSortingCanvases: 1
   baseSortingOrder: 5000
-  linksSortingOrderOffset: -18
+  linksSortingOrderOffset: 0
   handlesSortingOrderOffset: 1
 --- !u!21 &1292446836
 Material:
@@ -1169,25 +1169,15 @@ MonoBehaviour:
   circleDetectionBoost: 1.15
   rectPointsPerEdge: 10
   squareRatioTolerance: 0.12
-  minRectangleProbability: 0.4
-  rectangleCornerBoost: 0.7
-  rectangleRoundPenalty: 0.45
   triangleToleranceMultiplier: 2
   roundedTriangleMaxCurvePoints: 12
   roundedTriangleMaxApexAngle: 120
-  minTriangleProbability: 0.32
   minClosedShapeConfidence: 0.56
   minClosedShapeLead: 0.06
-  minCircleProbability: 0.3
   maxPathToHullPerimeterRatio: 1.35
   rejectSelfIntersectingClosedShapes: 1
-  alwaysShowProbabilities: 1
   logDetectedShape: 1
   logShapeScores: 1
-  lastDetectedClosedShape: None
-  lastRectangleProbability: 0
-  lastTriangleProbability: 0
-  lastCircleProbability: 0
 --- !u!4 &1972683406
 Transform:
   m_ObjectHideFlags: 0

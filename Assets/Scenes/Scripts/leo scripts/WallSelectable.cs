@@ -16,29 +16,68 @@ public class WallSelectable : MonoBehaviour
 
     public void AutoFindProvider()
     {
-        // Cherche un MonoBehaviour sur ce GO qui implémente IControlPointProvider
-        var monos = GetComponents<MonoBehaviour>();
-        foreach (var m in monos)
+        providerBehaviour = null;
+
+        // 1) Priorité absolue : WallEditShape
+        WallEditShape editShape = GetComponent<WallEditShape>();
+        if (editShape != null)
         {
-            if (m == null) continue;
-            if (m is IControlPointProvider)
-            {
-                providerBehaviour = m;
-                return;
-            }
+            providerBehaviour = editShape;
+            return;
         }
 
-        // Sinon cherche dans les enfants
-        monos = GetComponentsInChildren<MonoBehaviour>();
-        foreach (var m in monos)
+        // 2) Autres providers utiles sur le GO, mais on évite les providers du path brut.
+        MonoBehaviour[] monos = GetComponents<MonoBehaviour>();
+        for (int i = 0; i < monos.Length; i++)
         {
-            if (m == null) continue;
-            if (m is IControlPointProvider)
-            {
-                providerBehaviour = m;
-                return;
-            }
+            MonoBehaviour m = monos[i];
+            if (m == null)
+                continue;
+
+            if (!(m is IControlPointProvider))
+                continue;
+
+            if (m is WallObject)
+                continue;
+
+            if (m is WallControlPointProvider)
+                continue;
+
+            if (m is WallControlPointProvider_WallObject)
+                continue;
+
+            providerBehaviour = m;
+            return;
         }
+
+        // 3) Puis dans les enfants.
+        monos = GetComponentsInChildren<MonoBehaviour>(true);
+        for (int i = 0; i < monos.Length; i++)
+        {
+            MonoBehaviour m = monos[i];
+            if (m == null)
+                continue;
+
+            if (!(m is IControlPointProvider))
+                continue;
+
+            if (m is WallObject)
+                continue;
+
+            if (m is WallControlPointProvider)
+                continue;
+
+            if (m is WallControlPointProvider_WallObject)
+                continue;
+
+            providerBehaviour = m;
+            return;
+        }
+
+        // 4) Fallback ultime.
+        WallObject wall = GetComponent<WallObject>();
+        if (wall != null)
+            providerBehaviour = wall;
     }
 
     public IControlPointProvider GetProvider()
