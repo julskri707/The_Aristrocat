@@ -91,36 +91,11 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
         if (sceneCam == null)
             return;
 
-        Vector3 wa;
-        Vector3 wb;
-
-        if (useDirectWorldPoints)
+        if (!TryGetCurrentWorldSegment(out Vector3 wa, out Vector3 wb))
         {
-            wa = worldA;
-            wb = worldB;
-        }
-        else
-        {
-            if (provider == null)
-                return;
-
-            int count = provider.ControlPointCount;
-            if (indexA < 0 || indexA >= count || indexB < 0 || indexB >= count)
-            {
-                if (gameObject.activeSelf)
-                    gameObject.SetActive(false);
-                return;
-            }
-
-            if (!provider.IsControlPointEditable(indexA) || !provider.IsControlPointEditable(indexB))
-            {
-                if (gameObject.activeSelf)
-                    gameObject.SetActive(false);
-                return;
-            }
-
-            wa = provider.GetControlPointWorld(indexA);
-            wb = provider.GetControlPointWorld(indexB);
+            if (gameObject.activeSelf)
+                gameObject.SetActive(false);
+            return;
         }
 
         Vector3 sa = sceneCam.WorldToScreenPoint(wa);
@@ -175,6 +150,163 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
         if (selectionManager == null)
             return;
 
+        if (TryGetPointOnDisplayedLink(eventData.position, out Vector3 worldPoint))
+        {
+            selectionManager.TryInsertPointAtWorldPosition(worldPoint, providerBehaviour);
+            return;
+        }
+
         selectionManager.TryInsertPointAtScreenPosition(eventData.position, providerBehaviour);
+    }
+
+    bool TryGetCurrentWorldSegment(out Vector3 a, out Vector3 b)
+    {
+        if (useDirectWorldPoints)
+        {
+            a = worldA;
+            b = worldB;
+            return true;
+        }
+
+        if (provider == null)
+        {
+            a = default;
+            b = default;
+            return false;
+        }
+
+        int count = provider.ControlPointCount;
+        if (indexA < 0 || indexA >= count || indexB < 0 || indexB >= count)
+        {
+            a = default;
+            b = default;
+            return false;
+        }
+
+        if (!provider.IsControlPointEditable(indexA) || !provider.IsControlPointEditable(indexB))
+        {
+            a = default;
+            b = default;
+            return false;
+        }
+
+        a = provider.GetControlPointWorld(indexA);
+        b = provider.GetControlPointWorld(indexB);
+        return true;
+    }
+
+    bool TryGetPointOnDisplayedLink(Vector2 screenPos, out Vector3 worldPoint)
+    {
+        worldPoint = default;
+
+        Camera sceneCam = cam != null ? cam : Camera.main;
+        if (sceneCam == null)
+            return false;
+
+        if (!TryGetCurrentWorldSegment(out Vector3 a, out Vector3 b))
+            return false;
+
+        Ray ray = sceneCam.ScreenPointToRay(screenPos);
+
+        if (TryClosestPointRayToSegment(ray, a, b, out Vector3 closestOnSegment))
+        {
+            worldPoint = closestOnSegment;
+            return true;
+        }
+
+        if (TryProjectRayToSegmentPlane(ray, a, b, out Vector3 projected))
+        {
+            worldPoint = ClosestPointOnSegment(projected, a, b);
+            return true;
+        }
+
+        worldPoint = (a + b) * 0.5f;
+        return true;
+    }
+
+    static bool TryClosestPointRayToSegment(Ray ray, Vector3 segA, Vector3 segB, out Vector3 closestOnSegment)
+    {
+        closestOnSegment = default;
+
+        Vector3 u = ray.direction;
+        Vector3 v = segB - segA;
+        Vector3 w0 = ray.origin - segA;
+
+        float a = Vector3.Dot(u, u);
+        float b = Vector3.Dot(u, v);
+        float c = Vector3.Dot(v, v);
+        float d = Vector3.Dot(u, w0);
+        float e = Vector3.Dot(v, w0);
+
+        float denom = a * c - b * b;
+        float s;
+        float t;
+
+        if (denom < 0.000001f)
+        {
+            s = 0f;
+            t = Mathf.Clamp01(e / Mathf.Max(0.000001f, c));
+        }
+        else
+        {
+            s = (b * e - c * d) / denom;
+            t = (a * e - b * d) / denom;
+
+            if (s < 0f)
+            {
+                s = 0f;
+                t = Mathf.Clamp01(e / Mathf.Max(0.000001f, c));
+            }
+            else
+            {
+                t = Mathf.Clamp01(t);
+            }
+        }
+
+        Vector3 pointOnRay = ray.origin + u * s;
+        Vector3 pointOnSegment = segA + v * t;
+
+        float separation = Vector3.Distance(pointOnRay, pointOnSegment);
+        float allowed = Mathf.Max(0.1f, Vector3.Distance(segA, segB) * 0.15f);
+        if (separation > allowed)
+            return false;
+
+        closestOnSegment = pointOnSegment;
+        return true;
+    }
+
+    static bool TryProjectRayToSegmentPlane(Ray ray, Vector3 segA, Vector3 segB, out Vector3 point)
+    {
+        point = default;
+
+        Vector3 segment = segB - segA;
+        if (segment.sqrMagnitude < 0.000001f)
+            return false;
+
+        Vector3 planeNormal = Vector3.Cross(segment.normalized, Vector3.up);
+        if (planeNormal.sqrMagnitude < 0.000001f)
+            planeNormal = Vector3.Cross(segment.normalized, Vector3.forward);
+
+        if (planeNormal.sqrMagnitude < 0.000001f)
+            return false;
+
+        Plane plane = new Plane(planeNormal.normalized, segA);
+        if (!plane.Raycast(ray, out float enter))
+            return false;
+
+        point = ray.GetPoint(enter);
+        return true;
+    }
+
+    static Vector3 ClosestPointOnSegment(Vector3 point, Vector3 a, Vector3 b)
+    {
+        Vector3 ab = b - a;
+        float len2 = ab.sqrMagnitude;
+        if (len2 < 0.000001f)
+            return a;
+
+        float t = Vector3.Dot(point - a, ab) / len2;
+        t = Mathf.Clamp01(t);
+        return a + ab * t;
     }
 }

@@ -282,10 +282,12 @@ MonoBehaviour:
   drawInput: {fileID: 1972683405}
   overlay: {fileID: 1195328562}
   wallPrefab: {fileID: 8026581915882693225, guid: c6a832b4372fea346a4999bcd5e52029, type: 3}
+  defaultWallStyle: {fileID: 0}
   wallRaycastMask:
     serializedVersion: 2
     m_Bits: 4294967295
   rayDistance: 5000
+  handleSelectionInput: 0
 --- !u!4 &436511024
 Transform:
   m_ObjectHideFlags: 0

@@ -12,9 +12,13 @@ public class WallBuildController : MonoBehaviour
     [Header("Prefabs")]
     public WallObject wallPrefab;
 
+    [Header("Default Style")]
+    public WallStyleDefinition defaultWallStyle;
+
     [Header("Selection")]
     public LayerMask wallRaycastMask = ~0;
     public float rayDistance = 5000f;
+    public bool handleSelectionInput = false;
 
     private readonly List<WallObject> _walls = new List<WallObject>();
 
@@ -43,7 +47,7 @@ public class WallBuildController : MonoBehaviour
 
     void Update()
     {
-        if (cam == null)
+        if (!handleSelectionInput || cam == null)
             return;
 
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
@@ -74,6 +78,9 @@ public class WallBuildController : MonoBehaviour
             selectable = wall.gameObject.AddComponent<WallSelectable>();
 
         selectable.providerBehaviour = editShape;
+
+        if (defaultWallStyle != null)
+            WallStyleApplier.Apply(wall, defaultWallStyle);
 
         _walls.Add(wall);
         SelectedWall = wall;

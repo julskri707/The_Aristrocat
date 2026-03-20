@@ -43,7 +43,7 @@ public class WallSelectionManager : MonoBehaviour
         if (!Physics.Raycast(ray, out RaycastHit hit, maxDistance, wallLayerMask, QueryTriggerInteraction.Ignore))
             return;
 
-        var wall = hit.collider.GetComponentInParent<WallObject>();
+        WallObject wall = hit.collider.GetComponentInParent<WallObject>();
         if (wall == null)
             return;
 
@@ -86,15 +86,31 @@ public class WallSelectionManager : MonoBehaviour
         if (wall == null)
             return false;
 
+        Vector3 insertWorldPos = GetInsertWorldPosition(ray, wall);
+        return TryInsertPointAtWorldPosition(insertWorldPos, providerBehaviour ?? ResolveProvider(wall));
+    }
+
+    public bool TryInsertPointAtWorldPosition(Vector3 worldPosition, MonoBehaviour preferredProviderBehaviour = null)
+    {
+        WallObject wall = null;
+        MonoBehaviour providerBehaviour = preferredProviderBehaviour;
+
+        if (providerBehaviour is Component providerComponent)
+            wall = providerComponent.GetComponent<WallObject>();
+
+        if (wall == null && buildController != null)
+            wall = buildController.SelectedWall;
+
+        if (wall == null)
+            return false;
+
         if (providerBehaviour == null)
             providerBehaviour = ResolveProvider(wall);
 
         if (providerBehaviour is not WallEditShape editShape)
             return false;
 
-        Vector3 insertWorldPos = GetInsertWorldPosition(ray, wall);
-        bool inserted = editShape.InsertFreeControlPointAtWorld(insertWorldPos);
-
+        bool inserted = editShape.InsertFreeControlPointAtWorld(worldPosition);
         if (!inserted)
             return false;
 
@@ -107,7 +123,7 @@ public class WallSelectionManager : MonoBehaviour
             overlay.RebuildOverlay();
 
         if (logDebug)
-            Debug.Log($"[WallSelectionManager] Inserted point on {wall.name}");
+            Debug.Log($"[WallSelectionManager] Inserted point on {wall.name} at {worldPosition}");
 
         return true;
     }
@@ -134,11 +150,11 @@ public class WallSelectionManager : MonoBehaviour
         if (wall == null)
             return null;
 
-        var editShape = wall.GetComponent<WallEditShape>();
+        WallEditShape editShape = wall.GetComponent<WallEditShape>();
         if (editShape != null)
             return editShape;
 
-        var selectable = wall.GetComponent<WallSelectable>();
+        WallSelectable selectable = wall.GetComponent<WallSelectable>();
         if (selectable != null)
         {
             if (selectable.providerBehaviour == null)
@@ -148,7 +164,7 @@ public class WallSelectionManager : MonoBehaviour
                 return selectable.providerBehaviour;
         }
 
-        var monos = wall.GetComponents<MonoBehaviour>();
+        MonoBehaviour[] monos = wall.GetComponents<MonoBehaviour>();
         for (int i = 0; i < monos.Length; i++)
         {
             if (monos[i] is IControlPointProvider)
