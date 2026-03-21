@@ -28,6 +28,7 @@ public class WallContextMenuUI : MonoBehaviour
     [Header("Optional References")]
     public WallBuildController buildController;
     public ControlPointOverlayManager overlay;
+    public WallUndoManager undoManager;
 
     private readonly List<WallStyleButtonUI> _spawnedButtons = new List<WallStyleButtonUI>();
 
@@ -41,6 +42,9 @@ public class WallContextMenuUI : MonoBehaviour
 
         if (overlay == null)
             overlay = FindFirstObjectByType<ControlPointOverlayManager>();
+
+        if (undoManager == null)
+            undoManager = FindFirstObjectByType<WallUndoManager>();
 
         if (backgroundCloseButton != null)
             backgroundCloseButton.onClick.AddListener(Close);
@@ -151,6 +155,9 @@ public class WallContextMenuUI : MonoBehaviour
     {
         if (CurrentWall == null || style == null)
             return;
+
+        if (undoManager != null)
+            undoManager.RecordSnapshot("Change Wall Style");
 
         WallStyleApplier.Apply(CurrentWall, style);
 

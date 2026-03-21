@@ -15,7 +15,7 @@ MonoBehaviour:
   styleId: stone
   displayName: Stone
   icon: {fileID: 0}
-  wallMaterial: {fileID: 2100000, guid: 2bb88dcd6c6adc04d8dc843ac80cd885, type: 2}
+  wallMaterial: {fileID: 2100000, guid: 81dd30f175021c1418f854b3f09f79fb, type: 2}
   height: 2.5
   thickness: 0.25
   uvMetersPerU: 0.5

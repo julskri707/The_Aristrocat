@@ -15,9 +15,14 @@ MonoBehaviour:
   styleId: brick
   displayName: Brick
   icon: {fileID: 0}
-  wallMaterial: {fileID: 2100000, guid: f145124041820df4cb6b5078ce7b59d7, type: 2}
+  sideMaterial: {fileID: 0}
+  topMaterial: {fileID: 0}
+  capMaterial: {fileID: 0}
   height: 2.5
   thickness: 0.25
-  uvMetersPerU: 0.5
-  uvMetersPerV: 2
-  previewTint: {r: 1, g: 1, b: 1, a: 1}
+  sideUvMetersPerU: 0.5
+  sideUvMetersPerV: 1
+  topUvMetersPerU: 0.5
+  topUvMetersPerV: 0.5
+  capUvMetersPerU: 0.5
+  capUvMetersPerV: 1

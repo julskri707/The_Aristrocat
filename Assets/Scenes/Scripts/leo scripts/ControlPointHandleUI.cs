@@ -134,6 +134,10 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         if (index < 0 || index >= count)
             return;
 
+        WallUndoManager undo = FindFirstObjectByType<WallUndoManager>();
+        if (undo != null)
+            undo.RecordSnapshot("Move Handle");
+
         _dragging = true;
         IsDraggingAnyHandle = true;
 

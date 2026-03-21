@@ -8,11 +8,16 @@ public static class WallStyleApplier
             return false;
 
         wall.height = Mathf.Max(0.1f, style.height);
-        wall.wallMaterial = style.wallMaterial != null ? style.wallMaterial : wall.wallMaterial;
-        wall.uvMetersPerU = Mathf.Max(0.01f, style.uvMetersPerU);
-        wall.uvMetersPerV = Mathf.Max(0.01f, style.uvMetersPerV);
 
-        // SetThickness triggers the rebuild and re-applies the material.
+        // Temporaire : tant que WallObject n'a qu'un seul material,
+        // on utilise le matériau latéral comme matériau principal.
+        wall.wallMaterial = style.sideMaterial != null ? style.sideMaterial : wall.wallMaterial;
+
+        // Temporaire : on utilise les UV latéraux pour le mur entier.
+        wall.uvMetersPerU = Mathf.Max(0.01f, style.sideUvMetersPerU);
+        wall.uvMetersPerV = Mathf.Max(0.01f, style.sideUvMetersPerV);
+
+        // SetThickness déclenche le rebuild du mesh.
         wall.SetThickness(Mathf.Max(0.01f, style.thickness));
 
         WallStyleInstance instance = wall.GetComponent<WallStyleInstance>();

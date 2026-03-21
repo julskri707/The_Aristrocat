@@ -8,6 +8,7 @@ public class WallBuildController : MonoBehaviour
     public Camera cam;
     public WallDrawInput drawInput;
     public ControlPointOverlayManager overlay;
+    public WallUndoManager undoManager;
 
     [Header("Prefabs")]
     public WallObject wallPrefab;
@@ -23,6 +24,7 @@ public class WallBuildController : MonoBehaviour
     private readonly List<WallObject> _walls = new List<WallObject>();
 
     public WallObject SelectedWall { get; private set; }
+    public IReadOnlyList<WallObject> Walls => _walls;
 
     void Awake()
     {
@@ -31,6 +33,9 @@ public class WallBuildController : MonoBehaviour
 
         if (overlay == null)
             overlay = FindFirstObjectByType<ControlPointOverlayManager>();
+
+        if (undoManager == null)
+            undoManager = FindFirstObjectByType<WallUndoManager>();
     }
 
     void OnEnable()
@@ -61,6 +66,9 @@ public class WallBuildController : MonoBehaviour
     {
         if (wallPrefab == null) return;
         if (points == null || points.Count < 2) return;
+
+        if (undoManager != null)
+            undoManager.RecordSnapshot("Create Wall");
 
         WallObject wall = Instantiate(wallPrefab);
         wall.transform.position = Vector3.zero;
@@ -160,5 +168,20 @@ public class WallBuildController : MonoBehaviour
             else
                 overlay.ClearTarget();
         }
+    }
+
+    public void RegisterExistingWall(WallObject wall)
+    {
+        if (wall == null)
+            return;
+
+        if (!_walls.Contains(wall))
+            _walls.Add(wall);
+    }
+
+    public void ClearManagedWalls()
+    {
+        _walls.Clear();
+        SelectedWall = null;
     }
 }
