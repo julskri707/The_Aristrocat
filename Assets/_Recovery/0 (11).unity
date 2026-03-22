@@ -282,14 +282,14 @@ MonoBehaviour:
   cam: {fileID: 961739752}
   drawInput: {fileID: 1972683405}
   overlay: {fileID: 1195328562}
+  undoManager: {fileID: 436511028}
   wallPrefab: {fileID: 8026581915882693225, guid: c6a832b4372fea346a4999bcd5e52029, type: 3}
-  defaultWallStyle: {fileID: 0}
+  defaultWallStyle: {fileID: 11400000, guid: cb308e9170a605049b9f92f34ce50580, type: 2}
   wallRaycastMask:
     serializedVersion: 2
     m_Bits: 4294967295
   rayDistance: 5000
   handleSelectionInput: 0
-  logDebug: 0
 --- !u!4 &436511024
 Transform:
   m_ObjectHideFlags: 0
@@ -560,22 +560,6 @@ PrefabInstance:
       propertyPath: buttonPrefab
       value: 
       objectReference: {fileID: 3204926680423033523, guid: 682b9ae22ef684b4d9a3ea8fa7af8e2d, type: 3}
-    - target: {fileID: 9056970342576363664, guid: 8edf61e9bf5a7bc4da05af3dbaa722b5, type: 3}
-      propertyPath: availableStyles.Array.size
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 9056970342576363664, guid: 8edf61e9bf5a7bc4da05af3dbaa722b5, type: 3}
-      propertyPath: availableProfiles.Array.size
-      value: 2
-      objectReference: {fileID: 0}
-    - target: {fileID: 9056970342576363664, guid: 8edf61e9bf5a7bc4da05af3dbaa722b5, type: 3}
-      propertyPath: 'availableProfiles.Array.data[0]'
-      value: 
-      objectReference: {fileID: 11400000, guid: 1d1d05b111bc340478bfcf1d04ecc04e, type: 2}
-    - target: {fileID: 9056970342576363664, guid: 8edf61e9bf5a7bc4da05af3dbaa722b5, type: 3}
-      propertyPath: 'availableProfiles.Array.data[1]'
-      value: 
-      objectReference: {fileID: 11400000, guid: e82e61b3a97563545aed1d5fddfdf11c, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects:
     - {fileID: 6774692626302218404, guid: 8edf61e9bf5a7bc4da05af3dbaa722b5, type: 3}

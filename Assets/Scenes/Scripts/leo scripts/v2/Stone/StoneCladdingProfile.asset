@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b66bcdcd0e031f84d8dfd1631b1e4a6c, type: 3}
+  m_Name: StoneCladdingProfile
+  m_EditorClassIdentifier: Assembly-CSharp::WallCladdingProfile
+  profileId: wall_profile
+  displayName: Wall Profile
+  icon: {fileID: 0}
+  mode: 0
+  fallbackWallMaterial: {fileID: 2100000, guid: 81dd30f175021c1418f854b3f09f79fb, type: 2}
+  topMaterial: {fileID: 0}
+  capMaterial: {fileID: 0}
+  general:
+    sideInset: 0.01
+    topInset: 0.01
+    capInset: 0.01
+    depthOffset: 0.01
+    collisionPadding: 0.02
+    cornerBlendDistance: 0.35
+    randomSeedOffset: 0
+  stone:
+    targetRowHeight: 0.45
+    horizontalSpacing: 0.02
+    verticalSpacing: 0.02
+    smallStoneFillChance: 0.65
+    randomYaw: 8
+    randomPitch: 2
+    randomRoll: 4
+    positionJitter: 0.05
+    scaleJitter: 0.15
+    preferSmallModulesNearCorners: 1
+    cornerSmallModuleZone: 0.5
+  stoneLargeModules:
+  - {fileID: 11400000, guid: 8146a80bdc2ae7249b7ec141a1512006, type: 2}
+  - {fileID: 11400000, guid: 047aa4e468205e440b59baf300f9985b, type: 2}
+  stoneMediumModules:
+  - {fileID: 11400000, guid: 78b1213a823979242b0725ea32ab8721, type: 2}
+  - {fileID: 11400000, guid: fe74470d78bd7f541a2a60679593ef09, type: 2}
+  stoneSmallModules:
+  - {fileID: 11400000, guid: 6b89900253d00814f9ca0105bddaf973, type: 2}
+  - {fileID: 11400000, guid: 9784612c893447c40b3aae0a694da3f0, type: 2}
+  brick:
+    brickWidth: 0.32
+    brickHeight: 0.16
+    mortarGapX: 0.01
+    mortarGapY: 0.01
+    useHalfOffsetEveryOtherRow: 1
+    rowOffsetFraction: 0.5
+    sizeJitter: 0.015
+    randomYaw: 0.5
+    positionJitter: 0.005
+    allowEdgeCutBricks: 1
+    minimumCutWidth: 0.08
+  brickFullModules: []
+  brickHalfModules: []
+  brickCornerModules: []

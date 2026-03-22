@@ -27,11 +27,11 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
     public Material wallMaterial;
 
     [Header("UV")]
-    [Tooltip("How many meters correspond to 1 UV unit on the horizontal axis.")]
-    [Min(0.01f)] public float uvMetersPerU = 0.5f;
-
-    [Tooltip("How many meters correspond to 1 UV unit on the vertical axis.")]
+    [Tooltip("How many meters correspond to 1 unit in V direction (along the wall). Smaller = more tiling.")]
     [Min(0.01f)] public float uvMetersPerV = 2.0f;
+
+    [Tooltip("How many meters correspond to 1 unit in U direction (across thickness).")]
+    [Min(0.01f)] public float uvMetersPerU = 0.5f;
 
     [Header("Corner Handling")]
     [Tooltip("Max miter length multiplier to avoid extreme spikes on sharp angles.")]
@@ -53,6 +53,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
 
     public IReadOnlyList<Vector3> Points => _points;
 
+    // =========================
+    // IControlPointProvider
+    // =========================
     public int ControlPointCount
     {
         get
@@ -97,6 +100,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         return index >= 0 && index < ControlPointCount;
     }
 
+    // =========================
+    // IControlPointPathProvider
+    // =========================
     public List<Vector3> GetPreviewPathWorld()
     {
         int count = ControlPointCount;
@@ -113,6 +119,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         return list;
     }
 
+    // ---------------------------------------------
+    // Unity lifecycle
+    // ---------------------------------------------
     private void Awake()
     {
         _mf = GetComponent<MeshFilter>();
@@ -126,6 +135,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         ApplyMaterial();
     }
 
+    // ---------------------------------------------
+    // Public API
+    // ---------------------------------------------
     public void SetPath(List<Vector3> points)
     {
         _points.Clear();
@@ -156,6 +168,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         RebuildMesh();
     }
 
+    // ---------------------------------------------
+    // Core generation
+    // ---------------------------------------------
     private void RebuildMesh()
     {
         if (_mesh == null) return;
@@ -208,6 +223,7 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             Vector3 dirPrev = GetDirPrev(i, count);
             Vector3 dirNext = GetDirNext(i, count);
 
+            // open wall endpoints: use segment normal directly
             if (!closedLoop && i == 0)
             {
                 Vector3 right = Vector3.Cross(Vector3.up, dirNext).normalized;
@@ -260,6 +276,7 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             Vector3 outside;
             Vector3 inside;
 
+            // sharp angles -> bevel fallback
             if (denom < sharpCornerThreshold)
             {
                 Vector3 right = Vector3.Cross(Vector3.up, dirNext).normalized;
@@ -283,59 +300,55 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         var uvs = new List<Vector2>(segCount * 24 + 16);
         var tris = new List<int>(segCount * 36 + 24);
 
-        float uvScaleU = Mathf.Max(0.01f, uvMetersPerU);
-        float uvScaleV = Mathf.Max(0.01f, uvMetersPerV);
-        float vHeight = height / uvScaleV;
-        float vAcross = thickness / uvScaleV;
-        float uCap = thickness / uvScaleU;
+        float uAcross = thickness / Mathf.Max(0.01f, uvMetersPerU);
 
         for (int i = 0; i < segCount; i++)
         {
             int n = (i + 1) % count;
 
-            float u0 = dist[i] / uvScaleU;
-            float u1;
+            float v0 = dist[i] / Mathf.Max(0.01f, uvMetersPerV);
+            float v1;
 
             if (closedLoop && n == 0)
-                u1 = (dist[count - 1] + Vector3.Distance(_points[count - 1], _points[0])) / uvScaleU;
+                v1 = (dist[count - 1] + Vector3.Distance(_points[count - 1], _points[0])) / Mathf.Max(0.01f, uvMetersPerV);
             else
-                u1 = dist[n] / uvScaleU;
+                v1 = dist[n] / Mathf.Max(0.01f, uvMetersPerV);
 
-            // OUTER face: U = along wall, V = height
+            // OUTER face
             AddQuad(verts, uvs, tris,
                 outB[i], outT[i], outT[n], outB[n],
-                u0, 0f, u1, vHeight);
+                0f, v0, uAcross, v1);
 
-            // INNER face: same spatial UV direction, but adapted to reversed winding
+            // INNER face
             AddQuad(verts, uvs, tris,
                 inB[n], inT[n], inT[i], inB[i],
-                u1, 0f, u0, vHeight);
+                0f, v1, uAcross, v0);
 
-            // TOP face: U = along wall, V = across thickness
+            // TOP face
             AddQuad(verts, uvs, tris,
                 outT[i], inT[i], inT[n], outT[n],
-                u0, 0f, u1, vAcross);
+                0f, v0, uAcross, v1);
 
             // BOTTOM face
             if (addBottom)
             {
                 AddQuad(verts, uvs, tris,
                     outB[n], inB[n], inB[i], outB[i],
-                    u1, 0f, u0, vAcross);
+                    0f, v1, uAcross, v0);
             }
         }
 
+        // Caps for open walls
         if (addCaps && !closedLoop && count >= 2)
         {
-            // Start cap: U = thickness, V = height
             AddQuad(verts, uvs, tris,
                 inB[0], inT[0], outT[0], outB[0],
-                0f, 0f, uCap, vHeight);
+                0f, 0f, 1f, 1f);
 
             int last = count - 1;
             AddQuad(verts, uvs, tris,
                 outB[last], outT[last], inT[last], inB[last],
-                0f, 0f, uCap, vHeight);
+                0f, 0f, 1f, 1f);
         }
 
         if (doubleSided)
@@ -369,6 +382,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         _mc.sharedMesh = _mesh;
     }
 
+    // ---------------------------------------------
+    // Helpers: orientation & directions
+    // ---------------------------------------------
     private static bool ComputeIsCCW_XZ(List<Vector3> pts, int count)
     {
         return ComputeSignedAreaXZ(pts, count) > 0f;
@@ -404,6 +420,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         return d.normalized;
     }
 
+    // ---------------------------------------------
+    // Helpers: quad building
+    // ---------------------------------------------
     private void AddQuad(
         List<Vector3> verts,
         List<Vector2> uvs,
@@ -419,9 +438,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         verts.Add(d);
 
         uvs.Add(new Vector2(u0, v0));
-        uvs.Add(new Vector2(u0, v1));
+        uvs.Add(new Vector2(u0, v0 + 1f));
+        uvs.Add(new Vector2(u1, v1 + 1f));
         uvs.Add(new Vector2(u1, v1));
-        uvs.Add(new Vector2(u1, v0));
 
         tris.Add(start + 0);
         tris.Add(start + 1);
@@ -446,12 +465,18 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         }
     }
 
+    // ---------------------------------------------
+    // Rendering
+    // ---------------------------------------------
     private void ApplyMaterial()
     {
         if (_mr != null && wallMaterial != null)
             _mr.sharedMaterial = wallMaterial;
     }
 
+    // ---------------------------------------------
+    // Debug gizmos
+    // ---------------------------------------------
     private void OnDrawGizmosSelected()
     {
         if (!drawGizmos) return;

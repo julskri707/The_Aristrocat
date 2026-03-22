@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 7920906943395881518}
   - component: {fileID: 8641482441186868276}
   - component: {fileID: 8026581915882693225}
+  - component: {fileID: 8640142375998368458}
   m_Layer: 0
   m_Name: WallPrefab
   m_TagString: Untagged
@@ -135,5 +136,26 @@ MonoBehaviour:
   uvMetersPerV: 2
   uvMetersPerU: 0.5
   miterLimit: 3
+  sharpCornerThreshold: 0.35
   logWarnings: 0
   drawGizmos: 0
+--- !u!114 &8640142375998368458
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2091674236393175727}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b39d2f4e1b738934792123f06fc34828, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WallCladdingGenerator
+  defaultProfile: {fileID: 11400000, guid: 48def6c18eabf8e4c97411122665e5bf, type: 2}
+  autoRegenerate: 1
+  generateOutside: 1
+  generateInside: 1
+  clearWhenProfileMissing: 1
+  applyFallbackWallMaterial: 1
+  rebuildCheckInterval: 0.12
+  logDebug: 0

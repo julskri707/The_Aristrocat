@@ -8,7 +8,6 @@ public class WallBuildController : MonoBehaviour
     public Camera cam;
     public WallDrawInput drawInput;
     public ControlPointOverlayManager overlay;
-    public WallUndoManager undoManager;
 
     [Header("Prefabs")]
     public WallObject wallPrefab;
@@ -21,10 +20,13 @@ public class WallBuildController : MonoBehaviour
     public float rayDistance = 5000f;
     public bool handleSelectionInput = false;
 
+    [Header("Debug")]
+    public bool logDebug = false;
+
     private readonly List<WallObject> _walls = new List<WallObject>();
 
-    public WallObject SelectedWall { get; private set; }
     public IReadOnlyList<WallObject> Walls => _walls;
+    public WallObject SelectedWall { get; private set; }
 
     void Awake()
     {
@@ -33,9 +35,6 @@ public class WallBuildController : MonoBehaviour
 
         if (overlay == null)
             overlay = FindFirstObjectByType<ControlPointOverlayManager>();
-
-        if (undoManager == null)
-            undoManager = FindFirstObjectByType<WallUndoManager>();
     }
 
     void OnEnable()
@@ -52,6 +51,8 @@ public class WallBuildController : MonoBehaviour
 
     void Update()
     {
+        CleanupNullWalls();
+
         if (!handleSelectionInput || cam == null)
             return;
 
@@ -64,11 +65,11 @@ public class WallBuildController : MonoBehaviour
 
     void HandleShapeCommittedDetailed(List<Vector3> points, WallDrawInput.DetectedShapeKind detectedKind, string detectedName)
     {
-        if (wallPrefab == null) return;
-        if (points == null || points.Count < 2) return;
+        if (wallPrefab == null)
+            return;
 
-        if (undoManager != null)
-            undoManager.RecordSnapshot("Create Wall");
+        if (points == null || points.Count < 2)
+            return;
 
         WallObject wall = Instantiate(wallPrefab);
         wall.transform.position = Vector3.zero;
@@ -90,11 +91,11 @@ public class WallBuildController : MonoBehaviour
         if (defaultWallStyle != null)
             WallStyleApplier.Apply(wall, defaultWallStyle);
 
-        _walls.Add(wall);
-        SelectedWall = wall;
+        RegisterExistingWall(wall);
+        ForceSelectWall(wall);
 
-        if (overlay != null)
-            overlay.SetTarget(editShape);
+        if (logDebug)
+            Debug.Log($"[WallBuildController] Spawned wall '{wall.name}' from detected shape '{detectedName}'.");
     }
 
     void TrySelectWallUnderMouse()
@@ -108,16 +109,8 @@ public class WallBuildController : MonoBehaviour
         if (wall == null)
             return;
 
-        SelectedWall = wall;
-
-        MonoBehaviour provider = ResolveBestProvider(wall);
-        if (overlay != null)
-        {
-            if (provider != null)
-                overlay.SetTarget(provider);
-            else
-                overlay.ClearTarget();
-        }
+        RegisterExistingWall(wall);
+        ForceSelectWall(wall);
     }
 
     MonoBehaviour ResolveBestProvider(WallObject wall)
@@ -175,13 +168,62 @@ public class WallBuildController : MonoBehaviour
         if (wall == null)
             return;
 
-        if (!_walls.Contains(wall))
-            _walls.Add(wall);
+        CleanupNullWalls();
+
+        if (_walls.Contains(wall))
+            return;
+
+        _walls.Add(wall);
+    }
+
+    public bool UnregisterWall(WallObject wall)
+    {
+        if (wall == null)
+            return false;
+
+        bool removed = _walls.Remove(wall);
+
+        if (SelectedWall == wall)
+            ForceSelectWall(null);
+
+        return removed;
     }
 
     public void ClearManagedWalls()
     {
+        CleanupNullWalls();
         _walls.Clear();
-        SelectedWall = null;
+
+        if (SelectedWall != null)
+            ForceSelectWall(null);
+    }
+
+    public void ClearManagedWalls(bool destroyWallObjects)
+    {
+        if (destroyWallObjects)
+        {
+            for (int i = _walls.Count - 1; i >= 0; i--)
+            {
+                WallObject wall = _walls[i];
+                if (wall == null)
+                    continue;
+
+                if (Application.isPlaying)
+                    Destroy(wall.gameObject);
+                else
+                    DestroyImmediate(wall.gameObject);
+            }
+        }
+
+        ClearManagedWalls();
+    }
+
+    void CleanupNullWalls()
+    {
+        for (int i = _walls.Count - 1; i >= 0; i--)
+        {
+            if (_walls[i] == null)
+                _walls.RemoveAt(i);
+        }
     }
 }

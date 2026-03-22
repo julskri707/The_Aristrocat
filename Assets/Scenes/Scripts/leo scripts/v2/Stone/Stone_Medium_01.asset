@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cf24fc2ef13d31408fb5a723a825868, type: 3}
+  m_Name: Stone_Medium_01
+  m_EditorClassIdentifier: Assembly-CSharp::WallStoneModuleDefinition
+  prefab: {fileID: 0}
+  sizeClass: 1
+  placement: 0
+  nominalWidth: 0.5
+  nominalHeight: 0.35
+  nominalDepth: 0.15
+  probability: 1
+  weight: 1
+  scaleJitter: 0.15
+  randomYaw: 8
+  randomPitch: 2
+  randomRoll: 4
+  canUseNearCorners: 1
+  preferAsGapFiller: 0
+  extraEdgeInset: 0
