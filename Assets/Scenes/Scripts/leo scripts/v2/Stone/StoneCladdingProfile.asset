@@ -23,22 +23,32 @@ MonoBehaviour:
     sideInset: 0.01
     topInset: 0.01
     capInset: 0.01
-    depthOffset: 0.01
+    depthOffset: 0
     collisionPadding: 0.02
-    cornerBlendDistance: 0.35
+    cornerBlendDistance: 0.22
     randomSeedOffset: 0
   stone:
-    targetRowHeight: 0.45
-    horizontalSpacing: 0.02
-    verticalSpacing: 0.02
-    smallStoneFillChance: 0.65
-    randomYaw: 8
-    randomPitch: 2
+    targetRowHeight: 0.24
+    rowHeightJitter: 0.06
+    horizontalSpacing: 0.01
+    verticalSpacing: 0.01
+    embedDepth: 0.09
+    surfaceProtrusion: 0.01
+    minStoneDepth: 0.08
+    maxStoneDepth: 0.11
+    smallStoneFillChance: 0.15
+    widthJitter: 0.08
+    heightJitter: 0.06
+    depthJitter: 0.04
+    positionJitter: 0.002
+    scaleJitter: 0.02
+    randomYaw: 1
+    randomPitch: 1
     randomRoll: 4
-    positionJitter: 0.05
-    scaleJitter: 0.15
     preferSmallModulesNearCorners: 1
-    cornerSmallModuleZone: 0.5
+    cornerSmallModuleZone: 0.16
+    generateTopCourse: 0
+    topCourseLift: 0.01
   stoneLargeModules:
   - {fileID: 11400000, guid: 8146a80bdc2ae7249b7ec141a1512006, type: 2}
   - {fileID: 11400000, guid: 047aa4e468205e440b59baf300f9985b, type: 2}

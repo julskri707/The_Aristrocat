@@ -12,12 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1cf24fc2ef13d31408fb5a723a825868, type: 3}
   m_Name: Stone_Small_02
   m_EditorClassIdentifier: Assembly-CSharp::WallStoneModuleDefinition
-  prefab: {fileID: 0}
+  prefab: {fileID: 4482522339756270013, guid: 70339920214a94c4d8c5868f76e925e0, type: 3}
   sizeClass: 1
   placement: 0
-  nominalWidth: 0.5
-  nominalHeight: 0.35
-  nominalDepth: 0.15
+  nominalWidth: 0.25
+  nominalHeight: 0.2
+  nominalDepth: 0.14
+  rotationOffsetEuler: {x: 0, y: 90, z: 0}
   probability: 1
   weight: 1
   scaleJitter: 0.15

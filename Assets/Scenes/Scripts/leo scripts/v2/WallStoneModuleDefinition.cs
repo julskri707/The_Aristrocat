@@ -20,6 +20,10 @@ public sealed class WallStoneModuleDefinition : ScriptableObject
     [Min(0.05f)] public float nominalHeight = 0.35f;
     [Min(0.01f)] public float nominalDepth = 0.15f;
 
+    [Header("Orientation")]
+    [Tooltip("One-time manual correction per rock prefab. Use this so the rock lies flat on the wall instead of standing upright.")]
+    public Vector3 rotationOffsetEuler = Vector3.zero;
+
     [Header("Random")]
     [Range(0f, 1f)] public float probability = 1f;
     [Min(0f)] public float weight = 1f;

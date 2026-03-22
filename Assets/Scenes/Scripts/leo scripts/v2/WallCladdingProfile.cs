@@ -19,34 +19,52 @@ public enum WallModulePlacement
 [Serializable]
 public sealed class WallCladdingGeneralSettings
 {
-    [Min(0.01f)] public float sideInset = 0.01f;
-    [Min(0.01f)] public float topInset = 0.01f;
-    [Min(0.01f)] public float capInset = 0.01f;
+    [Min(0.001f)] public float sideInset = 0.01f;
+    [Min(0.001f)] public float topInset = 0.01f;
+    [Min(0.001f)] public float capInset = 0.01f;
 
-    [Min(0.01f)] public float depthOffset = 0.01f;
-    [Min(0.01f)] public float collisionPadding = 0.02f;
+    [Min(0f)] public float depthOffset = 0f;
+    [Min(0f)] public float collisionPadding = 0.01f;
 
-    [Min(0.1f)] public float cornerBlendDistance = 0.35f;
+    [Min(0.05f)] public float cornerBlendDistance = 0.35f;
     [Min(0f)] public float randomSeedOffset = 0f;
 }
 
 [Serializable]
 public sealed class StoneCladdingSettings
 {
-    [Min(0.1f)] public float targetRowHeight = 0.45f;
-    [Min(0.1f)] public float horizontalSpacing = 0.02f;
-    [Min(0.1f)] public float verticalSpacing = 0.02f;
+    [Header("Course")]
+    [Min(0.08f)] public float targetRowHeight = 0.38f;
+    [Range(0f, 0.6f)] public float rowHeightJitter = 0.18f;
+    [Min(0f)] public float horizontalSpacing = 0.035f;
+    [Min(0f)] public float verticalSpacing = 0.03f;
 
-    [Range(0f, 1f)] public float smallStoneFillChance = 0.65f;
-    [Range(0f, 25f)] public float randomYaw = 8f;
-    [Range(0f, 25f)] public float randomPitch = 2f;
-    [Range(0f, 25f)] public float randomRoll = 4f;
+    [Header("Mortar / Embed")]
+    [Min(0.001f)] public float embedDepth = 0.08f;
+    [Min(0f)] public float surfaceProtrusion = 0.035f;
+    [Min(0.02f)] public float minStoneDepth = 0.08f;
+    [Min(0.02f)] public float maxStoneDepth = 0.16f;
 
-    [Range(0f, 1f)] public float positionJitter = 0.05f;
-    [Range(0f, 1f)] public float scaleJitter = 0.15f;
+    [Header("Variation")]
+    [Range(0f, 1f)] public float smallStoneFillChance = 0.45f;
+    [Range(0f, 1f)] public float widthJitter = 0.18f;
+    [Range(0f, 1f)] public float heightJitter = 0.12f;
+    [Range(0f, 1f)] public float depthJitter = 0.12f;
+    [Range(0f, 0.25f)] public float positionJitter = 0.025f;
+    [Range(0f, 0.25f)] public float scaleJitter = 0.08f;
 
+    [Header("Rotation")]
+    [Range(0f, 15f)] public float randomYaw = 2f;
+    [Range(0f, 15f)] public float randomPitch = 1.5f;
+    [Range(0f, 25f)] public float randomRoll = 8f;
+
+    [Header("Corners")]
     public bool preferSmallModulesNearCorners = true;
-    [Min(0.05f)] public float cornerSmallModuleZone = 0.5f;
+    [Min(0.05f)] public float cornerSmallModuleZone = 0.45f;
+
+    [Header("Top")]
+    public bool generateTopCourse = false;
+    [Range(0f, 0.25f)] public float topCourseLift = 0.02f;
 }
 
 [Serializable]
@@ -78,6 +96,7 @@ public sealed class WallCladdingProfile : ScriptableObject
     public WallCladdingMode mode = WallCladdingMode.StoneRandom;
 
     [Header("Base Materials")]
+    [Tooltip("Material du coeur du mur / mortier.")]
     public Material fallbackWallMaterial;
     public Material topMaterial;
     public Material capMaterial;
@@ -105,24 +124,34 @@ public sealed class WallCladdingProfile : ScriptableObject
         profileId = string.IsNullOrWhiteSpace(profileId) ? "wall_profile" : profileId.Trim();
         displayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName.Trim();
 
-        if (general == null) general = new WallCladdingGeneralSettings();
-        if (stone == null) stone = new StoneCladdingSettings();
-        if (brick == null) brick = new BrickCladdingSettings();
+        general ??= new WallCladdingGeneralSettings();
+        stone ??= new StoneCladdingSettings();
+        brick ??= new BrickCladdingSettings();
 
         general.sideInset = Mathf.Max(0.001f, general.sideInset);
         general.topInset = Mathf.Max(0.001f, general.topInset);
         general.capInset = Mathf.Max(0.001f, general.capInset);
-        general.depthOffset = Mathf.Max(0.001f, general.depthOffset);
+        general.depthOffset = Mathf.Max(0f, general.depthOffset);
         general.collisionPadding = Mathf.Max(0f, general.collisionPadding);
         general.cornerBlendDistance = Mathf.Max(0.05f, general.cornerBlendDistance);
+        general.randomSeedOffset = Mathf.Max(0f, general.randomSeedOffset);
 
-        stone.targetRowHeight = Mathf.Max(0.05f, stone.targetRowHeight);
+        stone.targetRowHeight = Mathf.Max(0.08f, stone.targetRowHeight);
+        stone.rowHeightJitter = Mathf.Clamp01(stone.rowHeightJitter);
         stone.horizontalSpacing = Mathf.Max(0f, stone.horizontalSpacing);
         stone.verticalSpacing = Mathf.Max(0f, stone.verticalSpacing);
-        stone.cornerSmallModuleZone = Mathf.Max(0.05f, stone.cornerSmallModuleZone);
+        stone.embedDepth = Mathf.Max(0.001f, stone.embedDepth);
+        stone.surfaceProtrusion = Mathf.Max(0f, stone.surfaceProtrusion);
+        stone.minStoneDepth = Mathf.Max(0.02f, stone.minStoneDepth);
+        stone.maxStoneDepth = Mathf.Max(stone.minStoneDepth, stone.maxStoneDepth);
         stone.smallStoneFillChance = Mathf.Clamp01(stone.smallStoneFillChance);
-        stone.positionJitter = Mathf.Clamp01(stone.positionJitter);
-        stone.scaleJitter = Mathf.Clamp01(stone.scaleJitter);
+        stone.widthJitter = Mathf.Clamp01(stone.widthJitter);
+        stone.heightJitter = Mathf.Clamp01(stone.heightJitter);
+        stone.depthJitter = Mathf.Clamp01(stone.depthJitter);
+        stone.positionJitter = Mathf.Clamp(stone.positionJitter, 0f, 0.25f);
+        stone.scaleJitter = Mathf.Clamp(stone.scaleJitter, 0f, 0.25f);
+        stone.cornerSmallModuleZone = Mathf.Max(0.05f, stone.cornerSmallModuleZone);
+        stone.topCourseLift = Mathf.Clamp(stone.topCourseLift, 0f, 0.25f);
 
         brick.brickWidth = Mathf.Max(0.05f, brick.brickWidth);
         brick.brickHeight = Mathf.Max(0.05f, brick.brickHeight);
@@ -133,15 +162,9 @@ public sealed class WallCladdingProfile : ScriptableObject
         brick.positionJitter = Mathf.Clamp(brick.positionJitter, 0f, 0.25f);
         brick.minimumCutWidth = Mathf.Max(0.02f, brick.minimumCutWidth);
 
-        EnsureLists();
-    }
-
-    private void EnsureLists()
-    {
         stoneLargeModules ??= new List<WallStoneModuleDefinition>();
         stoneMediumModules ??= new List<WallStoneModuleDefinition>();
         stoneSmallModules ??= new List<WallStoneModuleDefinition>();
-
         brickFullModules ??= new List<WallBrickModuleDefinition>();
         brickHalfModules ??= new List<WallBrickModuleDefinition>();
         brickCornerModules ??= new List<WallBrickModuleDefinition>();
