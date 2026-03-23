@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: c56cb28961cac5740900b7b64ca36e40
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 253808
+  packageName: rocks 3d scan
+  packageVersion: 1.0
+  assetPath: Assets/Scenes/Scripts/leo scripts/v2/Stone/stone_3.prefab
+  uploadId: 580804

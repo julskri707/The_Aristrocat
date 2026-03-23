@@ -1,0 +1,62 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b66bcdcd0e031f84d8dfd1631b1e4a6c, type: 3}
+  m_Name: BrickCladdingProfile
+  m_EditorClassIdentifier: Assembly-CSharp::WallCladdingProfile
+  profileId: wall_profile
+  displayName: Wall Profile
+  icon: {fileID: 0}
+  mode: 1
+  fallbackWallMaterial: {fileID: 2100000, guid: 00cc645bd2d2808438d728347dc638c0, type: 2}
+  topMaterial: {fileID: 0}
+  capMaterial: {fileID: 0}
+  general:
+    sideInset: 0.01
+    topInset: 0.01
+    capInset: 0.01
+    depthOffset: 0.01
+    collisionPadding: 0.02
+    cornerBlendDistance: 0.35
+    randomSeedOffset: 0
+  stone:
+    targetRowHeight: 0.45
+    horizontalSpacing: 0.02
+    verticalSpacing: 0.02
+    smallStoneFillChance: 0.65
+    randomYaw: 8
+    randomPitch: 2
+    randomRoll: 4
+    positionJitter: 0.05
+    scaleJitter: 0.15
+    preferSmallModulesNearCorners: 1
+    cornerSmallModuleZone: 0.5
+  stoneLargeModules: []
+  stoneMediumModules: []
+  stoneSmallModules: []
+  brick:
+    brickWidth: 0.32
+    brickHeight: 0.16
+    mortarGapX: 0.01
+    mortarGapY: 0.01
+    useHalfOffsetEveryOtherRow: 1
+    rowOffsetFraction: 0.5
+    sizeJitter: 0.015
+    randomYaw: 0.5
+    positionJitter: 0.005
+    allowEdgeCutBricks: 1
+    minimumCutWidth: 0.08
+  brickFullModules:
+  - {fileID: 11400000, guid: 1bd06cfa9d48f1448815e973ea219917, type: 2}
+  brickHalfModules:
+  - {fileID: 11400000, guid: 54c9afb360df52943bf52a3d8f71983c, type: 2}
+  brickCornerModules:
+  - {fileID: 11400000, guid: 38771847ebd0c1b4385b542264de3220, type: 2}

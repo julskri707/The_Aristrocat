@@ -13,6 +13,8 @@ GameObject:
   - component: {fileID: 7920906943395881518}
   - component: {fileID: 8641482441186868276}
   - component: {fileID: 8026581915882693225}
+  - component: {fileID: 8640142375998368458}
+  - component: {fileID: -7829102596514257101}
   m_Layer: 0
   m_Name: WallPrefab
   m_TagString: Untagged
@@ -68,7 +70,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 5e141735d3c3afe44a2d62e4b7536090, type: 2}
+  - {fileID: 2100000, guid: 81dd30f175021c1418f854b3f09f79fb, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -131,9 +133,45 @@ MonoBehaviour:
   addCaps: 1
   addBottom: 0
   doubleSided: 0
-  wallMaterial: {fileID: 2100000, guid: 5e141735d3c3afe44a2d62e4b7536090, type: 2}
+  wallMaterial: {fileID: 2100000, guid: 81dd30f175021c1418f854b3f09f79fb, type: 2}
   uvMetersPerV: 2
   uvMetersPerU: 0.5
   miterLimit: 3
+  sharpCornerThreshold: 0.35
   logWarnings: 0
   drawGizmos: 0
+--- !u!114 &8640142375998368458
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2091674236393175727}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b39d2f4e1b738934792123f06fc34828, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WallCladdingGenerator
+  defaultProfile: {fileID: 11400000, guid: 48def6c18eabf8e4c97411122665e5bf, type: 2}
+  autoRegenerate: 1
+  generateOutside: 1
+  generateInside: 0
+  applyFallbackWallMaterial: 1
+  clearWhenProfileMissing: 1
+  logDebug: 0
+--- !u!114 &-7829102596514257101
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2091674236393175727}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eb2e763fdeef5cf4baa8eec2333c6f64, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WallCladdingRuntime
+  currentProfile: {fileID: 11400000, guid: 48def6c18eabf8e4c97411122665e5bf, type: 2}
+  currentSeed: -279409563
+  generatedRoot: {fileID: 0}
+  dirty: 0

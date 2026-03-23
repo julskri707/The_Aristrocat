@@ -23,6 +23,7 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
 
     [Header("Click")]
     public bool autoCreateRaycastImage = true;
+    public bool requireCtrlForInsert = true;
 
     private RectTransform _rect;
     private Canvas _rootCanvas;
@@ -56,7 +57,6 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
 
         _rootCanvas = parentCanvas.rootCanvas;
         _canvasRect = _rootCanvas.transform as RectTransform;
-
         _uiCamera = _rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : _rootCanvas.worldCamera;
 
         _rect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -175,6 +175,13 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
         if (selectionManager == null)
             return;
 
-        selectionManager.TryInsertPointAtScreenPosition(eventData.position, providerBehaviour);
+        bool ctrlHeld = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+
+        if (!requireCtrlForInsert || ctrlHeld)
+            selectionManager.TryInsertPointAtScreenPosition(eventData.position, providerBehaviour);
+        else
+            selectionManager.TryOpenContextMenuAtScreenPosition(eventData.position, providerBehaviour);
+
+        eventData.Use();
     }
 }

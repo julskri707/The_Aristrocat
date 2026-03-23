@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: d6906952571568c4492c2afc4fc990f1
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 253808
+  packageName: rocks 3d scan
+  packageVersion: 1.0
+  assetPath: Assets/stones/textures/stone_3_mat.mat
+  uploadId: 580804

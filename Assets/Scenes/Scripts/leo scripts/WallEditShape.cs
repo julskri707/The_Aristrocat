@@ -969,12 +969,14 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         if (_closedLoop)
             return BuildHandleDrivenClosedFreePath();
 
-        if (IsMostlyStraightOpen(freeControlPoints))
+        if (freeControlPoints == null || freeControlPoints.Count < 2)
+            return null;
+
+        if (freeControlPoints.Count == 2)
             return new List<Vector3>(freeControlPoints);
 
-        List<Vector3> smoothOpen = Chaikin(freeControlPoints, openFreeSmoothIterations, false);
-        int openTargetCount = Mathf.Max(freeWallResolution, smoothOpen.Count * 6);
-        return ResampleOpenByCount(smoothOpen, openTargetCount);
+        int openTargetCount = Mathf.Max(freeWallResolution, freeControlPoints.Count * 10);
+        return BuildOpenCatmullRomThroughControls(freeControlPoints, openTargetCount);
     }
 
     List<Vector3> BuildHandleDrivenClosedFreePath()
@@ -985,15 +987,8 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         if (work.Count < 3)
             return BuildSafeClosedFallbackFromControls();
 
-        if (closedFreeSmoothIterations > 0)
-            work = Chaikin(work, closedFreeSmoothIterations, true);
-
-        work = RemoveTooShortSegmentsClosed(work, minClosedSegmentLength);
-        if (work.Count < 3)
-            return BuildSafeClosedFallbackFromControls();
-
-        int targetCount = Mathf.Max(work.Count, Mathf.Max(closedFreeWallResolution, work.Count * 3));
-        List<Vector3> denseClosed = ResampleClosedByCount(work, targetCount);
+        int targetCount = Mathf.Max(work.Count * 10, closedFreeWallResolution);
+        List<Vector3> denseClosed = BuildClosedCatmullRomThroughControls(work, targetCount);
         denseClosed = RemoveTooShortSegmentsClosed(denseClosed, minClosedSegmentLength);
 
         List<Vector3> validated = ValidateClosedCandidate(denseClosed);
@@ -1062,6 +1057,125 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         work.Add(work[0]);
         EnsureCounterClockwiseXZ(work);
         return work;
+    }
+
+    static List<Vector3> BuildOpenCatmullRomThroughControls(List<Vector3> controls, int targetCount)
+    {
+        if (controls == null || controls.Count < 2)
+            return new List<Vector3>();
+
+        if (controls.Count == 2)
+            return new List<Vector3>(controls);
+
+        targetCount = Mathf.Max(targetCount, controls.Count * 4);
+
+        float[] segLengths = new float[controls.Count - 1];
+        float totalLength = 0f;
+        for (int i = 0; i < controls.Count - 1; i++)
+        {
+            segLengths[i] = Vector3.Distance(controls[i], controls[i + 1]);
+            totalLength += segLengths[i];
+        }
+
+        if (totalLength < 0.0001f)
+            return new List<Vector3>(controls);
+
+        List<Vector3> result = new List<Vector3>(targetCount + controls.Count);
+
+        for (int i = 0; i < controls.Count - 1; i++)
+        {
+            Vector3 p1 = controls[i];
+            Vector3 p2 = controls[i + 1];
+            Vector3 p0 = i == 0 ? (p1 + (p1 - p2)) : controls[i - 1];
+            Vector3 p3 = i == controls.Count - 2 ? (p2 + (p2 - p1)) : controls[i + 2];
+
+            int steps = Mathf.Max(6, Mathf.RoundToInt((segLengths[i] / totalLength) * targetCount));
+
+            for (int s = 0; s < steps; s++)
+            {
+                float t = s / (float)steps;
+                Vector3 pt = CatmullRom(p0, p1, p2, p3, t);
+                pt.y = p1.y;
+
+                if (result.Count == 0 || Vector3.Distance(result[result.Count - 1], pt) > 0.0001f)
+                    result.Add(pt);
+            }
+
+            if (result.Count == 0 || Vector3.Distance(result[result.Count - 1], p2) > 0.0001f)
+                result.Add(p2);
+        }
+
+        return result;
+    }
+
+    static List<Vector3> BuildClosedCatmullRomThroughControls(List<Vector3> controls, int targetCount)
+    {
+        if (controls == null || controls.Count < 3)
+            return controls == null ? new List<Vector3>() : new List<Vector3>(controls);
+
+        List<Vector3> work = new List<Vector3>(controls);
+        if (work.Count > 1 && Vector3.Distance(work[0], work[work.Count - 1]) < 0.0001f)
+            work.RemoveAt(work.Count - 1);
+
+        int n = work.Count;
+        if (n < 3)
+            return new List<Vector3>(work);
+
+        targetCount = Mathf.Max(targetCount, n * 6);
+
+        float[] segLengths = new float[n];
+        float totalLength = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            int next = (i + 1) % n;
+            segLengths[i] = Vector3.Distance(work[i], work[next]);
+            totalLength += segLengths[i];
+        }
+
+        if (totalLength < 0.0001f)
+            return new List<Vector3>(work);
+
+        List<Vector3> result = new List<Vector3>(targetCount + n + 1);
+
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 p0 = work[(i - 1 + n) % n];
+            Vector3 p1 = work[i];
+            Vector3 p2 = work[(i + 1) % n];
+            Vector3 p3 = work[(i + 2) % n];
+
+            int steps = Mathf.Max(6, Mathf.RoundToInt((segLengths[i] / totalLength) * targetCount));
+
+            for (int s = 0; s < steps; s++)
+            {
+                float t = s / (float)steps;
+                Vector3 pt = CatmullRom(p0, p1, p2, p3, t);
+                pt.y = p1.y;
+
+                if (result.Count == 0 || Vector3.Distance(result[result.Count - 1], pt) > 0.0001f)
+                    result.Add(pt);
+            }
+        }
+
+        if (result.Count > 0)
+        {
+            if (Vector3.Distance(result[0], result[result.Count - 1]) > 0.0001f)
+                result.Add(result[0]);
+        }
+
+        return result;
+    }
+
+    static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+    {
+        float t2 = t * t;
+        float t3 = t2 * t;
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
+        );
     }
 
     static List<Vector3> Chaikin(List<Vector3> pts, int iterations, bool closed)
