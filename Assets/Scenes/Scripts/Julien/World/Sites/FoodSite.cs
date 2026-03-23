@@ -6,14 +6,29 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class FoodSite : MonoBehaviour
 {
+    private sealed class SeatSlot
+    {
+        public CampfireBench bench;
+        public int benchSeatIndex;
+        public Transform standTransform;
+        public Transform seatTransform;
+    }
+
     [Header("Setup")]
     [SerializeField] private Transform servicePoint;
     [SerializeField] private ResourceManager resourceManager;
-    [SerializeField, Min(1)] private int capacity = 2;
+    [SerializeField, Min(1)] private int maxSeats = 10;
+
+    [Header("Eat Exit")]
+    [SerializeField, Min(0)] private int standBeforeLeavingDelayTicks = 1;
 
     [Header("Food Logic")]
     [SerializeField, Min(1)] private int mealFoodCost = 1;
     [SerializeField] private bool requiresStoredFood = true;
+
+    [Tooltip("Muss exakt zum Namen in deinem ResourceManager passen, z. B. Essen / Food / Nahrung")]
+    [SerializeField] private string resourceKeyName = "Essen";
+
     [SerializeField, Range(0f, 100f)] private float fallbackHungerRestore = 4f;
 
     [Header("Need Restore Per Meal")]
@@ -25,15 +40,30 @@ public class FoodSite : MonoBehaviour
     [SerializeField] private bool debugLogs = false;
     [SerializeField] private bool debugWarnings = true;
 
+    private readonly List<CampfireBench> benches = new List<CampfireBench>();
+    private readonly List<SeatSlot> seatSlots = new List<SeatSlot>();
+    private readonly Dictionary<int, SeatSlot> npcSeatAssignments = new Dictionary<int, SeatSlot>();
     private readonly HashSet<int> reservedNpcIds = new HashSet<int>();
+
+    private bool layoutDirty = true;
 
     public Transform ServicePoint => servicePoint != null ? servicePoint : transform;
     public ResourceManager ResourceManager => resourceManager;
-    public int Capacity => Mathf.Max(1, capacity);
+    public int Capacity
+    {
+        get
+        {
+            EnsureSeatLayout();
+            return seatSlots.Count;
+        }
+    }
+
     public int ReservedCount => reservedNpcIds.Count;
+    public int StandBeforeLeavingDelayTicks => Mathf.Max(0, standBeforeLeavingDelayTicks);
 
     public int MealFoodCost => Mathf.Max(1, mealFoodCost);
     public bool RequiresStoredFood => requiresStoredFood;
+    public string ResourceKeyName => resourceKeyName;
     public float FallbackHungerRestore => fallbackHungerRestore;
 
     public float HungerRestorePerMeal => hungerRestorePerMeal;
@@ -42,23 +72,102 @@ public class FoodSite : MonoBehaviour
 
     private void OnEnable()
     {
-        SiteRegistry.Instance?.RegisterFoodSite(this);
+        RegisterToRegistry();
+        layoutDirty = true;
+    }
+
+    private void Start()
+    {
+        RegisterToRegistry();
+        layoutDirty = true;
+        EnsureSeatLayout();
     }
 
     private void OnDisable()
     {
         SiteRegistry.Instance?.UnregisterFoodSite(this);
+
+        benches.Clear();
+        seatSlots.Clear();
+        npcSeatAssignments.Clear();
         reservedNpcIds.Clear();
     }
 
     private void OnValidate()
     {
-        capacity = Mathf.Max(1, capacity);
+        maxSeats = Mathf.Max(1, maxSeats);
+        standBeforeLeavingDelayTicks = Mathf.Max(0, standBeforeLeavingDelayTicks);
         mealFoodCost = Mathf.Max(1, mealFoodCost);
         fallbackHungerRestore = Mathf.Clamp(fallbackHungerRestore, 0f, 100f);
         hungerRestorePerMeal = Mathf.Clamp(hungerRestorePerMeal, 0f, 100f);
         energyRestorePerMeal = Mathf.Clamp(energyRestorePerMeal, 0f, 100f);
         safetyRestorePerMeal = Mathf.Clamp(safetyRestorePerMeal, 0f, 100f);
+
+        if (string.IsNullOrWhiteSpace(resourceKeyName))
+            resourceKeyName = "Essen";
+
+        layoutDirty = true;
+    }
+
+    private void RegisterToRegistry()
+    {
+        if (SiteRegistry.Instance == null)
+        {
+            if (debugWarnings)
+                Debug.LogWarning($"[FoodSite] No SiteRegistry.Instance yet for '{name}'.", this);
+            return;
+        }
+
+        SiteRegistry.Instance.RegisterFoodSite(this);
+
+        if (debugLogs)
+            Debug.Log($"[FoodSite] Registered '{name}' to SiteRegistry.", this);
+    }
+
+    public void RegisterBench(CampfireBench bench)
+    {
+        if (bench == null)
+            return;
+
+        if (!benches.Contains(bench))
+        {
+            benches.Add(bench);
+            layoutDirty = true;
+        }
+    }
+
+    public void UnregisterBench(CampfireBench bench)
+    {
+        if (bench == null)
+            return;
+
+        if (benches.Remove(bench))
+        {
+            layoutDirty = true;
+
+            List<int> invalidNpcIds = new List<int>();
+
+            foreach (var pair in npcSeatAssignments)
+            {
+                if (pair.Value != null && pair.Value.bench == bench)
+                    invalidNpcIds.Add(pair.Key);
+            }
+
+            for (int i = 0; i < invalidNpcIds.Count; i++)
+            {
+                int npcId = invalidNpcIds[i];
+                npcSeatAssignments.Remove(npcId);
+                reservedNpcIds.Remove(npcId);
+            }
+        }
+    }
+
+    public void NotifyBenchChanged(CampfireBench bench)
+    {
+        if (bench == null)
+            return;
+
+        layoutDirty = true;
     }
 
     public bool IsReservedBy(GameObject npc)
@@ -74,19 +183,85 @@ public class FoodSite : MonoBehaviour
         if (npc == null)
             return false;
 
+        EnsureSeatLayout();
+
         if (IsReservedBy(npc))
             return true;
 
-        return reservedNpcIds.Count < Capacity;
+        return FindFreeSeat() != null;
     }
 
     public bool TryReserve(GameObject npc)
     {
-        if (!CanReserve(npc))
+        if (npc == null)
             return false;
 
-        reservedNpcIds.Add(npc.GetInstanceID());
+        EnsureSeatLayout();
+
+        int npcId = npc.GetInstanceID();
+
+        if (npcSeatAssignments.ContainsKey(npcId))
+        {
+            reservedNpcIds.Add(npcId);
+            return true;
+        }
+
+        SeatSlot freeSeat = FindFreeSeat();
+        if (freeSeat == null)
+            return false;
+
+        npcSeatAssignments[npcId] = freeSeat;
+        reservedNpcIds.Add(npcId);
+
+        if (debugLogs)
+            Debug.Log($"[FoodSite] '{name}' assigned seat '{freeSeat.seatTransform.name}' to '{npc.name}'.", this);
+
         return true;
+    }
+
+    public bool EnsureSeatAssignment(GameObject npc)
+    {
+        if (npc == null)
+            return false;
+
+        EnsureSeatLayout();
+
+        int npcId = npc.GetInstanceID();
+
+        if (npcSeatAssignments.TryGetValue(npcId, out SeatSlot slot))
+            return slot != null && slot.seatTransform != null && slot.standTransform != null;
+
+        return TryReserve(npc);
+    }
+
+    public Transform GetAssignedSeatPoint(GameObject npc)
+    {
+        if (npc == null)
+            return ServicePoint;
+
+        EnsureSeatLayout();
+
+        int npcId = npc.GetInstanceID();
+
+        if (npcSeatAssignments.TryGetValue(npcId, out SeatSlot slot) && slot != null && slot.seatTransform != null)
+            return slot.seatTransform;
+
+        return ServicePoint;
+    }
+
+    public Transform GetAssignedStandPoint(GameObject npc)
+    {
+        if (npc == null)
+            return ServicePoint;
+
+        EnsureSeatLayout();
+
+        int npcId = npc.GetInstanceID();
+
+        if (npcSeatAssignments.TryGetValue(npcId, out SeatSlot slot) && slot != null && slot.standTransform != null)
+            return slot.standTransform;
+
+        return ServicePoint;
     }
 
     public void Release(GameObject npc)
@@ -94,7 +269,10 @@ public class FoodSite : MonoBehaviour
         if (npc == null)
             return;
 
-        reservedNpcIds.Remove(npc.GetInstanceID());
+        int npcId = npc.GetInstanceID();
+
+        npcSeatAssignments.Remove(npcId);
+        reservedNpcIds.Remove(npcId);
     }
 
     public Vector3 GetUsePosition()
@@ -115,7 +293,7 @@ public class FoodSite : MonoBehaviour
             return false;
         }
 
-        return CanAffordFoodInternal(resourceManager, MealFoodCost);
+        return CanAffordFoodInternal(resourceManager, MealFoodCost, resourceKeyName);
     }
 
     public bool TryConsumeMeal(out bool consumedStoredFood)
@@ -133,16 +311,110 @@ public class FoodSite : MonoBehaviour
             return false;
         }
 
-        bool success = TryConsumeFoodInternal(resourceManager, MealFoodCost);
+        bool success = TryConsumeFoodInternal(resourceManager, MealFoodCost, resourceKeyName);
         consumedStoredFood = success;
-
-        if (debugLogs)
-            Debug.Log($"[FoodSite] {name} TryConsumeMeal => {success}", this);
-
         return success;
     }
 
-    private static bool CanAffordFoodInternal(ResourceManager manager, int amount)
+    private void EnsureSeatLayout()
+    {
+        if (!layoutDirty)
+            return;
+
+        layoutDirty = false;
+        RebuildSeatLayout();
+    }
+
+    private void RebuildSeatLayout()
+    {
+        seatSlots.Clear();
+
+        for (int i = benches.Count - 1; i >= 0; i--)
+        {
+            if (benches[i] == null)
+                benches.RemoveAt(i);
+        }
+
+        int count = 0;
+
+        for (int i = 0; i < benches.Count; i++)
+        {
+            CampfireBench bench = benches[i];
+            if (bench == null || !bench.isActiveAndEnabled)
+                continue;
+
+            for (int seatIndex = 0; seatIndex < bench.SeatCount; seatIndex++)
+            {
+                if (count >= maxSeats)
+                    break;
+
+                if (!bench.HasSeatPair(seatIndex))
+                    continue;
+
+                Transform stand = bench.GetStandTransform(seatIndex);
+                Transform seat = bench.GetSeatTransform(seatIndex);
+
+                if (stand == null || seat == null)
+                    continue;
+
+                seatSlots.Add(new SeatSlot
+                {
+                    bench = bench,
+                    benchSeatIndex = seatIndex,
+                    standTransform = stand,
+                    seatTransform = seat
+                });
+
+                count++;
+            }
+
+            if (count >= maxSeats)
+                break;
+        }
+
+        List<int> invalidNpcIds = new List<int>();
+
+        foreach (var pair in npcSeatAssignments)
+        {
+            if (pair.Value == null || pair.Value.seatTransform == null || pair.Value.standTransform == null || !seatSlots.Contains(pair.Value))
+                invalidNpcIds.Add(pair.Key);
+        }
+
+        for (int i = 0; i < invalidNpcIds.Count; i++)
+        {
+            int npcId = invalidNpcIds[i];
+            npcSeatAssignments.Remove(npcId);
+            reservedNpcIds.Remove(npcId);
+        }
+    }
+
+    private SeatSlot FindFreeSeat()
+    {
+        for (int i = 0; i < seatSlots.Count; i++)
+        {
+            SeatSlot slot = seatSlots[i];
+            if (slot == null || slot.seatTransform == null || slot.standTransform == null)
+                continue;
+
+            bool used = false;
+
+            foreach (var pair in npcSeatAssignments)
+            {
+                if (pair.Value == slot)
+                {
+                    used = true;
+                    break;
+                }
+            }
+
+            if (!used)
+                return slot;
+        }
+
+        return null;
+    }
+
+    private static bool CanAffordFoodInternal(ResourceManager manager, int amount, string resourceKeyName)
     {
         if (manager == null)
             return false;
@@ -160,7 +432,7 @@ public class FoodSite : MonoBehaviour
             if (parameters.Length != 2)
                 continue;
 
-            object[] args = BuildFoodArguments(parameters[0].ParameterType, parameters[1].ParameterType, amount);
+            object[] args = BuildFoodArguments(parameters[0].ParameterType, parameters[1].ParameterType, amount, resourceKeyName);
             if (args == null)
                 continue;
 
@@ -178,7 +450,7 @@ public class FoodSite : MonoBehaviour
         return false;
     }
 
-    private static bool TryConsumeFoodInternal(ResourceManager manager, int amount)
+    private static bool TryConsumeFoodInternal(ResourceManager manager, int amount, string resourceKeyName)
     {
         if (manager == null)
             return false;
@@ -196,7 +468,7 @@ public class FoodSite : MonoBehaviour
             if (parameters.Length != 2)
                 continue;
 
-            object[] args = BuildFoodArguments(parameters[0].ParameterType, parameters[1].ParameterType, amount);
+            object[] args = BuildFoodArguments(parameters[0].ParameterType, parameters[1].ParameterType, amount, resourceKeyName);
             if (args == null)
                 continue;
 
@@ -214,19 +486,19 @@ public class FoodSite : MonoBehaviour
         return false;
     }
 
-    private static object[] BuildFoodArguments(Type resourceParamType, Type amountParamType, int amount)
+    private static object[] BuildFoodArguments(Type resourceParamType, Type amountParamType, int amount, string resourceKeyName)
     {
         object resourceArg;
 
         if (resourceParamType == typeof(string))
         {
-            resourceArg = "Essen";
+            resourceArg = resourceKeyName;
         }
         else if (resourceParamType.IsEnum)
         {
             try
             {
-                resourceArg = Enum.Parse(resourceParamType, "Essen");
+                resourceArg = Enum.Parse(resourceParamType, resourceKeyName);
             }
             catch
             {
