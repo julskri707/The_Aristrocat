@@ -6,6 +6,16 @@ public class NPCWorkAction : NPCAction
     public override int MinDurationTicks => 8;
     public override float ContinueBonus => 16f;
 
+    private NPCActionAnimationBridge bridge;
+
+    private NPCActionAnimationBridge GetBridge(NPCDecisionBrain brain)
+    {
+        if (bridge == null && brain != null)
+            bridge = brain.GetComponent<NPCActionAnimationBridge>();
+
+        return bridge;
+    }
+
     public override bool CanRun(NPCDecisionBrain brain)
     {
         return base.CanRun(brain)
@@ -39,16 +49,27 @@ public class NPCWorkAction : NPCAction
 
     public override void OnEnter(NPCDecisionBrain brain)
     {
+        GetBridge(brain)?.ClearPose();
         brain.SetCurrentTarget(brain.WorkPoint);
     }
 
     public override void OnTick(NPCDecisionBrain brain, int tickIndex, float timeOfDay)
     {
         if (!brain.IsAtCurrentTarget())
+        {
+            GetBridge(brain)?.EndPose(ActionType);
             return;
+        }
+
+        GetBridge(brain)?.BeginPose(ActionType, brain.WorkPoint);
 
         brain.Needs.ModifyNeed(NPCNeedType.Energy, -0.6f);
         brain.Needs.ModifyNeed(NPCNeedType.Social, -0.1f);
         brain.Needs.ModifyNeed(NPCNeedType.Hunger, -0.25f);
+    }
+
+    public override void OnExit(NPCDecisionBrain brain)
+    {
+        GetBridge(brain)?.EndPose(ActionType);
     }
 }

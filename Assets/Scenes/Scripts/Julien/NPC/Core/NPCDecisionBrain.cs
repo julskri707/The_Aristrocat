@@ -10,6 +10,7 @@ public class NPCDecisionBrain : MonoBehaviour
     [SerializeField] private NPCTimeSystem timeSystem;
     [SerializeField] private NPCEventContext eventContext;
     [SerializeField] private WorkerAssignment workerAssignment;
+    [SerializeField] private NPCNavMeshMovementController navMeshMovement;
 
     [Header("Auto Site Assignment")]
     [SerializeField] private bool autoAssignNearbySites = true;
@@ -61,6 +62,7 @@ public class NPCDecisionBrain : MonoBehaviour
     public NPCTimeSystem TimeSystem => timeSystem;
     public NPCEventContext EventContext => eventContext;
     public WorkerAssignment WorkerAssignment => workerAssignment;
+    public NPCNavMeshMovementController NavMeshMovement => navMeshMovement;
 
     public Transform CurrentTarget => currentTarget;
     public Transform BedPoint => bedPoint;
@@ -82,17 +84,20 @@ public class NPCDecisionBrain : MonoBehaviour
         if (timeSystem == null) timeSystem = NPCTimeSystem.Instance;
         if (eventContext == null) eventContext = GetComponent<NPCEventContext>();
         if (workerAssignment == null) workerAssignment = GetComponent<WorkerAssignment>();
+        if (navMeshMovement == null) navMeshMovement = GetComponent<NPCNavMeshMovementController>();
 
         if (needs == null && debugWarnings)
             Debug.LogWarning($"[NPCDecisionBrain] Missing NPCNeeds on {name}.", this);
 
         BuildActions();
     }
+
     private void Start()
     {
         ForceRefreshSites();
         UpdateWorkTargetFromAssignment();
     }
+
     private void OnEnable()
     {
         if (timeSystem == null)
@@ -102,9 +107,6 @@ public class NPCDecisionBrain : MonoBehaviour
             timeSystem.RegisterBrain(this);
         else if (debugWarnings)
             Debug.LogWarning($"[NPCDecisionBrain] Missing NPCTimeSystem on {name}.", this);
-
-        ForceRefreshSites();
-        UpdateWorkTargetFromAssignment();
     }
 
     private void OnDisable()
@@ -153,8 +155,6 @@ public class NPCDecisionBrain : MonoBehaviour
         UpdateWorkTargetFromAssignment();
         needs.TickNeeds(dangerActive, coldActive);
 
-        // Harte Schlaf-Sperre: nachts nach dem Einschlafen mindestens 8h schlafen,
-        // auﬂer bei echter Panic / Sicherheits-Notfall.
         if (currentActionType == NPCActionType.Sleep && IsNightSleepLocked(tickIndex) && !IsEmergencyState())
         {
             currentAction?.OnTick(this, tickIndex, timeOfDay);
@@ -188,6 +188,9 @@ public class NPCDecisionBrain : MonoBehaviour
     public void ForceRefreshSites()
     {
         if (!autoAssignNearbySites)
+            return;
+
+        if (SiteRegistry.Instance == null)
             return;
 
         RefreshPreferredSites();
@@ -413,6 +416,9 @@ public class NPCDecisionBrain : MonoBehaviour
     {
         if (target == null)
             return false;
+
+        if (navMeshMovement != null)
+            return navMeshMovement.ReachedTarget(target);
 
         Vector3 a = transform.position;
         Vector3 b = target.position;

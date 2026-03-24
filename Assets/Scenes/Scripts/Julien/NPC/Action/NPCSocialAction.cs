@@ -9,6 +9,16 @@ public class NPCSocialAction : NPCAction
     public override int MinDurationTicks => 2;
     public override float ContinueBonus => 24f;
 
+    private NPCActionAnimationBridge bridge;
+
+    private NPCActionAnimationBridge GetBridge(NPCDecisionBrain brain)
+    {
+        if (bridge == null && brain != null)
+            bridge = brain.GetComponent<NPCActionAnimationBridge>();
+
+        return bridge;
+    }
+
     public override bool CanRun(NPCDecisionBrain brain)
     {
         return base.CanRun(brain)
@@ -51,6 +61,7 @@ public class NPCSocialAction : NPCAction
 
     public override void OnEnter(NPCDecisionBrain brain)
     {
+        GetBridge(brain)?.ClearPose();
         brain.SetCurrentTarget(brain.SocialPoint);
     }
 
@@ -61,7 +72,12 @@ public class NPCSocialAction : NPCAction
             return;
 
         if (!brain.IsAtCurrentTarget())
+        {
+            GetBridge(brain)?.EndPose(ActionType);
             return;
+        }
+
+        GetBridge(brain)?.BeginPose(ActionType, brain.SocialPoint);
 
         if (brain.Needs.social >= SocialStopThreshold)
             return;
@@ -71,5 +87,10 @@ public class NPCSocialAction : NPCAction
 
         if (brain.Needs.social > 100f)
             brain.Needs.social = 100f;
+    }
+
+    public override void OnExit(NPCDecisionBrain brain)
+    {
+        GetBridge(brain)?.EndPose(ActionType);
     }
 }
