@@ -16,39 +16,58 @@ MonoBehaviour:
   displayName: Wall Profile
   icon: {fileID: 0}
   mode: 0
-  fallbackWallMaterial: {fileID: 2100000, guid: 81dd30f175021c1418f854b3f09f79fb, type: 2}
-  topMaterial: {fileID: 0}
-  capMaterial: {fileID: 0}
+  fallbackWallMaterial: {fileID: 2100000, guid: 72272ace27cf7ff49a9cdf87652e426b, type: 2}
+  stoneMaterial: {fileID: 2100000, guid: 0ed69348c5f6cb84ab989f1175fb532c, type: 2}
   general:
     sideInset: 0.01
-    topInset: 0.01
-    capInset: 0.01
     depthOffset: 0
-    collisionPadding: 0.02
-    cornerBlendDistance: 0.22
     randomSeedOffset: 0
   stone:
-    targetRowHeight: 0.24
-    rowHeightJitter: 0.06
-    horizontalSpacing: 0.01
-    verticalSpacing: 0.01
-    embedDepth: 0.09
-    surfaceProtrusion: 0.01
-    minStoneDepth: 0.08
-    maxStoneDepth: 0.11
-    smallStoneFillChance: 0.15
+    targetRowHeight: 0.22
+    rowHeightJitter: 0.08
+    horizontalSpacing: 0.008
+    verticalSpacing: 0.008
+    staggerFraction: 0.3
+    minStoneWidth: 0.12
+    maxStoneWidth: 0.8
+    minStoneHeight: 0.1
+    maxStoneHeight: 0.36
+    minWidthVsHeight: 1.1
+    maxWidthVsHeight: 2.2
+    nearCornerMaxWidthVsHeight: 1.45
+    embedDepth: 0.04
+    surfaceProtrusion: 0.035
+    minStoneDepth: 0.09
+    maxStoneDepth: 0.13
     widthJitter: 0.08
-    heightJitter: 0.06
-    depthJitter: 0.04
-    positionJitter: 0.002
+    heightJitter: 0.04
+    depthJitter: 0.03
     scaleJitter: 0.02
+    minWidthScale: 0.75
+    maxWidthScale: 1.4
+    minHeightScale: 0.85
+    maxHeightScale: 1.1
+    minDepthScale: 0.9
+    maxDepthScale: 1.08
+    maxScaleAspectRatio: 1.35
+    positionJitter: 0.002
     randomYaw: 1
     randomPitch: 1
     randomRoll: 4
+    smallStoneFillChance: 0.18
     preferSmallModulesNearCorners: 1
-    cornerSmallModuleZone: 0.16
-    generateTopCourse: 0
-    topCourseLift: 0.01
+    cornerSmallModuleZone: 0.18
+    minRowUsableWidth: 0.12
+    endGapTolerance: 0.04
+    rejectSliverGapBelow: 0.06
+    facePlaneJitter: 0.015
+    uvMetersPerUnit: 0.5
+    enablePerStoneColorVariation: 1
+    hueJitter: 0.015
+    saturationJitter: 0.08
+    valueJitter: 0.12
+    uvOffsetJitter: 0.35
+    baseTint: {r: 1, g: 1, b: 1, a: 1}
   stoneLargeModules:
   - {fileID: 11400000, guid: 8146a80bdc2ae7249b7ec141a1512006, type: 2}
   - {fileID: 11400000, guid: 047aa4e468205e440b59baf300f9985b, type: 2}
@@ -60,16 +79,3 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 9784612c893447c40b3aae0a694da3f0, type: 2}
   brick:
     brickWidth: 0.32
-    brickHeight: 0.16
-    mortarGapX: 0.01
-    mortarGapY: 0.01
-    useHalfOffsetEveryOtherRow: 1
-    rowOffsetFraction: 0.5
-    sizeJitter: 0.015
-    randomYaw: 0.5
-    positionJitter: 0.005
-    allowEdgeCutBricks: 1
-    minimumCutWidth: 0.08
-  brickFullModules: []
-  brickHalfModules: []
-  brickCornerModules: []
