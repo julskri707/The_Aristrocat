@@ -1,0 +1,6 @@
+This package contains the precomputed sky model and the standard sky model from a previous version (4.1.2) embedded in the same system.
+While the new precomputed sky system does not arrive, you should use the version (v4.2.1). If you do not plan to use the precomputed sky model,
+then you can delete the package from this folder to remove it from your project.
+
+Note: Do not unpack this package here, since the naming of scripts and other assets is the same as the current system and this will throw a lot of errors. The best way to
+use the precomputed sky model of this pack is to copy that package out of Unity and import it into another project separately.
