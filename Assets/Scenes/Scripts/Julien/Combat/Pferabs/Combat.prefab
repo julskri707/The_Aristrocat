@@ -1,0 +1,274 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &746717171269641556
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3793276575717549171}
+  - component: {fileID: 4773376167280304579}
+  - component: {fileID: 8780562473959847864}
+  - component: {fileID: 5011694558540790830}
+  - component: {fileID: 8320705988754903651}
+  - component: {fileID: 3026075308503608296}
+  - component: {fileID: 7602910408029688162}
+  - component: {fileID: 3323767919235347464}
+  m_Layer: 0
+  m_Name: Combat
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3793276575717549171
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 746717171269641556}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4773376167280304579
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 746717171269641556}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7144cdbb4d6a1854e88e4fe51490088f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DamageableHealth
+  team: 0
+  maxHealth: 100
+  currentHealth: 100
+  resetToMaxHealthOnAwake: 1
+  canBeHealed: 1
+  invincible: 0
+  allowFriendlyFire: 0
+  onDamaged:
+    m_PersistentCalls:
+      m_Calls: []
+  onHealed:
+    m_PersistentCalls:
+      m_Calls: []
+  onDeath:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &8780562473959847864
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 746717171269641556}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac4897a76dcd2c74c861d97cb0d715d8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SimpleDeathBehaviour
+  health: {fileID: 0}
+  behavioursToDisable: []
+  gameObjectsToDisable: []
+  collidersToDisable: []
+  disableAllChildCollidersIfListEmpty: 1
+  rigidbodiesToDisable: []
+  makeRigidbodiesKinematic: 1
+  disableRigidbodyCollisions: 1
+  destroyRootAfterDelay: 0
+  destroyDelay: 5
+--- !u!114 &5011694558540790830
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 746717171269641556}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ef3ac60b013d714abf547de07582119, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerStamina
+  ownerHealth: {fileID: 0}
+  maxStamina: 100
+  currentStamina: 100
+  resetToMaxOnAwake: 1
+  staminaRegenPerSecond: 18
+  regenDelayAfterSpend: 1
+  onStaminaChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  onStaminaEmptied:
+    m_PersistentCalls:
+      m_Calls: []
+  onStaminaFull:
+    m_PersistentCalls:
+      m_Calls: []
+  debugLogs: 0
+--- !u!114 &8320705988754903651
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 746717171269641556}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 427ffae98dca2bc4c8ab10af880fba62, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerSwordCombat
+  animator: {fileID: 0}
+  ownerHealth: {fileID: 0}
+  swordHitbox: {fileID: 0}
+  playerStamina: {fileID: 0}
+  useBuiltInInput: 1
+  mouseButton: 0
+  damagePerHit: 25
+  attackCooldown: 0.55
+  animatorTriggerName: SwordAttack
+  enableCriticalHits: 1
+  criticalChance: 0.15
+  criticalMultiplier: 2
+  requireStamina: 1
+  staminaCostPerAttack: 12
+  hitScanInterval: 0.02
+  queryTriggerInteraction: 2
+  hitDamageableRootWithoutHitbox: 1
+  overlapBufferSize: 32
+  useAnimationEvents: 1
+  fallbackWindup: 0.1
+  fallbackHitDuration: 0.12
+  fallbackTotalAttackDuration: 0.45
+  debugLogs: 0
+--- !u!114 &3026075308503608296
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 746717171269641556}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 18282918619f2724588cdae6da266526, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerBowCombat
+  animator: {fileID: 0}
+  ownerHealth: {fileID: 0}
+  aimCamera: {fileID: 0}
+  arrowSpawnPoint: {fileID: 0}
+  aimPivot: {fileID: 0}
+  arrowProjectilePrefab: {fileID: 0}
+  playerStamina: {fileID: 0}
+  useBuiltInInput: 1
+  aimMouseButton: 1
+  fireMouseButton: 0
+  arrowDamage: 20
+  arrowSpeed: 45
+  shotCooldown: 0.45
+  drawTimeBeforeRelease: 0.1
+  requireAimingToShoot: 1
+  enableCriticalHits: 1
+  criticalChance: 0.2
+  criticalMultiplier: 2
+  requireStamina: 1
+  staminaCostPerShot: 15
+  releaseShotByAnimationEvent: 0
+  animationEventReleaseTimeout: 0.75
+  fallbackToTimedReleaseIfEventMissing: 1
+  aimMaxDistance: 250
+  rotateAimPivot: 1
+  aimRotationSpeed: 20
+  drawSpawnPointGizmo: 1
+  spawnPointGizmoLength: 1.25
+  driveAnimator: 1
+  aimBoolName: IsAiming
+  fireTriggerName: BowFire
+  debugDrawAimRay: 0
+  debugLogs: 0
+--- !u!114 &7602910408029688162
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 746717171269641556}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f0c7cfc3175138e4ab04e6416141ea4a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerCombatWeaponSwitcher
+  swordCombat: {fileID: 0}
+  bowCombat: {fileID: 0}
+  animator: {fileID: 0}
+  startMode: 0
+  useBuiltInInput: 1
+  swordKey: 49
+  bowKey: 50
+  swordVisuals: []
+  bowVisuals: []
+  driveAnimator: 1
+  weaponModeIntName: WeaponMode
+  useSwitchTrigger: 0
+  switchTriggerName: SwitchWeapon
+  debugLogs: 0
+--- !u!114 &3323767919235347464
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 746717171269641556}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4819cc24fb0e14046a20055f238029c9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerDefense
+  ownerHealth: {fileID: 0}
+  characterController: {fileID: 0}
+  animator: {fileID: 0}
+  orientationSource: {fileID: 0}
+  weaponSwitcher: {fileID: 0}
+  swordCombat: {fileID: 0}
+  bowCombat: {fileID: 0}
+  playerStamina: {fileID: 0}
+  useBuiltInInput: 1
+  blockKey: 113
+  dodgeKey: 304
+  horizontalAxis: Horizontal
+  verticalAxis: Vertical
+  canBlock: 1
+  blockOnlyInSwordMode: 1
+  directionalBlock: 1
+  blockAngle: 120
+  blockDamageMultiplier: 0
+  behavioursToDisableWhileBlocking: []
+  requireStaminaForBlock: 1
+  blockStaminaDrainPerSecond: 12
+  breakBlockWhenStaminaEmpty: 1
+  canDodge: 1
+  dodgeCooldown: 0.8
+  dodgeDuration: 0.22
+  dodgeDistance: 3.5
+  dodgeInvulnerabilityDuration: 0.18
+  useMovementInputForDodge: 1
+  useForwardFallbackIfNoInput: 1
+  behavioursToDisableWhileDodging: []
+  requireStaminaForDodge: 1
+  dodgeStaminaCost: 20
+  driveAnimator: 1
+  blockBoolName: IsBlocking
+  dodgeTriggerName: Dodge
+  debugLogs: 0
+  drawGizmos: 1
+  gizmoLength: 1.75
