@@ -4,6 +4,7 @@ using UnityEngine;
 
 [DisallowMultipleComponent]
 [RequireComponent(typeof(WallObject))]
+[RequireComponent(typeof(WallCladdingRuntime))]
 public sealed class WallCladdingGenerator : MonoBehaviour
 {
     [Header("Profile")]
@@ -19,32 +20,57 @@ public sealed class WallCladdingGenerator : MonoBehaviour
     [SerializeField] private bool clearWhenProfileMissing = true;
 
     [Header("Debug")]
-    [SerializeField] private bool logDebug;
+    [SerializeField] private bool logDebug = false;
 
-    private WallObject _wall;
-    private WallCladdingRuntime _runtime;
-    private int _lastGeometryHash;
+    private WallObject wall;
+    private WallCladdingRuntime runtime;
 
-    private readonly Dictionary<WallStoneModuleDefinition, int> _usageCounts = new Dictionary<WallStoneModuleDefinition, int>();
-    private WallStoneModuleDefinition _lastUsed;
-    private WallStoneModuleDefinition _secondLastUsed;
+    private readonly List<WallStoneModuleDefinition> allModules = new List<WallStoneModuleDefinition>(16);
+    private readonly Dictionary<WallStoneModuleDefinition, int> usageCounts = new Dictionary<WallStoneModuleDefinition, int>();
+    private MaterialPropertyBlock propertyBlock;
 
-    private const float MinRowHeight = 0.10f;
-    private const float MinStoneWidth = 0.14f;
+    private WallStoneModuleDefinition lastUsed;
+    private WallStoneModuleDefinition secondLastUsed;
+
+    private struct PathSample
+    {
+        public Vector3 a;
+        public Vector3 b;
+        public Vector3 tangent;
+        public float length;
+        public float startDistance;
+        public float endDistance;
+    }
+
+    private struct WallFrame
+    {
+        public Vector3 centerline;
+        public Vector3 tangent;
+        public Vector3 faceNormal;
+    }
 
     private struct StonePlacement
     {
         public WallStoneModuleDefinition module;
-        public float centerX;
+        public float centerDistance;
+        public float centerY;
         public float width;
         public float height;
         public float depth;
+        public float protrusion;
+        public float embed;
     }
 
-    private void Awake() => CacheRefs();
+    private void Awake()
+    {
+        CacheRefs();
+        if (propertyBlock == null)
+            propertyBlock = new MaterialPropertyBlock();
+    }
 
     private void OnEnable()
     {
+        CacheRefs();
         if (autoRegenerate)
             ForceRebuild();
     }
@@ -52,16 +78,12 @@ public sealed class WallCladdingGenerator : MonoBehaviour
 #if UNITY_EDITOR
     private void OnValidate()
     {
-        if (!Application.isPlaying && autoRegenerate)
-            UnityEditor.EditorApplication.delayCall += DelayedEditorRebuild;
-    }
-
-    private void DelayedEditorRebuild()
-    {
-        if (this == null || !autoRegenerate)
+        if (!Application.isPlaying)
             return;
 
-        ForceRebuild();
+        CacheRefs();
+        if (autoRegenerate)
+            runtime?.MarkDirty();
     }
 #endif
 
@@ -71,381 +93,612 @@ public sealed class WallCladdingGenerator : MonoBehaviour
             return;
 
         CacheRefs();
-        if (_wall == null || _runtime == null)
+        if (wall == null || runtime == null)
             return;
 
-        int hash = ComputeGeometryHash();
-        if (_runtime.IsDirty || hash != _lastGeometryHash)
+        WallCladdingProfile profile = runtime.CurrentProfile != null ? runtime.CurrentProfile : defaultProfile;
+        if (profile == null)
+        {
+            if (clearWhenProfileMissing)
+                ClearGenerated();
+            return;
+        }
+
+        int geometryHash = ComputeGeometryHash();
+        if (runtime.IsDirty || runtime.LastGeometryHash != geometryHash)
+        {
+            if (logDebug)
+                Debug.Log($"[WallCladdingGenerator] LateUpdate rebuild on {name} (dirty={runtime.IsDirty}, last={runtime.LastGeometryHash}, new={geometryHash})", this);
+
             ForceRebuild();
-    }
-
-    public void SetProfile(WallCladdingProfile profile, int seed = 0)
-    {
-        CacheRefs();
-        if (_runtime == null)
-            return;
-
-        if (seed == 0)
-            seed = ComputeStableSeed(profile);
-
-        _runtime.SetProfile(profile, seed);
-        ForceRebuild();
+        }
     }
 
     public void ForceRebuild()
     {
         CacheRefs();
-        EnsureRuntimeProfile();
-
-        if (_wall == null || _runtime == null)
+        if (wall == null || runtime == null)
             return;
 
-        WallCladdingProfile profile = _runtime.CurrentProfile != null ? _runtime.CurrentProfile : defaultProfile;
-
-        _runtime.ClearSpawnedImmediate();
-        ResetUsageTracking();
-
+        WallCladdingProfile profile = runtime.CurrentProfile != null ? runtime.CurrentProfile : defaultProfile;
         if (profile == null)
         {
+            if (logDebug)
+                Debug.LogWarning("[WallCladdingGenerator] No profile assigned.", this);
+
             if (clearWhenProfileMissing)
-                _runtime.MarkClean();
+                ClearGenerated();
+
             return;
         }
 
+        runtime.SetProfile(profile, runtime.CurrentSeed != 0 ? runtime.CurrentSeed : ComputeStableSeed(profile));
         ApplyFallbackMaterial(profile);
 
         List<Vector3> path = GetWallPath();
         if (path == null || path.Count < 2)
         {
-            _runtime.MarkClean();
-            _lastGeometryHash = ComputeGeometryHash();
+            if (logDebug)
+                Debug.LogWarning("[WallCladdingGenerator] Wall path is null or too short.", this);
+
+            ClearGenerated();
             return;
         }
 
-        if (profile.UsesStoneMode)
+        List<PathSample> samples = BuildPathSamples(path);
+        if (samples.Count == 0)
         {
-            Transform root = _runtime.GetOrCreateGeneratedRoot();
-            System.Random rng = new System.Random(_runtime.CurrentSeed);
+            if (logDebug)
+                Debug.LogWarning("[WallCladdingGenerator] No valid path samples.", this);
 
-            if (generateOutside)
-                GenerateStoneFace(profile, path, root, rng, +1f);
-
-            if (generateInside)
-                GenerateStoneFace(profile, path, root, rng, -1f);
+            ClearGenerated();
+            return;
         }
 
-        _runtime.MarkClean();
-        _lastGeometryHash = ComputeGeometryHash();
+        GatherModules(profile);
+        if (allModules.Count == 0)
+        {
+            if (logDebug)
+                Debug.LogWarning("[WallCladdingGenerator] No stone modules found in profile.", this);
+
+            ClearGenerated();
+            return;
+        }
+
+        ResetUsage();
+        runtime.ClearRoot(true);
+        runtime.ClearRoot(false);
+
+        System.Random rng = new System.Random(runtime.CurrentSeed);
+
+        if (generateOutside)
+            GenerateStoneSide(profile, samples, true, +1f, rng);
+
+        if (generateInside)
+            GenerateStoneSide(profile, samples, false, -1f, rng);
+
+        runtime.LastGeometryHash = ComputeGeometryHash();
+        runtime.MarkClean();
+
+        if (logDebug)
+            Debug.Log($"[WallCladdingGenerator] Rebuild OK on {name}", this);
+    }
+
+    public void MarkDirty()
+    {
+        CacheRefs();
+        runtime?.MarkDirty();
     }
 
     private void CacheRefs()
     {
-        if (_wall == null)
-            _wall = GetComponent<WallObject>();
+        if (wall == null)
+            wall = GetComponent<WallObject>();
 
-        if (_runtime == null)
-            _runtime = GetComponent<WallCladdingRuntime>();
+        if (runtime == null)
+            runtime = GetComponent<WallCladdingRuntime>();
 
-        if (_runtime == null)
-            _runtime = gameObject.AddComponent<WallCladdingRuntime>();
+        if (propertyBlock == null)
+            propertyBlock = new MaterialPropertyBlock();
     }
 
-    private void EnsureRuntimeProfile()
+    private void ClearGenerated()
     {
-        if (_runtime == null)
+        if (runtime == null)
             return;
 
-        if (_runtime.CurrentProfile == null && defaultProfile != null)
-            _runtime.SetProfile(defaultProfile, ComputeStableSeed(defaultProfile));
+        runtime.ClearRoot(true);
+        runtime.ClearRoot(false);
+        runtime.MarkClean();
     }
 
     private void ApplyFallbackMaterial(WallCladdingProfile profile)
     {
-        if (!applyFallbackWallMaterial || profile == null || profile.fallbackWallMaterial == null || _wall == null)
+        if (!applyFallbackWallMaterial || profile == null || profile.fallbackWallMaterial == null || wall == null)
             return;
 
-        MeshRenderer mr = _wall.GetComponent<MeshRenderer>();
-        if (mr != null && mr.sharedMaterial != profile.fallbackWallMaterial)
-            mr.sharedMaterial = profile.fallbackWallMaterial;
+        wall.wallMaterial = profile.fallbackWallMaterial;
 
-        _wall.wallMaterial = profile.fallbackWallMaterial;
+        MeshRenderer mr = wall.GetComponent<MeshRenderer>();
+        if (mr != null)
+            mr.sharedMaterial = profile.fallbackWallMaterial;
     }
 
     private List<Vector3> GetWallPath()
     {
-        List<Vector3> preview = _wall.GetPreviewPathWorld();
+        List<Vector3> preview = wall.GetPreviewPathWorld();
         if (preview != null && preview.Count >= 2)
             return preview;
 
-        IReadOnlyList<Vector3> pts = _wall.Points;
+        IReadOnlyList<Vector3> pts = wall.Points;
         if (pts == null || pts.Count < 2)
             return null;
 
         return new List<Vector3>(pts);
     }
 
-    private void GenerateStoneFace(WallCladdingProfile profile, List<Vector3> path, Transform root, System.Random rng, float sideSign)
+    private List<PathSample> BuildPathSamples(List<Vector3> path)
     {
-        List<WallStoneModuleDefinition> modules = GatherStoneModules(profile);
-        if (modules.Count == 0)
+        List<PathSample> result = new List<PathSample>(path.Count);
+        if (path == null || path.Count < 2)
+            return result;
+
+        List<Vector3> work = new List<Vector3>(path);
+        if (work.Count > 2 && Vector3.Distance(work[0], work[work.Count - 1]) < 0.0001f)
+            work.RemoveAt(work.Count - 1);
+
+        float distance = 0f;
+
+        for (int i = 0; i < work.Count - 1; i++)
+        {
+            Vector3 a = work[i];
+            Vector3 b = work[i + 1];
+
+            Vector3 tangent = b - a;
+            tangent.y = 0f;
+            float len = tangent.magnitude;
+
+            if (len < 0.001f)
+                continue;
+
+            tangent /= len;
+
+            result.Add(new PathSample
+            {
+                a = a,
+                b = b,
+                tangent = tangent,
+                length = len,
+                startDistance = distance,
+                endDistance = distance + len,
+            });
+
+            distance += len;
+        }
+
+        return result;
+    }
+
+    private void GatherModules(WallCladdingProfile profile)
+    {
+        allModules.Clear();
+        AddUnique(allModules, profile.stoneLargeModules);
+        AddUnique(allModules, profile.stoneMediumModules);
+        AddUnique(allModules, profile.stoneSmallModules);
+    }
+
+    private static void AddUnique(List<WallStoneModuleDefinition> target, List<WallStoneModuleDefinition> source)
+    {
+        if (source == null)
             return;
 
-        float wallHeight = Mathf.Max(0.1f, _wall.height);
-        float halfThickness = Mathf.Max(0.01f, _wall.thickness) * 0.5f;
-        float minY = Mathf.Max(0.005f, profile.general.sideInset);
-        float maxY = Mathf.Max(minY + MinRowHeight, wallHeight - profile.general.sideInset);
-
-        int rowIndex = 0;
-        float y = minY;
-
-        while (y < maxY - MinRowHeight * 0.5f)
+        for (int i = 0; i < source.Count; i++)
         {
-            float baseRow = Mathf.Max(MinRowHeight, profile.stone.targetRowHeight);
-            float rowHeight = baseRow * RandomRange(rng, 1f - profile.stone.rowHeightJitter, 1f + profile.stone.rowHeightJitter);
-            rowHeight = Mathf.Clamp(rowHeight, baseRow * 0.85f, baseRow * 1.15f);
-            rowHeight = Mathf.Min(rowHeight, maxY - y);
-            if (rowHeight < MinRowHeight)
+            WallStoneModuleDefinition m = source[i];
+            if (m == null)
+                continue;
+
+            if (!target.Contains(m))
+                target.Add(m);
+        }
+    }
+
+    private void ResetUsage()
+    {
+        usageCounts.Clear();
+        lastUsed = null;
+        secondLastUsed = null;
+    }
+
+    private void RegisterUsage(WallStoneModuleDefinition module)
+    {
+        if (module == null)
+            return;
+
+        usageCounts.TryGetValue(module, out int count);
+        usageCounts[module] = count + 1;
+        secondLastUsed = lastUsed;
+        lastUsed = module;
+    }
+
+    private int GetUsageCount(WallStoneModuleDefinition module)
+    {
+        return module != null && usageCounts.TryGetValue(module, out int count) ? count : 0;
+    }
+
+    private void GenerateStoneSide(WallCladdingProfile profile, List<PathSample> samples, bool outside, float sideSign, System.Random rng)
+    {
+        Transform root = runtime.GetOrCreateRoot(outside);
+        Material stoneMat = profile.stoneMaterial != null ? profile.stoneMaterial : profile.fallbackWallMaterial;
+        if (stoneMat == null)
+            return;
+
+        float totalLength = samples[samples.Count - 1].endDistance;
+        float wallHeight = Mathf.Max(0.1f, wall.height);
+        float yMin = Mathf.Max(0f, profile.general.sideInset);
+        float yMax = Mathf.Max(yMin + 0.05f, wallHeight - profile.general.sideInset);
+
+        float rowBottom = yMin;
+        int rowIndex = 0;
+        int stoneIndex = 0;
+
+        while (rowBottom < yMax - profile.stone.minStoneHeight)
+        {
+            float rowHeight = BuildRowHeight(profile, yMax - rowBottom, rng);
+            if (rowHeight < profile.stone.minStoneHeight)
                 break;
 
-            float rowBottom = y;
-            float rowTop = y + rowHeight;
-            float rowCenterY = (rowBottom + rowTop) * 0.5f;
-            float rowOffset = ((rowIndex & 1) == 1) ? rowHeight * 0.45f : 0f;
+            float rowCenterY = rowBottom + rowHeight * 0.5f;
+            GenerateRow(profile, root, stoneMat, samples, totalLength, rowIndex, rowCenterY, rowHeight, sideSign, rng, ref stoneIndex);
 
-            for (int segIndex = 0; segIndex < path.Count - 1; segIndex++)
-            {
-                Vector3 a = path[segIndex];
-                Vector3 b = path[segIndex + 1];
-
-                Vector3 tangent = b - a;
-                tangent.y = 0f;
-                float segLen = tangent.magnitude;
-                if (segLen < MinStoneWidth)
-                    continue;
-
-                tangent /= segLen;
-                Vector3 outward = Vector3.Cross(Vector3.up, tangent).normalized * sideSign;
-
-                float segStart = profile.general.sideInset;
-                float segEnd = Mathf.Max(segStart, segLen - profile.general.sideInset);
-                if (segEnd - segStart < MinStoneWidth)
-                    continue;
-
-                float cursor = Mathf.Min(segEnd, segStart + rowOffset);
-                while (cursor < segEnd - MinStoneWidth * 0.9f)
-                {
-                    float remaining = segEnd - cursor;
-                    bool nearCorner = (cursor - segStart) < profile.stone.cornerSmallModuleZone || remaining < profile.stone.cornerSmallModuleZone;
-
-                    float desiredWidth = ComputeDesiredWidth(profile, rowHeight, remaining, nearCorner, rng);
-                    float desiredHeight = ComputeDesiredHeight(profile, rowHeight, rng);
-                    WallStoneModuleDefinition module = PickModule(modules, desiredWidth, desiredHeight, remaining, nearCorner, rng);
-                    if (module == null)
-                        break;
-
-                    float width = Mathf.Min(desiredWidth, remaining);
-                    if (width < MinStoneWidth)
-                        break;
-
-                    float height = Mathf.Clamp(desiredHeight, rowHeight * 0.90f, rowHeight * 1.08f);
-                    float depth = ComputeDepth(profile, module, rng);
-
-                    float jitterX = Mathf.Min(profile.stone.positionJitter, width * 0.05f);
-                    float jitterY = Mathf.Min(profile.stone.positionJitter, rowHeight * 0.05f);
-                    float centerX = cursor + width * 0.5f + RandomRange(rng, -jitterX, jitterX);
-                    centerX = Mathf.Clamp(centerX, segStart + width * 0.5f, segEnd - width * 0.5f);
-                    float centerY = rowCenterY + RandomRange(rng, -jitterY, jitterY);
-                    centerY = Mathf.Clamp(centerY, rowBottom + height * 0.5f, rowTop - height * 0.5f);
-
-                    Vector3 pos = a + tangent * centerX + Vector3.up * centerY;
-                    pos += outward * ComputeSurfaceOffset(profile, halfThickness, depth, rng);
-
-                    Quaternion rot = BuildRotation(module, tangent, outward, profile, rng);
-                    Vector3 scale = BuildScale(module, width, height, depth, profile, rng);
-
-                    GameObject instance = Instantiate(module.prefab, pos, rot, root);
-                    instance.name = module.prefab.name;
-                    instance.transform.localScale = scale;
-
-                    _runtime.RegisterSpawned(instance);
-                    RegisterUsage(module);
-
-                    cursor += width + profile.stone.horizontalSpacing;
-                }
-            }
-
-            y += rowHeight + profile.stone.verticalSpacing;
+            rowBottom += rowHeight + profile.stone.verticalSpacing;
             rowIndex++;
         }
     }
 
-    private float ComputeDesiredWidth(WallCladdingProfile profile, float rowHeight, float remaining, bool nearCorner, System.Random rng)
+    private float BuildRowHeight(WallCladdingProfile profile, float remainingHeight, System.Random rng)
     {
-        float minWidth = Mathf.Max(MinStoneWidth, rowHeight * 1.10f);
-        float maxWidth = Mathf.Min(remaining, rowHeight * 2.35f);
-
-        if (nearCorner && profile.stone.preferSmallModulesNearCorners)
-            maxWidth = Mathf.Min(maxWidth, rowHeight * 1.65f);
-
-        float width = RandomRange(rng, minWidth, Mathf.Max(minWidth, maxWidth));
-        width *= RandomRange(rng, 1f - profile.stone.widthJitter * 0.25f, 1f + profile.stone.widthJitter * 0.25f);
-        return Mathf.Clamp(width, minWidth, Mathf.Max(minWidth, maxWidth));
+        float h = profile.stone.targetRowHeight * RandomRange(rng, 1f - profile.stone.rowHeightJitter, 1f + profile.stone.rowHeightJitter);
+        h = Mathf.Clamp(h, profile.stone.minStoneHeight, profile.stone.maxStoneHeight);
+        return Mathf.Min(h, remainingHeight);
     }
 
-    private float ComputeDesiredHeight(WallCladdingProfile profile, float rowHeight, System.Random rng)
+    private void GenerateRow(
+        WallCladdingProfile profile,
+        Transform root,
+        Material stoneMaterial,
+        List<PathSample> samples,
+        float totalLength,
+        int rowIndex,
+        float rowCenterY,
+        float rowHeight,
+        float sideSign,
+        System.Random rng,
+        ref int stoneIndex)
     {
-        float h = rowHeight * RandomRange(rng, 0.92f, 1.03f);
-        h *= RandomRange(rng, 1f - profile.stone.heightJitter * 0.18f, 1f + profile.stone.heightJitter * 0.18f);
-        return Mathf.Clamp(h, rowHeight * 0.88f, rowHeight * 1.08f);
-    }
+        float usableStart = Mathf.Max(0f, profile.general.sideInset);
+        float usableEnd = Mathf.Max(usableStart, totalLength - profile.general.sideInset);
+        float usableLength = usableEnd - usableStart;
 
-    private float ComputeDepth(WallCladdingProfile profile, WallStoneModuleDefinition module, System.Random rng)
-    {
-        float d = Mathf.Clamp(module.nominalDepth, profile.stone.minStoneDepth, profile.stone.maxStoneDepth);
-        d *= RandomRange(rng, 1f - profile.stone.depthJitter * 0.15f, 1f + profile.stone.depthJitter * 0.15f);
-        return Mathf.Clamp(d, profile.stone.minStoneDepth, profile.stone.maxStoneDepth);
-    }
+        if (usableLength <= profile.stone.minRowUsableWidth)
+            return;
 
-    private float ComputeSurfaceOffset(WallCladdingProfile profile, float halfThickness, float placedDepth, System.Random rng)
-    {
-        float protrusion = Mathf.Min(profile.stone.surfaceProtrusion * RandomRange(rng, 0.95f, 1.05f), placedDepth * 0.20f);
-        float embed = Mathf.Clamp(profile.stone.embedDepth * RandomRange(rng, 0.95f, 1.05f), 0.02f, placedDepth - Mathf.Max(0.005f, protrusion));
-        return halfThickness + ((protrusion - embed) * 0.5f) + profile.general.depthOffset;
-    }
+        float stagger = ((rowIndex & 1) == 1) ? rowHeight * profile.stone.staggerFraction : 0f;
+        float cursor = Mathf.Min(usableEnd, usableStart + stagger);
 
-    private Quaternion BuildRotation(WallStoneModuleDefinition module, Vector3 tangent, Vector3 outward, WallCladdingProfile profile, System.Random rng)
-    {
-        Quaternion rot = Quaternion.LookRotation(outward, Vector3.up);
-        rot *= Quaternion.Euler(module.rotationOffsetEuler);
-
-        float yaw = RandomRange(rng, -Mathf.Min(profile.stone.randomYaw, module.randomYaw), Mathf.Min(profile.stone.randomYaw, module.randomYaw));
-        float pitch = RandomRange(rng, -Mathf.Min(profile.stone.randomPitch, module.randomPitch), Mathf.Min(profile.stone.randomPitch, module.randomPitch));
-        float roll = RandomRange(rng, -Mathf.Min(profile.stone.randomRoll, module.randomRoll), Mathf.Min(profile.stone.randomRoll, module.randomRoll));
-
-        rot = Quaternion.AngleAxis(yaw, Vector3.up) * rot;
-        rot = Quaternion.AngleAxis(pitch, tangent) * rot;
-        rot = Quaternion.AngleAxis(roll, outward) * rot;
-        return rot;
-    }
-
-    private Vector3 BuildScale(WallStoneModuleDefinition module, float width, float height, float depth, WallCladdingProfile profile, System.Random rng)
-    {
-        float sx = width / Mathf.Max(0.01f, module.nominalWidth);
-        float sy = height / Mathf.Max(0.01f, module.nominalHeight);
-        float sz = depth / Mathf.Max(0.01f, module.nominalDepth);
-
-        float jitter = Mathf.Min(profile.stone.scaleJitter, module.scaleJitter);
-        if (jitter > 0f)
+        while (cursor < usableEnd - profile.stone.minRowUsableWidth)
         {
-            sx *= RandomRange(rng, 1f - jitter * 0.20f, 1f + jitter * 0.20f);
-            sy *= RandomRange(rng, 1f - jitter * 0.16f, 1f + jitter * 0.16f);
-            sz *= RandomRange(rng, 1f - jitter * 0.10f, 1f + jitter * 0.10f);
-        }
+            float remaining = usableEnd - cursor;
 
-        sx = Mathf.Clamp(sx, 0.80f, 1.35f);
-        sy = Mathf.Clamp(sy, 0.82f, 1.18f);
-        sz = Mathf.Clamp(sz, 0.90f, 1.08f);
-        return new Vector3(sx, sy, sz);
+            bool nearCorner =
+                profile.stone.preferSmallModulesNearCorners &&
+                (cursor - usableStart < profile.stone.cornerSmallModuleZone ||
+                 remaining < profile.stone.cornerSmallModuleZone);
+
+            if (!ChoosePlacement(profile, rowHeight, remaining, nearCorner, rng, out StonePlacement placement))
+                break;
+
+            placement.centerDistance = cursor + placement.width * 0.5f;
+            placement.centerY = rowCenterY;
+
+            CreateStoneObject(profile, root, stoneMaterial, samples, sideSign, placement, rng, stoneIndex++);
+            RegisterUsage(placement.module);
+
+            cursor += placement.width + profile.stone.horizontalSpacing;
+        }
     }
 
-    private WallStoneModuleDefinition PickModule(List<WallStoneModuleDefinition> modules, float desiredWidth, float desiredHeight, float remaining, bool nearCorner, System.Random rng)
+    private bool ChoosePlacement(WallCladdingProfile profile, float rowHeight, float remainingWidth, bool nearCorner, System.Random rng, out StonePlacement result)
     {
+        result = default;
+
         WallStoneModuleDefinition best = null;
         float bestScore = float.MinValue;
+        float bestWidth = 0f;
+        float bestHeight = 0f;
+        float bestDepth = 0f;
+        float desiredWidth = ComputeDesiredWidth(profile, rowHeight, remainingWidth, nearCorner, rng);
 
-        for (int i = 0; i < modules.Count; i++)
+        for (int i = 0; i < allModules.Count; i++)
         {
-            WallStoneModuleDefinition m = modules[i];
-            if (m == null || m.prefab == null)
+            WallStoneModuleDefinition m = allModules[i];
+            if (m == null || m.probability <= 0f || m.weight <= 0f)
                 continue;
-            if (m.probability <= 0.001f || m.weight <= 0.001f)
-                continue;
+
             if (nearCorner && !m.canUseNearCorners)
                 continue;
 
-            float widthScale = desiredWidth / Mathf.Max(0.01f, m.nominalWidth);
-            float heightScale = desiredHeight / Mathf.Max(0.01f, m.nominalHeight);
-            if (widthScale < 0.75f || widthScale > 1.40f)
-                continue;
-            if (heightScale < 0.80f || heightScale > 1.20f)
+            if (RandomValue(rng) > m.probability)
                 continue;
 
-            float fit = 1f - Mathf.Clamp01(Mathf.Abs(m.nominalWidth - desiredWidth) / Mathf.Max(0.1f, desiredWidth));
-            float aspectDesired = desiredWidth / Mathf.Max(0.01f, desiredHeight);
-            float aspectModule = m.nominalWidth / Mathf.Max(0.01f, m.nominalHeight);
-            float aspectFit = 1f - Mathf.Clamp01(Mathf.Abs(aspectDesired - aspectModule) / Mathf.Max(0.5f, aspectDesired));
+            float ratio = RandomRange(rng, m.minWidthToHeight, m.maxWidthToHeight);
+            float width = Mathf.Clamp(
+                rowHeight * ratio * RandomRange(rng, 1f - profile.stone.widthJitter, 1f + profile.stone.widthJitter),
+                profile.stone.minStoneWidth,
+                profile.stone.maxStoneWidth);
 
-            int usage = GetUsageCount(m);
-            float usagePenalty = 1f / (1f + usage * 0.4f);
-            float repetitionPenalty = 1f;
-            if (m == _lastUsed) repetitionPenalty *= 0.30f;
-            else if (m == _secondLastUsed) repetitionPenalty *= 0.65f;
+            width = Mathf.Min(width, remainingWidth);
+
+            if (width < profile.stone.minRowUsableWidth)
+                continue;
+
+            float height = Mathf.Clamp(
+                rowHeight * RandomRange(rng, 1f - profile.stone.heightJitter, 1f + profile.stone.heightJitter),
+                profile.stone.minStoneHeight,
+                profile.stone.maxStoneHeight);
+
+            float depth = Mathf.Lerp(profile.stone.minStoneDepth, profile.stone.maxStoneDepth, 0.5f) * m.depthMultiplier;
+            depth *= RandomRange(rng, 1f - profile.stone.depthJitter, 1f + profile.stone.depthJitter);
+            depth = Mathf.Clamp(depth, profile.stone.minStoneDepth, profile.stone.maxStoneDepth);
+
+            float widthFit = 1f - Mathf.Clamp01(Mathf.Abs(width - desiredWidth) / Mathf.Max(0.001f, desiredWidth));
+            float usagePenalty = 1f / (1f + GetUsageCount(m) * 0.35f);
+            float repeatPenalty = (m == lastUsed) ? 0.35f : (m == secondLastUsed ? 0.70f : 1f);
+
+            float sliverPenalty = 1f;
+            float after = remainingWidth - width - profile.stone.horizontalSpacing;
+            if (after > 0f && after < profile.stone.rejectSliverGapBelow)
+                sliverPenalty = 0.55f;
 
             float classBias = 1f;
-            if (nearCorner && m.sizeClass == StoneModuleSizeClass.Small) classBias *= 1.08f;
-            if (!nearCorner && m.sizeClass == StoneModuleSizeClass.Large) classBias *= 1.05f;
-            if (m.preferAsGapFiller && remaining < desiredWidth * 1.15f) classBias *= 1.08f;
+            if (nearCorner)
+            {
+                if (m.sizeClass == StoneModuleSizeClass.Small) classBias *= 1.15f;
+                if (m.sizeClass == StoneModuleSizeClass.Large) classBias *= 0.88f;
+            }
+            else
+            {
+                if (remainingWidth > rowHeight * 2f && m.sizeClass == StoneModuleSizeClass.Large) classBias *= 1.08f;
+                if (remainingWidth < rowHeight * 1.25f && (m.sizeClass == StoneModuleSizeClass.Small || m.preferAsGapFiller)) classBias *= 1.12f;
+            }
 
-            float score = 0f;
-            score += fit * 2.0f;
-            score += aspectFit * 1.6f;
-            score += usagePenalty * 0.8f;
-            score *= repetitionPenalty;
-            score *= classBias;
-            score *= Mathf.Lerp(0.35f, 1f, m.probability);
-            score *= Mathf.Max(0.1f, m.weight);
-            score *= RandomRange(rng, 0.96f, 1.04f);
+            float score = (widthFit * 2.2f + usagePenalty * 0.8f) * repeatPenalty * sliverPenalty * classBias * m.weight;
+            score *= RandomRange(rng, 0.97f, 1.03f);
 
             if (score > bestScore)
             {
                 bestScore = score;
                 best = m;
+                bestWidth = width;
+                bestHeight = height;
+                bestDepth = depth;
             }
         }
 
-        return best;
+        if (best == null)
+            return false;
+
+        result.module = best;
+        result.width = bestWidth;
+        result.height = bestHeight;
+        result.depth = bestDepth;
+        result.protrusion = Mathf.Min(profile.stone.surfaceProtrusion, bestDepth * 0.45f);
+        result.embed = Mathf.Min(profile.stone.embedDepth, bestDepth * 0.65f);
+        return true;
     }
 
-    private List<WallStoneModuleDefinition> GatherStoneModules(WallCladdingProfile profile)
+    private float ComputeDesiredWidth(WallCladdingProfile profile, float rowHeight, float remainingWidth, bool nearCorner, System.Random rng)
     {
-        List<WallStoneModuleDefinition> list = new List<WallStoneModuleDefinition>(16);
-        AddUnique(list, profile.stoneLargeModules);
-        AddUnique(list, profile.stoneMediumModules);
-        AddUnique(list, profile.stoneSmallModules);
-        return list;
+        float ratioMin = profile.stone.minWidthVsHeight;
+        float ratioMax = nearCorner ? profile.stone.nearCornerMaxWidthVsHeight : profile.stone.maxWidthVsHeight;
+        if (ratioMax < ratioMin)
+            ratioMax = ratioMin;
+
+        float desired = rowHeight * RandomRange(rng, ratioMin, ratioMax);
+        desired = Mathf.Clamp(desired, profile.stone.minStoneWidth, profile.stone.maxStoneWidth);
+        return Mathf.Min(desired, remainingWidth);
     }
 
-    private static void AddUnique(List<WallStoneModuleDefinition> target, List<WallStoneModuleDefinition> source)
+    private void CreateStoneObject(
+        WallCladdingProfile profile,
+        Transform root,
+        Material stoneMaterial,
+        List<PathSample> samples,
+        float sideSign,
+        StonePlacement placement,
+        System.Random rng,
+        int index)
     {
-        if (source == null) return;
-        for (int i = 0; i < source.Count; i++)
+        WallFrame frame = GetFrameAtDistance(samples, placement.centerDistance, sideSign);
+        float halfThickness = Mathf.Max(0.01f, wall.thickness) * 0.5f;
+
+        Vector3 facePoint = frame.centerline + Vector3.up * placement.centerY;
+        facePoint += frame.faceNormal * (halfThickness - profile.general.sideInset);
+
+        float centerOffset = ((placement.protrusion - placement.embed) * 0.5f) + profile.general.depthOffset;
+        Vector3 center = facePoint + frame.faceNormal * centerOffset;
+        center += frame.tangent * RandomRange(rng, -profile.stone.positionJitter, profile.stone.positionJitter);
+        center += Vector3.up * RandomRange(rng, -profile.stone.positionJitter, profile.stone.positionJitter);
+
+        Quaternion rot = Quaternion.LookRotation(frame.faceNormal, Vector3.up);
+        rot *= Quaternion.Euler(
+            RandomRange(rng, -profile.stone.randomPitch, profile.stone.randomPitch),
+            RandomRange(rng, -profile.stone.randomYaw, profile.stone.randomYaw),
+            RandomRange(rng, -profile.stone.randomRoll, profile.stone.randomRoll));
+
+        Vector3 up = rot * Vector3.up;
+        Vector3 normal = rot * Vector3.forward;
+
+        Mesh mesh = BuildStoneMesh(placement.module, placement.width, placement.height, placement.protrusion, placement.embed, profile.stone.facePlaneJitter, profile.stone.uvMetersPerUnit, rng);
+        if (mesh == null || mesh.vertexCount == 0)
+            return;
+
+        GameObject go = new GameObject($"Stone_{index:000}");
+        go.transform.SetParent(root, false);
+        go.transform.localPosition = transform.InverseTransformPoint(center);
+        go.transform.localRotation = Quaternion.LookRotation(transform.InverseTransformDirection(normal), transform.InverseTransformDirection(up));
+        go.transform.localScale = Vector3.one;
+
+        MeshFilter mf = go.AddComponent<MeshFilter>();
+        MeshRenderer mr = go.AddComponent<MeshRenderer>();
+        mf.sharedMesh = mesh;
+        mr.sharedMaterial = stoneMaterial;
+
+        ApplyPerStoneMaterialVariation(profile, mr, rng);
+    }
+
+    private void ApplyPerStoneMaterialVariation(WallCladdingProfile profile, MeshRenderer mr, System.Random rng)
+    {
+        if (mr == null || profile == null || propertyBlock == null)
+            return;
+
+        propertyBlock.Clear();
+        Color tint = profile.stone.baseTint;
+
+        if (profile.stone.enablePerStoneColorVariation)
         {
-            WallStoneModuleDefinition m = source[i];
-            if (m == null || m.prefab == null) continue;
-            if (!target.Contains(m)) target.Add(m);
+            Color.RGBToHSV(tint, out float h, out float s, out float v);
+            h = Mathf.Repeat(h + RandomRange(rng, -profile.stone.hueJitter, profile.stone.hueJitter), 1f);
+            s = Mathf.Clamp01(s + RandomRange(rng, -profile.stone.saturationJitter, profile.stone.saturationJitter));
+            v = Mathf.Clamp01(v + RandomRange(rng, -profile.stone.valueJitter, profile.stone.valueJitter));
+            tint = Color.HSVToRGB(h, s, v);
         }
+
+        propertyBlock.SetColor("_BaseColor", tint);
+        mr.SetPropertyBlock(propertyBlock);
     }
 
-    private void ResetUsageTracking()
+    private Mesh BuildStoneMesh(
+        WallStoneModuleDefinition module,
+        float width,
+        float height,
+        float protrusion,
+        float embed,
+        float planeJitter,
+        float uvMetersPerUnit,
+        System.Random rng)
     {
-        _usageCounts.Clear();
-        _lastUsed = null;
-        _secondLastUsed = null;
+        if (module == null)
+            return null;
+
+        float halfW = width * 0.5f;
+        float halfH = height * 0.5f;
+        float frontZ = protrusion;
+        float backZ = -embed;
+
+        float cutBL = Mathf.Lerp(module.minCornerCut, module.maxCornerCut, (float)rng.NextDouble());
+        float cutBR = Mathf.Lerp(module.minCornerCut, module.maxCornerCut, (float)rng.NextDouble());
+        float cutTR = Mathf.Lerp(module.minCornerCut, module.maxCornerCut, (float)rng.NextDouble());
+        float cutTL = Mathf.Lerp(module.minCornerCut, module.maxCornerCut, (float)rng.NextDouble());
+
+        Vector3[] front = new Vector3[8];
+        front[0] = new Vector3(-halfW + width * cutBL, -halfH, frontZ + RandomRange(rng, 0f, planeJitter));
+        front[1] = new Vector3( halfW - width * cutBR, -halfH, frontZ + RandomRange(rng, 0f, planeJitter));
+        front[2] = new Vector3( halfW, -halfH + height * cutBR, frontZ + RandomRange(rng, 0f, planeJitter));
+        front[3] = new Vector3( halfW,  halfH - height * cutTR, frontZ + RandomRange(rng, 0f, planeJitter));
+        front[4] = new Vector3( halfW - width * cutTR,  halfH, frontZ + RandomRange(rng, 0f, planeJitter));
+        front[5] = new Vector3(-halfW + width * cutTL,  halfH, frontZ + RandomRange(rng, 0f, planeJitter));
+        front[6] = new Vector3(-halfW,  halfH - height * cutTL, frontZ + RandomRange(rng, 0f, planeJitter));
+        front[7] = new Vector3(-halfW, -halfH + height * cutBL, frontZ + RandomRange(rng, 0f, planeJitter));
+
+        Vector3[] back = new Vector3[8];
+        for (int i = 0; i < 8; i++)
+            back[i] = new Vector3(front[i].x, front[i].y, backZ);
+
+        List<Vector3> verts = new List<Vector3>(64);
+        List<int> tris = new List<int>(128);
+        List<Vector2> uvs = new List<Vector2>(64);
+
+        int frontStart = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            verts.Add(front[i]);
+            uvs.Add(new Vector2(front[i].x / uvMetersPerUnit, front[i].y / uvMetersPerUnit));
+        }
+
+        int backStart = verts.Count;
+        for (int i = 0; i < 8; i++)
+        {
+            verts.Add(back[i]);
+            uvs.Add(new Vector2(back[i].x / uvMetersPerUnit, back[i].y / uvMetersPerUnit));
+        }
+
+        for (int i = 1; i < 7; i++)
+        {
+            tris.Add(frontStart + 0);
+            tris.Add(frontStart + i);
+            tris.Add(frontStart + i + 1);
+        }
+
+        for (int i = 1; i < 7; i++)
+        {
+            tris.Add(backStart + 0);
+            tris.Add(backStart + i + 1);
+            tris.Add(backStart + i);
+        }
+
+        for (int i = 0; i < 8; i++)
+        {
+            int next = (i + 1) % 8;
+
+            int a = frontStart + i;
+            int b = frontStart + next;
+            int c = backStart + next;
+            int d = backStart + i;
+
+            tris.Add(a);
+            tris.Add(b);
+            tris.Add(c);
+
+            tris.Add(a);
+            tris.Add(c);
+            tris.Add(d);
+        }
+
+        Mesh mesh = new Mesh();
+        mesh.name = "GeneratedStone";
+        mesh.SetVertices(verts);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
     }
 
-    private void RegisterUsage(WallStoneModuleDefinition module)
+    private WallFrame GetFrameAtDistance(List<PathSample> samples, float distance, float sideSign)
     {
-        if (module == null) return;
-        _usageCounts.TryGetValue(module, out int count);
-        _usageCounts[module] = count + 1;
-        _secondLastUsed = _lastUsed;
-        _lastUsed = module;
-    }
+        PathSample s = samples[samples.Count - 1];
 
-    private int GetUsageCount(WallStoneModuleDefinition module)
-    {
-        if (module == null) return 0;
-        return _usageCounts.TryGetValue(module, out int count) ? count : 0;
+        for (int i = 0; i < samples.Count; i++)
+        {
+            if (distance <= samples[i].endDistance || i == samples.Count - 1)
+            {
+                s = samples[i];
+                break;
+            }
+        }
+
+        float t = Mathf.InverseLerp(s.startDistance, s.endDistance, distance);
+        Vector3 center = Vector3.Lerp(s.a, s.b, t);
+        Vector3 tangent = s.tangent;
+        Vector3 faceNormal = Vector3.Cross(Vector3.up, tangent).normalized * sideSign;
+
+        return new WallFrame
+        {
+            centerline = center,
+            tangent = tangent,
+            faceNormal = faceNormal,
+        };
     }
 
     private int ComputeGeometryHash()
@@ -453,24 +706,31 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         unchecked
         {
             int hash = 17;
-            if (_wall != null)
+
+            if (wall != null)
             {
-                hash = hash * 31 + _wall.height.GetHashCode();
-                hash = hash * 31 + _wall.thickness.GetHashCode();
-                var pts = _wall.Points;
+                hash = hash * 31 + Mathf.RoundToInt(wall.height * 1000f);
+                hash = hash * 31 + Mathf.RoundToInt(wall.thickness * 1000f);
+                hash = hash * 31 + (wall.closedLoop ? 1 : 0);
+
+                IReadOnlyList<Vector3> pts = wall.Points;
                 if (pts != null)
                 {
                     for (int i = 0; i < pts.Count; i++)
                     {
                         Vector3 p = pts[i];
-                        hash = hash * 31 + p.x.GetHashCode();
-                        hash = hash * 31 + p.y.GetHashCode();
-                        hash = hash * 31 + p.z.GetHashCode();
+                        hash = hash * 31 + Mathf.RoundToInt(p.x * 1000f);
+                        hash = hash * 31 + Mathf.RoundToInt(p.y * 1000f);
+                        hash = hash * 31 + Mathf.RoundToInt(p.z * 1000f);
                     }
                 }
             }
-            if (_runtime != null)
-                hash = hash * 31 + _runtime.CurrentSeed;
+
+            WallCladdingProfile profile = runtime != null ? runtime.CurrentProfile : defaultProfile;
+            hash = hash * 31 + (profile != null ? profile.GetInstanceID() : 0);
+            hash = hash * 31 + (generateOutside ? 1 : 0);
+            hash = hash * 31 + (generateInside ? 1 : 0);
+
             return hash;
         }
     }
@@ -481,17 +741,24 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         {
             int hash = 23;
             hash = hash * 31 + (profile != null && !string.IsNullOrEmpty(profile.profileId) ? profile.profileId.GetHashCode() : 0);
-            hash = hash * 31 + Mathf.RoundToInt((_wall != null ? _wall.height : 0f) * 100f);
-            hash = hash * 31 + Mathf.RoundToInt((_wall != null ? _wall.thickness : 0f) * 100f);
             hash = hash * 31 + Mathf.RoundToInt((profile != null ? profile.general.randomSeedOffset : 0f) * 1000f);
+            hash = hash * 31 + Mathf.RoundToInt((wall != null ? wall.height : 0f) * 100f);
+            hash = hash * 31 + Mathf.RoundToInt((wall != null ? wall.thickness : 0f) * 100f);
+            hash = hash * 31 + gameObject.GetInstanceID();
             return hash;
         }
     }
 
-    private float RandomRange(System.Random rng, float min, float max)
+    private static float RandomRange(System.Random rng, float min, float max)
     {
         if (Mathf.Approximately(min, max))
             return min;
+
         return Mathf.Lerp(min, max, (float)rng.NextDouble());
+    }
+
+    private static float RandomValue(System.Random rng)
+    {
+        return (float)rng.NextDouble();
     }
 }

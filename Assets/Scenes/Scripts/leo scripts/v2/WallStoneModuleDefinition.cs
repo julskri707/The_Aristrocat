@@ -7,44 +7,50 @@ public enum StoneModuleSizeClass
     Small = 2,
 }
 
-[CreateAssetMenu(menuName = "TinyGlade/Walls/Cladding/Stone Module", fileName = "StoneModule")]
+[CreateAssetMenu(menuName = "TinyGlade/Walls/Cladding/Stone Module", fileName = "WallStoneModule")]
 public sealed class WallStoneModuleDefinition : ScriptableObject
 {
-    [Header("Prefab")]
-    public GameObject prefab;
+    [Header("Identity")]
+    public string displayName = "Stone Module";
     public StoneModuleSizeClass sizeClass = StoneModuleSizeClass.Medium;
-    public WallModulePlacement placement = WallModulePlacement.Side;
 
-    [Header("Local Size")]
-    [Min(0.05f)] public float nominalWidth = 0.5f;
-    [Min(0.05f)] public float nominalHeight = 0.35f;
-    [Min(0.01f)] public float nominalDepth = 0.15f;
-
-    [Header("Orientation")]
-    [Tooltip("One-time manual correction per rock prefab. Use this so the rock lies flat on the wall instead of standing upright.")]
-    public Vector3 rotationOffsetEuler = Vector3.zero;
-
-    [Header("Random")]
+    [Header("Usage")]
+    [Min(0.01f)] public float weight = 1f;
     [Range(0f, 1f)] public float probability = 1f;
-    [Min(0f)] public float weight = 1f;
-    [Range(0f, 0.5f)] public float scaleJitter = 0.15f;
-    [Range(0f, 20f)] public float randomYaw = 8f;
-    [Range(0f, 20f)] public float randomPitch = 2f;
-    [Range(0f, 20f)] public float randomRoll = 4f;
-
-    [Header("Fitting")]
     public bool canUseNearCorners = true;
     public bool preferAsGapFiller = false;
-    [Min(0f)] public float extraEdgeInset = 0f;
+
+    [Header("Width / Height Ratio")]
+    [Min(0.40f)] public float minWidthToHeight = 1.10f;
+    [Min(0.40f)] public float maxWidthToHeight = 1.90f;
+
+    [Header("Corner Cuts")]
+    [Range(0f, 0.40f)] public float minCornerCut = 0.06f;
+    [Range(0f, 0.50f)] public float maxCornerCut = 0.18f;
+
+    [Header("Face Shape")]
+    [Range(0f, 0.15f)] public float frontRelief = 0.025f;
+    [Range(0.5f, 1.5f)] public float depthMultiplier = 1f;
+    [Range(0f, 0.25f)] public float verticalEdgeLean = 0.06f;
+    [Range(0f, 0.25f)] public float horizontalEdgeLean = 0.04f;
 
     private void OnValidate()
     {
-        nominalWidth = Mathf.Max(0.05f, nominalWidth);
-        nominalHeight = Mathf.Max(0.05f, nominalHeight);
-        nominalDepth = Mathf.Max(0.01f, nominalDepth);
+        if (string.IsNullOrWhiteSpace(displayName))
+            displayName = name;
+
+        weight = Mathf.Max(0.01f, weight);
         probability = Mathf.Clamp01(probability);
-        weight = Mathf.Max(0f, weight);
-        scaleJitter = Mathf.Clamp(scaleJitter, 0f, 0.5f);
-        extraEdgeInset = Mathf.Max(0f, extraEdgeInset);
+
+        minWidthToHeight = Mathf.Max(0.40f, minWidthToHeight);
+        maxWidthToHeight = Mathf.Max(minWidthToHeight, maxWidthToHeight);
+
+        minCornerCut = Mathf.Clamp(minCornerCut, 0f, 0.40f);
+        maxCornerCut = Mathf.Clamp(maxCornerCut, minCornerCut, 0.50f);
+
+        frontRelief = Mathf.Clamp(frontRelief, 0f, 0.15f);
+        depthMultiplier = Mathf.Clamp(depthMultiplier, 0.5f, 1.5f);
+        verticalEdgeLean = Mathf.Clamp(verticalEdgeLean, 0f, 0.25f);
+        horizontalEdgeLean = Mathf.Clamp(horizontalEdgeLean, 0f, 0.25f);
     }
 }

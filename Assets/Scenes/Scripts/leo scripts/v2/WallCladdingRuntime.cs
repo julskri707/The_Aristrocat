@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -6,16 +5,18 @@ public sealed class WallCladdingRuntime : MonoBehaviour
 {
     [SerializeField] private WallCladdingProfile currentProfile;
     [SerializeField] private int currentSeed;
-    [SerializeField] private Transform generatedRoot;
     [SerializeField] private bool dirty = true;
+    [SerializeField] private int lastGeometryHash;
 
-    private readonly List<GameObject> spawnedObjects = new List<GameObject>();
+    [SerializeField] private Transform outsideRoot;
+    [SerializeField] private Transform insideRoot;
 
     public WallCladdingProfile CurrentProfile => currentProfile;
     public int CurrentSeed => currentSeed;
-    public Transform GeneratedRoot => generatedRoot;
     public bool IsDirty => dirty;
-    public IReadOnlyList<GameObject> SpawnedObjects => spawnedObjects;
+    public int LastGeometryHash { get => lastGeometryHash; set => lastGeometryHash = value; }
+    public Transform OutsideRoot => outsideRoot;
+    public Transform InsideRoot => insideRoot;
 
     public void SetProfile(WallCladdingProfile profile, int seed)
     {
@@ -24,57 +25,49 @@ public sealed class WallCladdingRuntime : MonoBehaviour
         dirty = true;
     }
 
-    public void MarkDirty()
-    {
-        dirty = true;
-    }
+    public void MarkDirty() => dirty = true;
+    public void MarkClean() => dirty = false;
 
-    public void MarkClean()
+    public Transform GetOrCreateRoot(bool outside)
     {
-        dirty = false;
-    }
+        Transform target = outside ? outsideRoot : insideRoot;
+        if (target != null)
+            return target;
 
-    public Transform GetOrCreateGeneratedRoot()
-    {
-        if (generatedRoot != null)
-            return generatedRoot;
-
-        Transform child = transform.Find("GeneratedWallCladding");
-        if (child != null)
+        string childName = outside ? "GeneratedWallCladding_Outside" : "GeneratedWallCladding_Inside";
+        Transform existing = transform.Find(childName);
+        if (existing != null)
         {
-            generatedRoot = child;
-            return generatedRoot;
+            if (outside) outsideRoot = existing; else insideRoot = existing;
+            return existing;
         }
 
-        GameObject go = new GameObject("GeneratedWallCladding");
+        GameObject go = new GameObject(childName);
         go.transform.SetParent(transform, false);
-        generatedRoot = go.transform;
-        return generatedRoot;
+        go.transform.localPosition = Vector3.zero;
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.localScale = Vector3.one;
+
+        if (outside) outsideRoot = go.transform;
+        else insideRoot = go.transform;
+        return go.transform;
     }
 
-    public void RegisterSpawned(GameObject go)
+    public void ClearRoot(bool outside)
     {
-        if (go == null) return;
-        spawnedObjects.Add(go);
-    }
+        Transform root = outside ? outsideRoot : insideRoot;
+        if (root == null)
+            return;
 
-    public void ClearSpawnedImmediate()
-    {
-        for (int i = spawnedObjects.Count - 1; i >= 0; i--)
+        for (int i = root.childCount - 1; i >= 0; i--)
         {
-            GameObject go = spawnedObjects[i];
-            if (go == null) continue;
-
-#if UNITY_EDITOR
-            if (!Application.isPlaying)
-                Object.DestroyImmediate(go);
-            else
-                Object.Destroy(go);
-#else
-            Object.Destroy(go);
-#endif
+            GameObject child = root.GetChild(i).gameObject;
+            if (Application.isPlaying) Object.Destroy(child);
+            else Object.DestroyImmediate(child);
         }
 
-        spawnedObjects.Clear();
+        MeshFilter mf = root.GetComponent<MeshFilter>();
+        if (mf != null && mf.sharedMesh != null)
+            mf.sharedMesh.Clear();
     }
 }

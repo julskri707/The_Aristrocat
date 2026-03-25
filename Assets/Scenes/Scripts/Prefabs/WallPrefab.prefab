@@ -70,7 +70,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 81dd30f175021c1418f854b3f09f79fb, type: 2}
+  - {fileID: 2100000, guid: 72272ace27cf7ff49a9cdf87652e426b, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -133,7 +133,7 @@ MonoBehaviour:
   addCaps: 1
   addBottom: 0
   doubleSided: 0
-  wallMaterial: {fileID: 2100000, guid: 81dd30f175021c1418f854b3f09f79fb, type: 2}
+  wallMaterial: {fileID: 2100000, guid: 72272ace27cf7ff49a9cdf87652e426b, type: 2}
   uvMetersPerV: 2
   uvMetersPerU: 0.5
   miterLimit: 3
@@ -157,8 +157,8 @@ MonoBehaviour:
   generateOutside: 1
   generateInside: 0
   applyFallbackWallMaterial: 1
-  clearWhenProfileMissing: 1
-  logDebug: 0
+  clearWhenProfileMissing: 0
+  logDebug: 1
 --- !u!114 &-7829102596514257101
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -173,5 +173,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WallCladdingRuntime
   currentProfile: {fileID: 11400000, guid: 48def6c18eabf8e4c97411122665e5bf, type: 2}
   currentSeed: -279409563
-  generatedRoot: {fileID: 0}
   dirty: 0
+  lastGeometryHash: 1049398032
+  outsideRoot: {fileID: 0}
+  insideRoot: {fileID: 0}
