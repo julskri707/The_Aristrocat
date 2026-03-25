@@ -16,8 +16,8 @@ MonoBehaviour:
   displayName: Wall Profile
   icon: {fileID: 0}
   mode: 0
-  fallbackWallMaterial: {fileID: 2100000, guid: 72272ace27cf7ff49a9cdf87652e426b, type: 2}
-  stoneMaterial: {fileID: 2100000, guid: 0ed69348c5f6cb84ab989f1175fb532c, type: 2}
+  fallbackWallMaterial: {fileID: 2100000, guid: 87ada74156cb8f74e8eefed166786d43, type: 2}
+  stoneMaterial: {fileID: 2100000, guid: 342bda62b3516954e9a4f8afda33f252, type: 2}
   general:
     sideInset: 0.01
     depthOffset: 0

@@ -155,7 +155,8 @@ MonoBehaviour:
   defaultProfile: {fileID: 11400000, guid: 48def6c18eabf8e4c97411122665e5bf, type: 2}
   autoRegenerate: 1
   generateOutside: 1
-  generateInside: 0
+  generateInside: 1
+  generateHiddenBackFaces: 0
   applyFallbackWallMaterial: 1
   clearWhenProfileMissing: 0
   logDebug: 1
@@ -173,7 +174,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WallCladdingRuntime
   currentProfile: {fileID: 11400000, guid: 48def6c18eabf8e4c97411122665e5bf, type: 2}
   currentSeed: -279409563
-  dirty: 0
+  dirty: 1
   lastGeometryHash: 1049398032
   outsideRoot: {fileID: 0}
   insideRoot: {fileID: 0}
