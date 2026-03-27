@@ -17,7 +17,7 @@ MonoBehaviour:
   icon: {fileID: 0}
   mode: 0
   fallbackWallMaterial: {fileID: 2100000, guid: 87ada74156cb8f74e8eefed166786d43, type: 2}
-  stoneMaterial: {fileID: 2100000, guid: 342bda62b3516954e9a4f8afda33f252, type: 2}
+  stoneMaterial: {fileID: 2100000, guid: 52716c98202559d42a91db8fecb6faad, type: 2}
   general:
     sideInset: 0.01
     depthOffset: 0
@@ -63,9 +63,9 @@ MonoBehaviour:
     facePlaneJitter: 0.015
     uvMetersPerUnit: 0.5
     enablePerStoneColorVariation: 1
-    hueJitter: 0.015
-    saturationJitter: 0.08
-    valueJitter: 0.12
+    hueJitter: 0.025
+    saturationJitter: 0.12
+    valueJitter: 0.2
     uvOffsetJitter: 0.35
     baseTint: {r: 1, g: 1, b: 1, a: 1}
   stoneLargeModules:

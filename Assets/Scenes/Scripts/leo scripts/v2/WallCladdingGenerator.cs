@@ -14,7 +14,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
     [Header("Sides")]
     [SerializeField] private bool generateOutside = true;
     [SerializeField] private bool generateInside = false;
-    [SerializeField] private bool generateHiddenBackFaces = false;
 
     [Header("Base Wall")]
     [SerializeField] private bool applyFallbackWallMaterial = true;
@@ -350,11 +349,14 @@ public sealed class WallCladdingGenerator : MonoBehaviour
                 break;
 
             float rowCenterY = rowBottom + rowHeight * 0.5f;
-            GenerateRow(profile, root, stoneMat, samples, totalLength, rowIndex, rowCenterY, rowHeight, sideSign, rng, ref stoneIndex);
+            GenerateRow(profile, root, stoneMat, samples, totalLength, outside, rowIndex, rowCenterY, rowHeight, sideSign, rng, ref stoneIndex);
 
             rowBottom += rowHeight + profile.stone.verticalSpacing;
             rowIndex++;
         }
+
+        if (outside)
+            GenerateOpenEndQuoins(profile, root, stoneMat, samples, sideSign, yMin, yMax, rng, ref stoneIndex);
     }
 
     private float BuildRowHeight(WallCladdingProfile profile, float remainingHeight, System.Random rng)
@@ -370,6 +372,7 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         Material stoneMaterial,
         List<PathSample> samples,
         float totalLength,
+        bool outside,
         int rowIndex,
         float rowCenterY,
         float rowHeight,
@@ -379,6 +382,14 @@ public sealed class WallCladdingGenerator : MonoBehaviour
     {
         float usableStart = Mathf.Max(0f, profile.general.sideInset);
         float usableEnd = Mathf.Max(usableStart, totalLength - profile.general.sideInset);
+
+        if (outside && !wall.closedLoop && profile.stone.endQuoins != null && profile.stone.endQuoins.enabled)
+        {
+            float reserved = GetReservedEndQuoinWidth(profile);
+            usableStart += reserved;
+            usableEnd -= reserved;
+        }
+
         float usableLength = usableEnd - usableStart;
 
         if (usableLength <= profile.stone.minRowUsableWidth)
@@ -510,6 +521,335 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         return Mathf.Min(desired, remainingWidth);
     }
 
+    private float GetReservedEndQuoinWidth(WallCladdingProfile profile)
+    {
+        if (profile == null || profile.stone == null || profile.stone.endQuoins == null || !profile.stone.endQuoins.enabled)
+            return 0f;
+
+        EndQuoinSettings settings = profile.stone.endQuoins;
+
+        float reserve = settings.reserveWidth;
+        reserve += Mathf.Max(0.003f, profile.stone.horizontalSpacing * 0.20f);
+
+        return Mathf.Max(profile.stone.minRowUsableWidth, reserve);
+    }
+
+    private void GenerateOpenEndQuoins(
+        WallCladdingProfile profile,
+        Transform root,
+        Material stoneMaterial,
+        List<PathSample> samples,
+        float sideSign,
+        float yMin,
+        float yMax,
+        System.Random rng,
+        ref int stoneIndex)
+    {
+        if (profile == null || profile.stone == null || profile.stone.endQuoins == null)
+            return;
+
+        EndQuoinSettings settings = profile.stone.endQuoins;
+        if (!settings.enabled || wall == null || wall.closedLoop || samples == null || samples.Count == 0)
+            return;
+
+        PathSample first = samples[0];
+        PathSample last = samples[samples.Count - 1];
+
+        GenerateSingleEndQuoinStack(profile, root, stoneMaterial, first.a, first.tangent, sideSign, true, yMin, yMax, settings, rng, ref stoneIndex);
+        GenerateSingleEndQuoinStack(profile, root, stoneMaterial, last.b, last.tangent, sideSign, false, yMin, yMax, settings, rng, ref stoneIndex);
+    }
+
+    private void GenerateSingleEndQuoinStack(
+        WallCladdingProfile profile,
+        Transform root,
+        Material stoneMaterial,
+        Vector3 endPoint,
+        Vector3 segmentTangent,
+        float sideSign,
+        bool startEnd,
+        float yMin,
+        float yMax,
+        EndQuoinSettings settings,
+        System.Random rng,
+        ref int stoneIndex)
+    {
+        Vector3 tangent = segmentTangent.normalized;
+        if (tangent.sqrMagnitude < 0.000001f)
+            return;
+
+        Vector3 inwardTangent = startEnd ? tangent : -tangent;
+        Vector3 outwardNormal = Vector3.Cross(Vector3.up, tangent).normalized * sideSign;
+
+        float rowBottom = yMin;
+        int rowIndex = 0;
+
+        float reserveBoundary = Mathf.Max(0.02f, settings.reserveWidth);
+        float centerFillClearance = Mathf.Max(0.003f, profile.stone.horizontalSpacing * 0.20f);
+
+        while (rowBottom < yMax - 0.10f)
+        {
+            float rowHeight = settings.targetHeight * RandomRange(rng, 1f - settings.rowHeightJitter, 1f + settings.rowHeightJitter);
+            rowHeight = Mathf.Clamp(rowHeight, profile.stone.minStoneHeight * 1.15f, Mathf.Max(profile.stone.minStoneHeight * 1.25f, profile.stone.maxStoneHeight * 1.75f));
+            rowHeight = Mathf.Min(rowHeight, yMax - rowBottom);
+            if (rowHeight < 0.10f)
+                break;
+
+            float baseLength = RandomRange(rng, settings.minLength, settings.maxLength);
+            float altScale = ((rowIndex & 1) == 0) ? settings.alternateLongScale : settings.alternateShortScale;
+            float length = baseLength * altScale * RandomRange(rng, 1f - settings.lengthJitter, 1f + settings.lengthJitter);
+            length = Mathf.Clamp(length, settings.minLength * 0.85f, settings.maxLength * 1.35f);
+
+            float sideOverhang = Mathf.Max(0.015f, settings.extraOutsideDepth);
+            float endOverhang = Mathf.Max(0.02f, Mathf.Min(settings.extraOutsideDepth * 0.95f, length * 0.26f));
+            float fullDepth = Mathf.Max(wall.thickness + sideOverhang * 2f, wall.thickness + 0.02f);
+            float centerY = rowBottom + rowHeight * 0.5f;
+
+            float targetInnerEdge = Mathf.Max(0.02f, reserveBoundary - centerFillClearance);
+            float inwardShift = Mathf.Max(0f, targetInnerEdge - (length * 0.5f));
+            float endFacePush = endOverhang + Mathf.Max(0f, settings.edgeInset);
+
+            Vector3 center = endPoint;
+            center += inwardTangent * (inwardShift - endFacePush);
+            center += Vector3.up * centerY;
+            center += outwardNormal * 0.0015f;
+
+            Quaternion rot = Quaternion.LookRotation(outwardNormal, Vector3.up);
+
+            WallStoneModuleDefinition module = PickEndQuoinModule(profile, rng);
+            Mesh mesh = BuildEndQuoinMesh(module, length, rowHeight, fullDepth, profile.stone.facePlaneJitter, profile.stone.uvMetersPerUnit, rng);
+            if (mesh != null && mesh.vertexCount > 0)
+            {
+                GameObject go = new GameObject(startEnd ? $"EndQuoin_Start_{rowIndex:00}" : $"EndQuoin_End_{rowIndex:00}");
+                go.transform.SetParent(root, false);
+                go.transform.localPosition = transform.InverseTransformPoint(center);
+                go.transform.localRotation = Quaternion.LookRotation(transform.InverseTransformDirection(rot * Vector3.forward), transform.InverseTransformDirection(rot * Vector3.up));
+                go.transform.localScale = Vector3.one;
+
+                MeshFilter mf = go.AddComponent<MeshFilter>();
+                MeshRenderer mr = go.AddComponent<MeshRenderer>();
+                mf.sharedMesh = mesh;
+                mr.sharedMaterial = stoneMaterial;
+                ApplyPerStoneMaterialVariation(profile, mr, rng);
+                stoneIndex++;
+            }
+
+            rowBottom += rowHeight + settings.verticalSpacing;
+            rowIndex++;
+        }
+    }
+
+    private WallStoneModuleDefinition PickEndQuoinModule(WallCladdingProfile profile, System.Random rng)
+    {
+        WallStoneModuleDefinition best = PickWeightedModule(profile != null ? profile.stoneLargeModules : null, rng);
+        if (best != null)
+            return best;
+
+        best = PickWeightedModule(profile != null ? profile.stoneMediumModules : null, rng);
+        if (best != null)
+            return best;
+
+        return PickWeightedModule(profile != null ? profile.stoneSmallModules : null, rng);
+    }
+
+    private WallStoneModuleDefinition PickWeightedModule(List<WallStoneModuleDefinition> list, System.Random rng)
+    {
+        if (list == null || list.Count == 0)
+            return null;
+
+        float total = 0f;
+        for (int i = 0; i < list.Count; i++)
+        {
+            WallStoneModuleDefinition m = list[i];
+            if (m == null || m.weight <= 0f || m.probability <= 0f)
+                continue;
+            total += m.weight;
+        }
+
+        if (total <= 0f)
+            return null;
+
+        float roll = RandomRange(rng, 0f, total);
+        float acc = 0f;
+        for (int i = 0; i < list.Count; i++)
+        {
+            WallStoneModuleDefinition m = list[i];
+            if (m == null || m.weight <= 0f || m.probability <= 0f)
+                continue;
+
+            acc += m.weight;
+            if (roll <= acc)
+                return m;
+        }
+
+        return null;
+    }
+
+    private Mesh BuildEndQuoinMesh(
+        WallStoneModuleDefinition module,
+        float width,
+        float height,
+        float depth,
+        float planeJitter,
+        float uvMetersPerUnit,
+        System.Random rng)
+    {
+        if (width <= 0.01f || height <= 0.01f || depth <= 0.01f)
+            return null;
+
+        float halfW = width * 0.5f;
+        float halfH = height * 0.5f;
+        float frontZ = depth * 0.5f;
+        float backZ = -depth * 0.5f;
+
+        float cutMin = module != null ? module.minCornerCut : 0.05f;
+        float cutMax = module != null ? module.maxCornerCut : 0.12f;
+        float cutBL = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
+        float cutBR = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
+        float cutTR = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
+        float cutTL = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
+
+        float relief = module != null ? module.frontRelief : 0.025f;
+        float frontJitter = planeJitter + relief;
+        float backJitter = planeJitter + relief * 0.85f;
+
+        Vector3[] front = new Vector3[8];
+        front[0] = new Vector3(-halfW + width * cutBL, -halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[1] = new Vector3( halfW - width * cutBR, -halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[2] = new Vector3( halfW, -halfH + height * cutBR, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[3] = new Vector3( halfW,  halfH - height * cutTR, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[4] = new Vector3( halfW - width * cutTR,  halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[5] = new Vector3(-halfW + width * cutTL,  halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[6] = new Vector3(-halfW,  halfH - height * cutTL, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[7] = new Vector3(-halfW, -halfH + height * cutBL, frontZ + RandomRange(rng, 0f, frontJitter));
+
+        Vector3[] back = new Vector3[8];
+        for (int i = 0; i < 8; i++)
+        {
+            float lean = module != null ? module.verticalEdgeLean : 0f;
+            float shiftX = RandomRange(rng, -lean, lean) * width * 0.15f;
+            float shiftY = RandomRange(rng, -lean, lean) * height * 0.10f;
+            back[i] = new Vector3(front[i].x + shiftX, front[i].y + shiftY, backZ + RandomRange(rng, -backJitter, backJitter));
+        }
+
+        return BuildExtrudedPolygonMesh(front, back, uvMetersPerUnit);
+    }
+
+    private Mesh BuildExtrudedPolygonMesh(
+        Vector3[] front,
+        Vector3[] back,
+        float uvMetersPerUnit)
+    {
+        if (front == null || back == null || front.Length < 3 || back.Length != front.Length)
+            return null;
+
+        List<Vector3> verts = new List<Vector3>(front.Length * 10);
+        List<int> tris = new List<int>(front.Length * 18);
+        List<Vector2> uvs = new List<Vector2>(front.Length * 10);
+
+        AddPolygonFace(verts, tris, uvs, front, true, uvMetersPerUnit);
+        AddPolygonFace(verts, tris, uvs, back, false, uvMetersPerUnit);
+
+        for (int i = 0; i < front.Length; i++)
+        {
+            int next = (i + 1) % front.Length;
+            Vector3 a = front[i];
+            Vector3 b = front[next];
+            Vector3 c = back[next];
+            Vector3 d = back[i];
+
+            AddDoubleSidedQuad(verts, tris, uvs, a, b, c, d, uvMetersPerUnit);
+        }
+
+        Mesh mesh = new Mesh();
+        mesh.name = "GeneratedEndQuoin";
+        mesh.SetVertices(verts);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    private void AddPolygonFace(
+        List<Vector3> verts,
+        List<int> tris,
+        List<Vector2> uvs,
+        Vector3[] points,
+        bool frontFace,
+        float uvMetersPerUnit)
+    {
+        int start = verts.Count;
+        for (int i = 0; i < points.Length; i++)
+        {
+            verts.Add(points[i]);
+            uvs.Add(new Vector2(points[i].x / uvMetersPerUnit, points[i].y / uvMetersPerUnit));
+        }
+
+        for (int i = 1; i < points.Length - 1; i++)
+        {
+            if (frontFace)
+            {
+                tris.Add(start + 0);
+                tris.Add(start + i);
+                tris.Add(start + i + 1);
+            }
+            else
+            {
+                tris.Add(start + 0);
+                tris.Add(start + i + 1);
+                tris.Add(start + i);
+            }
+        }
+    }
+
+    private void AddDoubleSidedQuad(
+        List<Vector3> verts,
+        List<int> tris,
+        List<Vector2> uvs,
+        Vector3 a,
+        Vector3 b,
+        Vector3 c,
+        Vector3 d,
+        float uvMetersPerUnit)
+    {
+        AddQuad(verts, tris, uvs, a, b, c, d, uvMetersPerUnit);
+        AddQuad(verts, tris, uvs, a, d, c, b, uvMetersPerUnit);
+    }
+
+    private void AddQuad(
+        List<Vector3> verts,
+        List<int> tris,
+        List<Vector2> uvs,
+        Vector3 a,
+        Vector3 b,
+        Vector3 c,
+        Vector3 d,
+        float uvMetersPerUnit)
+    {
+        int start = verts.Count;
+        verts.Add(a);
+        verts.Add(b);
+        verts.Add(c);
+        verts.Add(d);
+
+        Vector3 edgeU = b - a;
+        Vector3 edgeV = d - a;
+        float u1 = edgeU.magnitude / Mathf.Max(0.0001f, uvMetersPerUnit);
+        float v1 = edgeV.magnitude / Mathf.Max(0.0001f, uvMetersPerUnit);
+
+        uvs.Add(new Vector2(0f, 0f));
+        uvs.Add(new Vector2(u1, 0f));
+        uvs.Add(new Vector2(u1, v1));
+        uvs.Add(new Vector2(0f, v1));
+
+        tris.Add(start + 0);
+        tris.Add(start + 1);
+        tris.Add(start + 2);
+        tris.Add(start + 0);
+        tris.Add(start + 2);
+        tris.Add(start + 3);
+    }
+
     private void CreateStoneObject(
         WallCladdingProfile profile,
         Transform root,
@@ -527,6 +867,14 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         facePoint += frame.faceNormal * (halfThickness - profile.general.sideInset);
 
         float centerOffset = ((placement.protrusion - placement.embed) * 0.5f) + profile.general.depthOffset;
+
+        if (!wall.closedLoop && profile.stone.endQuoins != null && profile.stone.endQuoins.enabled)
+        {
+            float reserved = Mathf.Max(0f, profile.stone.endQuoins.reserveWidth);
+            float edgeDistance = Mathf.Min(placement.centerDistance, samples[samples.Count - 1].endDistance - placement.centerDistance);
+            if (edgeDistance < reserved + profile.stone.horizontalSpacing)
+                centerOffset -= 0.0025f;
+        }
         Vector3 center = facePoint + frame.faceNormal * centerOffset;
         center += frame.tangent * RandomRange(rng, -profile.stone.positionJitter, profile.stone.positionJitter);
         center += Vector3.up * RandomRange(rng, -profile.stone.positionJitter, profile.stone.positionJitter);
@@ -555,105 +903,50 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         mf.sharedMesh = mesh;
         mr.sharedMaterial = stoneMaterial;
 
-        ApplyPerStoneMaterialVariation(profile, placement.module, placement.width, placement.height, mr, rng);
+        ApplyPerStoneMaterialVariation(profile, mr, rng);
     }
 
-    private void ApplyPerStoneMaterialVariation(
-        WallCladdingProfile profile,
-        WallStoneModuleDefinition module,
-        float width,
-        float height,
-        MeshRenderer mr,
-        System.Random rng)
+    private void ApplyPerStoneMaterialVariation(WallCladdingProfile profile, MeshRenderer mr, System.Random rng)
     {
         if (mr == null || profile == null || propertyBlock == null)
             return;
 
         propertyBlock.Clear();
-
         Color tint = profile.stone.baseTint;
 
         if (profile.stone.enablePerStoneColorVariation)
         {
-            Color.RGBToHSV(tint, out float baseH, out float baseS, out float baseV);
+            Color.RGBToHSV(tint, out float h, out float s, out float v);
 
-            float familyRoll = RandomValue(rng);
-            float familyHueShift;
-            float familySatShift;
-            float familyValueShift;
-
-            if (familyRoll < 0.22f)
+            float paletteRoll = RandomValue(rng);
+            if (paletteRoll < 0.22f)
             {
-                // pierres plus claires / poudrées
-                familyHueShift = RandomRange(rng, -0.012f, 0.010f);
-                familySatShift = RandomRange(rng, -0.08f, -0.01f);
-                familyValueShift = RandomRange(rng, 0.10f, 0.22f);
+                s *= 0.70f;
+                v += 0.10f;
             }
-            else if (familyRoll < 0.48f)
+            else if (paletteRoll < 0.44f)
             {
-                // gris neutre légèrement clair
-                familyHueShift = RandomRange(rng, -0.010f, 0.010f);
-                familySatShift = RandomRange(rng, -0.03f, 0.03f);
-                familyValueShift = RandomRange(rng, 0.04f, 0.12f);
+                s *= 0.85f;
+                v += 0.04f;
             }
-            else if (familyRoll < 0.74f)
+            else if (paletteRoll < 0.72f)
             {
-                // teinte de base, presque inchangée
-                familyHueShift = RandomRange(rng, -0.008f, 0.008f);
-                familySatShift = RandomRange(rng, -0.02f, 0.04f);
-                familyValueShift = RandomRange(rng, -0.03f, 0.05f);
+                v -= 0.02f;
             }
             else
             {
-                // pierres plus foncées / plus denses
-                familyHueShift = RandomRange(rng, -0.015f, 0.012f);
-                familySatShift = RandomRange(rng, 0.00f, 0.06f);
-                familyValueShift = RandomRange(rng, -0.12f, -0.03f);
+                s += 0.03f;
+                v -= 0.05f;
             }
 
-            if (module != null)
-            {
-                switch (module.sizeClass)
-                {
-                    case StoneModuleSizeClass.Large:
-                        familyValueShift += RandomRange(rng, -0.04f, 0.02f);
-                        familySatShift += RandomRange(rng, -0.01f, 0.02f);
-                        break;
-
-                    case StoneModuleSizeClass.Small:
-                        familyValueShift += RandomRange(rng, 0.00f, 0.06f);
-                        familySatShift += RandomRange(rng, -0.02f, 0.01f);
-                        break;
-                }
-            }
-
-            float aspect = height > 0.0001f ? width / height : 1f;
-            float aspectBias = Mathf.InverseLerp(1.0f, 2.4f, aspect);
-            familyValueShift += Mathf.Lerp(-0.015f, 0.02f, aspectBias);
-
-            float h = Mathf.Repeat(baseH + familyHueShift + RandomRange(rng, -profile.stone.hueJitter * 1.35f, profile.stone.hueJitter * 1.35f), 1f);
-            float s = Mathf.Clamp01(baseS + familySatShift + RandomRange(rng, -profile.stone.saturationJitter * 1.20f, profile.stone.saturationJitter * 1.20f));
-            float v = Mathf.Clamp01(baseV + familyValueShift + RandomRange(rng, -profile.stone.valueJitter * 1.40f, profile.stone.valueJitter * 1.40f));
-
-            v = Mathf.Clamp(v, 0.42f, 0.92f);
-            s = Mathf.Clamp(s, 0f, 0.30f);
+            h = Mathf.Repeat(h + RandomRange(rng, -profile.stone.hueJitter, profile.stone.hueJitter), 1f);
+            s = Mathf.Clamp01(s + RandomRange(rng, -profile.stone.saturationJitter, profile.stone.saturationJitter));
+            v = Mathf.Clamp01(v + RandomRange(rng, -profile.stone.valueJitter, profile.stone.valueJitter));
 
             tint = Color.HSVToRGB(h, s, v);
         }
 
         propertyBlock.SetColor("_BaseColor", tint);
-
-        if (profile.stone.uvOffsetJitter > 0f)
-        {
-            Vector4 st = new Vector4(
-                1f,
-                1f,
-                RandomRange(rng, -profile.stone.uvOffsetJitter, profile.stone.uvOffsetJitter),
-                RandomRange(rng, -profile.stone.uvOffsetJitter, profile.stone.uvOffsetJitter));
-
-            propertyBlock.SetVector("_BaseMap_ST", st);
-        }
-
         mr.SetPropertyBlock(propertyBlock);
     }
 
@@ -680,221 +973,30 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         float cutTR = Mathf.Lerp(module.minCornerCut, module.maxCornerCut, (float)rng.NextDouble());
         float cutTL = Mathf.Lerp(module.minCornerCut, module.maxCornerCut, (float)rng.NextDouble());
 
-        float relief = module.frontRelief * RandomRange(rng, 0.90f, 1.45f);
-        float horizontalLean = module.horizontalEdgeLean * RandomRange(rng, 0.65f, 1.25f);
-        float verticalLean = module.verticalEdgeLean * RandomRange(rng, 0.65f, 1.25f);
+        float frontJitter = planeJitter + module.frontRelief;
 
         Vector3[] front = new Vector3[8];
-        front[0] = new Vector3(-halfW + width * cutBL, -halfH, frontZ);
-        front[1] = new Vector3( halfW - width * cutBR, -halfH, frontZ);
-        front[2] = new Vector3( halfW, -halfH + height * cutBR, frontZ);
-        front[3] = new Vector3( halfW,  halfH - height * cutTR, frontZ);
-        front[4] = new Vector3( halfW - width * cutTR,  halfH, frontZ);
-        front[5] = new Vector3(-halfW + width * cutTL,  halfH, frontZ);
-        front[6] = new Vector3(-halfW,  halfH - height * cutTL, frontZ);
-        front[7] = new Vector3(-halfW, -halfH + height * cutBL, frontZ);
-
-        // Rend la pierre moins "brique lisse" : contour un peu irrégulier + façade bombée/facettée.
-        for (int i = 0; i < front.Length; i++)
-        {
-            Vector3 p = front[i];
-
-            float nx = halfW > 0.0001f ? Mathf.Clamp(p.x / halfW, -1f, 1f) : 0f;
-            float ny = halfH > 0.0001f ? Mathf.Clamp(p.y / halfH, -1f, 1f) : 0f;
-
-            p.x += width * horizontalLean * RandomRange(rng, -0.35f, 0.35f) * (0.35f + Mathf.Abs(ny) * 0.65f);
-            p.y += height * verticalLean * RandomRange(rng, -0.35f, 0.35f) * (0.35f + Mathf.Abs(nx) * 0.65f);
-
-            float edgeRelief = relief * RandomRange(rng, 0.18f, 0.45f);
-            float cornerBias = Mathf.Clamp01((Mathf.Abs(nx) + Mathf.Abs(ny)) * 0.5f);
-            float inwardBias = 1f - cornerBias;
-
-            p.z = frontZ
-                + RandomRange(rng, 0f, planeJitter)
-                + edgeRelief * (0.35f + inwardBias * 0.65f);
-
-            front[i] = p;
-        }
-
-        Vector3 frontCenter = new Vector3(
-            width * RandomRange(rng, -0.08f, 0.08f),
-            height * RandomRange(rng, -0.08f, 0.08f),
-            frontZ + relief * RandomRange(rng, 0.95f, 1.55f) + RandomRange(rng, 0f, planeJitter));
+        front[0] = new Vector3(-halfW + width * cutBL, -halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[1] = new Vector3( halfW - width * cutBR, -halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[2] = new Vector3( halfW, -halfH + height * cutBR, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[3] = new Vector3( halfW,  halfH - height * cutTR, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[4] = new Vector3( halfW - width * cutTR,  halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[5] = new Vector3(-halfW + width * cutTL,  halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[6] = new Vector3(-halfW,  halfH - height * cutTL, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[7] = new Vector3(-halfW, -halfH + height * cutBL, frontZ + RandomRange(rng, 0f, frontJitter));
 
         Vector3[] back = new Vector3[8];
         for (int i = 0; i < 8; i++)
         {
-            Vector3 p = front[i];
-            back[i] = new Vector3(
-                p.x * RandomRange(rng, 0.985f, 1.015f),
-                p.y * RandomRange(rng, 0.985f, 1.015f),
-                backZ);
+            float shiftX = RandomRange(rng, -module.verticalEdgeLean, module.verticalEdgeLean) * width * 0.14f;
+            float shiftY = RandomRange(rng, -module.horizontalEdgeLean, module.horizontalEdgeLean) * height * 0.10f;
+            back[i] = new Vector3(front[i].x + shiftX, front[i].y + shiftY, backZ);
         }
 
-        List<Vector3> verts = new List<Vector3>(128);
-        List<int> tris = new List<int>(192);
-        List<Vector2> uvs = new List<Vector2>(128);
-        List<Vector3> normals = new List<Vector3>(128);
-
-        Vector3 frontNormal = Vector3.forward;
-        Vector3 backNormal = Vector3.back;
-
-        Vector2 centerUv = new Vector2(frontCenter.x / uvMetersPerUnit, frontCenter.y / uvMetersPerUnit);
-        for (int i = 0; i < 8; i++)
-        {
-            int next = (i + 1) % 8;
-            AddTriangleAuto(verts, tris, uvs, normals,
-                frontCenter, front[i], front[next],
-                centerUv,
-                new Vector2(front[i].x / uvMetersPerUnit, front[i].y / uvMetersPerUnit),
-                new Vector2(front[next].x / uvMetersPerUnit, front[next].y / uvMetersPerUnit),
-                frontNormal);
-        }
-
-        if (generateHiddenBackFaces)
-        {
-            for (int i = 1; i < 7; i++)
-            {
-                AddTriangleAuto(verts, tris, uvs, normals,
-                    back[0], back[i + 1], back[i],
-                    new Vector2(back[0].x / uvMetersPerUnit, back[0].y / uvMetersPerUnit),
-                    new Vector2(back[i + 1].x / uvMetersPerUnit, back[i + 1].y / uvMetersPerUnit),
-                    new Vector2(back[i].x / uvMetersPerUnit, back[i].y / uvMetersPerUnit),
-                    backNormal);
-            }
-        }
-
-        for (int i = 0; i < 8; i++)
-        {
-            int next = (i + 1) % 8;
-
-            Vector3 fa = front[i];
-            Vector3 fb = front[next];
-            Vector3 bb = back[next];
-            Vector3 ba = back[i];
-
-            Vector3 edge = fb - fa;
-            Vector3 edgeMid = (fa + fb) * 0.5f;
-            Vector3 outwardXY = new Vector3(edgeMid.x, edgeMid.y, 0f);
-            if (outwardXY.sqrMagnitude < 0.000001f)
-                outwardXY = Vector3.Cross(Vector3.back, edge).normalized;
-            else
-                outwardXY.Normalize();
-
-            AddQuadAuto(verts, tris, uvs, normals,
-                fa, fb, bb, ba,
-                new Vector2(0f, 0f),
-                new Vector2(edge.magnitude / uvMetersPerUnit, 0f),
-                new Vector2(edge.magnitude / uvMetersPerUnit, Mathf.Abs(frontZ - backZ) / uvMetersPerUnit),
-                new Vector2(0f, Mathf.Abs(frontZ - backZ) / uvMetersPerUnit),
-                outwardXY);
-        }
-
-        Mesh mesh = new Mesh();
-        mesh.name = generateHiddenBackFaces ? "GeneratedStone_Full_Relief" : "GeneratedStone_OpenBack_Relief";
-        mesh.SetVertices(verts);
-        mesh.SetUVs(0, uvs);
-        mesh.SetNormals(normals);
-        mesh.SetTriangles(tris, 0);
-        mesh.RecalculateBounds();
+        Mesh mesh = BuildExtrudedPolygonMesh(front, back, uvMetersPerUnit);
+        if (mesh != null)
+            mesh.name = "GeneratedStone";
         return mesh;
-    }
-
-    private static void AddTriangleAuto(
-        List<Vector3> verts,
-        List<int> tris,
-        List<Vector2> uvs,
-        List<Vector3> normals,
-        Vector3 a,
-        Vector3 b,
-        Vector3 c,
-        Vector2 uvA,
-        Vector2 uvB,
-        Vector2 uvC,
-        Vector3 desiredNormal)
-    {
-        Vector3 n = Vector3.Cross(b - a, c - a);
-        if (Vector3.Dot(n, desiredNormal) < 0f)
-        {
-            Vector3 tempV = b;
-            b = c;
-            c = tempV;
-
-            Vector2 tempUv = uvB;
-            uvB = uvC;
-            uvC = tempUv;
-        }
-
-        int start = verts.Count;
-        verts.Add(a);
-        verts.Add(b);
-        verts.Add(c);
-
-        uvs.Add(uvA);
-        uvs.Add(uvB);
-        uvs.Add(uvC);
-
-        Vector3 finalNormal = desiredNormal.normalized;
-        normals.Add(finalNormal);
-        normals.Add(finalNormal);
-        normals.Add(finalNormal);
-
-        tris.Add(start + 0);
-        tris.Add(start + 1);
-        tris.Add(start + 2);
-    }
-
-    private static void AddQuadAuto(
-        List<Vector3> verts,
-        List<int> tris,
-        List<Vector2> uvs,
-        List<Vector3> normals,
-        Vector3 a,
-        Vector3 b,
-        Vector3 c,
-        Vector3 d,
-        Vector2 uvA,
-        Vector2 uvB,
-        Vector2 uvC,
-        Vector2 uvD,
-        Vector3 desiredNormal)
-    {
-        Vector3 n = Vector3.Cross(b - a, c - a);
-        if (Vector3.Dot(n, desiredNormal) < 0f)
-        {
-            Vector3 temp = b;
-            b = d;
-            d = temp;
-
-            Vector2 tempUv = uvB;
-            uvB = uvD;
-            uvD = tempUv;
-        }
-
-        int start = verts.Count;
-        verts.Add(a);
-        verts.Add(b);
-        verts.Add(c);
-        verts.Add(d);
-
-        uvs.Add(uvA);
-        uvs.Add(uvB);
-        uvs.Add(uvC);
-        uvs.Add(uvD);
-
-        Vector3 finalNormal = desiredNormal.normalized;
-        normals.Add(finalNormal);
-        normals.Add(finalNormal);
-        normals.Add(finalNormal);
-        normals.Add(finalNormal);
-
-        tris.Add(start + 0);
-        tris.Add(start + 1);
-        tris.Add(start + 2);
-
-        tris.Add(start + 0);
-        tris.Add(start + 2);
-        tris.Add(start + 3);
     }
 
     private WallFrame GetFrameAtDistance(List<PathSample> samples, float distance, float sideSign)

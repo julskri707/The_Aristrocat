@@ -81,6 +81,27 @@ public sealed class StoneCladdingSettings
     [Range(0f, 0.35f)] public float valueJitter = 0.12f;
     [Min(0f)] public float uvOffsetJitter = 0.35f;
     public Color baseTint = Color.white;
+
+    [Header("End Quoins")]
+    public EndQuoinSettings endQuoins = new EndQuoinSettings();
+}
+
+
+[Serializable]
+public sealed class EndQuoinSettings
+{
+    public bool enabled = true;
+    [Min(0.12f)] public float reserveWidth = 0.34f;
+    [Min(0.12f)] public float targetHeight = 0.32f;
+    [Range(0f, 0.25f)] public float rowHeightJitter = 0.08f;
+    [Min(0.12f)] public float minLength = 0.24f;
+    [Min(0.12f)] public float maxLength = 0.48f;
+    [Range(0f, 0.25f)] public float lengthJitter = 0.08f;
+    [Min(0f)] public float extraOutsideDepth = 0.04f;
+    [Range(0.4f, 1f)] public float alternateShortScale = 0.74f;
+    [Range(1f, 2f)] public float alternateLongScale = 1.18f;
+    [Min(0f)] public float edgeInset = 0f;
+    [Min(0f)] public float verticalSpacing = 0.01f;
 }
 
 [Serializable]
@@ -123,6 +144,7 @@ public sealed class WallCladdingProfile : ScriptableObject
 
         general ??= new WallCladdingGeneralSettings();
         stone ??= new StoneCladdingSettings();
+        stone.endQuoins ??= new EndQuoinSettings();
         brick ??= new BrickCladdingSettings();
 
         general.sideInset = Mathf.Max(0f, general.sideInset);
@@ -170,6 +192,19 @@ public sealed class WallCladdingProfile : ScriptableObject
         stone.rejectSliverGapBelow = Mathf.Max(0f, stone.rejectSliverGapBelow);
         stone.facePlaneJitter = Mathf.Clamp(stone.facePlaneJitter, 0f, 0.12f);
         stone.uvMetersPerUnit = Mathf.Max(0.05f, stone.uvMetersPerUnit);
+
+        stone.endQuoins.enabled = stone.endQuoins.enabled;
+        stone.endQuoins.reserveWidth = Mathf.Max(0.12f, stone.endQuoins.reserveWidth);
+        stone.endQuoins.targetHeight = Mathf.Max(0.12f, stone.endQuoins.targetHeight);
+        stone.endQuoins.rowHeightJitter = Mathf.Clamp(stone.endQuoins.rowHeightJitter, 0f, 0.25f);
+        stone.endQuoins.minLength = Mathf.Max(0.12f, stone.endQuoins.minLength);
+        stone.endQuoins.maxLength = Mathf.Max(stone.endQuoins.minLength, stone.endQuoins.maxLength);
+        stone.endQuoins.lengthJitter = Mathf.Clamp(stone.endQuoins.lengthJitter, 0f, 0.25f);
+        stone.endQuoins.extraOutsideDepth = Mathf.Max(0f, stone.endQuoins.extraOutsideDepth);
+        stone.endQuoins.alternateShortScale = Mathf.Clamp(stone.endQuoins.alternateShortScale, 0.4f, 1f);
+        stone.endQuoins.alternateLongScale = Mathf.Clamp(stone.endQuoins.alternateLongScale, 1f, 2f);
+        stone.endQuoins.edgeInset = Mathf.Max(0f, stone.endQuoins.edgeInset);
+        stone.endQuoins.verticalSpacing = Mathf.Max(0f, stone.endQuoins.verticalSpacing);
 
         stone.hueJitter = Mathf.Clamp(stone.hueJitter, 0f, 0.10f);
         stone.saturationJitter = Mathf.Clamp(stone.saturationJitter, 0f, 0.35f);
