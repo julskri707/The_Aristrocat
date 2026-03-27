@@ -155,8 +155,7 @@ MonoBehaviour:
   defaultProfile: {fileID: 11400000, guid: 48def6c18eabf8e4c97411122665e5bf, type: 2}
   autoRegenerate: 1
   generateOutside: 1
-  generateInside: 1
-  generateHiddenBackFaces: 0
+  generateInside: 0
   applyFallbackWallMaterial: 1
   clearWhenProfileMissing: 0
   logDebug: 1
