@@ -10,4 +10,12 @@ public class InventoryItemData : ScriptableObject
 
     [Header("Stacking")]
     [Min(1)] public int maxStack = 999;
+
+    [Header("Equip")]
+    public bool canEquip = false;
+    public EquipmentSlotType allowedEquipmentSlot = EquipmentSlotType.ExtraSlot1;
+    public GameObject handPrefab;
+
+    [Header("Tool")]
+    [Min(0)] public int chopPower = 0;
 }

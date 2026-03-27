@@ -5,6 +5,7 @@ public class PlayerInventoryUI : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private PlayerInventory inventory;
+    [SerializeField] private PlayerEquipment equipment;
     [SerializeField] private Transform slotRoot;
     [SerializeField] private InventorySlotUI slotPrefab;
     [SerializeField] private InventoryTooltipUI tooltipUI;
@@ -53,7 +54,7 @@ public class PlayerInventoryUI : MonoBehaviour
         for (int i = 0; i < slots.Count; i++)
         {
             InventorySlotUI ui = Instantiate(slotPrefab, slotRoot);
-            ui.Bind(slots[i], tooltipUI);
+            ui.Bind(inventory, equipment, i, slots[i], tooltipUI);
             spawnedSlots.Add(ui);
         }
     }
@@ -62,7 +63,7 @@ public class PlayerInventoryUI : MonoBehaviour
     {
         for (int i = 0; i < spawnedSlots.Count; i++)
         {
-            spawnedSlots[i].Bind(slots[i], tooltipUI);
+            spawnedSlots[i].Bind(inventory, equipment, i, slots[i], tooltipUI);
         }
     }
 }
