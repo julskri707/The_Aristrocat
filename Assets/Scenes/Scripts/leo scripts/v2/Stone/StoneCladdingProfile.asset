@@ -60,7 +60,7 @@ MonoBehaviour:
     minRowUsableWidth: 0.12
     endGapTolerance: 0.04
     rejectSliverGapBelow: 0.06
-    facePlaneJitter: 0.015
+    facePlaneJitter: 0.02
     uvMetersPerUnit: 0.5
     enablePerStoneColorVariation: 1
     hueJitter: 0.025
@@ -68,6 +68,19 @@ MonoBehaviour:
     valueJitter: 0.2
     uvOffsetJitter: 0.35
     baseTint: {r: 1, g: 1, b: 1, a: 1}
+    endQuoins:
+      enabled: 1
+      reserveWidth: 0.34
+      targetHeight: 0.32
+      rowHeightJitter: 0.08
+      minLength: 0.24
+      maxLength: 0.48
+      lengthJitter: 0.08
+      extraOutsideDepth: 0.04
+      alternateShortScale: 0.74
+      alternateLongScale: 1.18
+      edgeInset: 0
+      verticalSpacing: 0.01
   stoneLargeModules:
   - {fileID: 11400000, guid: 8146a80bdc2ae7249b7ec141a1512006, type: 2}
   - {fileID: 11400000, guid: 047aa4e468205e440b59baf300f9985b, type: 2}
