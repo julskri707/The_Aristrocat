@@ -102,6 +102,9 @@ public sealed class EndQuoinSettings
     [Range(1f, 2f)] public float alternateLongScale = 1.18f;
     [Min(0f)] public float edgeInset = 0f;
     [Min(0f)] public float verticalSpacing = 0.01f;
+
+    [Tooltip("90° rectangle corners: extra multiplier on through-wall depth so the L-quoin reads on both wall faces.")]
+    [Min(1f)] public float cornerLDepthMul = 1.14f;
 }
 
 [Serializable]
@@ -205,6 +208,7 @@ public sealed class WallCladdingProfile : ScriptableObject
         stone.endQuoins.alternateLongScale = Mathf.Clamp(stone.endQuoins.alternateLongScale, 1f, 2f);
         stone.endQuoins.edgeInset = Mathf.Max(0f, stone.endQuoins.edgeInset);
         stone.endQuoins.verticalSpacing = Mathf.Max(0f, stone.endQuoins.verticalSpacing);
+        stone.endQuoins.cornerLDepthMul = Mathf.Max(1f, stone.endQuoins.cornerLDepthMul);
 
         stone.hueJitter = Mathf.Clamp(stone.hueJitter, 0f, 0.10f);
         stone.saturationJitter = Mathf.Clamp(stone.saturationJitter, 0f, 0.35f);
