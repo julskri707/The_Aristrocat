@@ -382,7 +382,7 @@ public sealed class WallCladdingGenerator : MonoBehaviour
             float rowCenterY = rowBottom + rowHeight * 0.5f;
             GenerateRow(profile, root, stoneMat, samples, totalLength, outside, rowIndex, rowCenterY, rowHeight, sideSign, rng, ref stoneIndex);
 
-            rowBottom += rowHeight + profile.stone.verticalSpacing;
+            rowBottom += rowHeight + profile.stone.verticalSpacing * 1.5f;
             rowIndex++;
         }
     }
@@ -393,8 +393,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         h = Mathf.Clamp(h, profile.stone.minStoneHeight, profile.stone.maxStoneHeight);
         return Mathf.Min(h, remainingHeight);
     }
-
-
 
     private void GenerateRow(
         WallCladdingProfile profile,
@@ -428,20 +426,16 @@ public sealed class WallCladdingGenerator : MonoBehaviour
             float endInnerLimit = GetCachedQuoinInnerLimit(rowCenterY, false);
             endBoundaryDistance = totalLength - endInnerLimit;
 
-            // La zone gap doit etre assez large pour contenir au moins une petite pierre.
-            // On lui donne une vraie largeur basee sur minStoneWidth.
             float gapHalfWidth = Mathf.Max(profile.stone.minStoneWidth * 0.85f, profile.stone.horizontalSpacing * 2.0f);
             float safetyInset  = Mathf.Max(profile.stone.horizontalSpacing * 0.5f, 0.008f);
+            float clippingGuard = Mathf.Max(profile.stone.horizontalSpacing * 2.10f, profile.stone.minStoneWidth * 0.30f);
 
-            // Zone start : juste avant la frontiere quoin, s'etend vers l'interieur du mur
             startGapMin = Mathf.Max(0f, startBoundaryDistance - safetyInset);
-            startGapMax = startBoundaryDistance + gapHalfWidth;
+            startGapMax = startBoundaryDistance + gapHalfWidth + clippingGuard;
 
-            // Zone end : juste apres la frontiere quoin, s'etend vers l'interieur du mur
-            endGapMin = endBoundaryDistance - gapHalfWidth;
+            endGapMin = endBoundaryDistance - gapHalfWidth - clippingGuard;
             endGapMax = Mathf.Min(totalLength, endBoundaryDistance + safetyInset);
 
-            // Les pierres normales commencent apres la zone gap start
             usableStart = Mathf.Max(usableStart, startGapMax);
             usableEnd   = Mathf.Min(usableEnd,   endGapMin);
 
@@ -449,10 +443,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
             hasEndBoundaryZone   = endInnerLimit > 0.001f;
         }
 
-        // Combined flow:
-        // first boundary stone near start quoin,
-        // then normal wall stones,
-        // then boundary stone near end quoin.
         if (hasStartBoundaryZone)
             GenerateBoundaryBlendStone(profile, root, stoneMaterial, samples, sideSign, rowCenterY, rowHeight, startBoundaryDistance, startGapMin, startGapMax, rng, ref stoneIndex);
 
@@ -478,19 +468,39 @@ public sealed class WallCladdingGenerator : MonoBehaviour
                 placement.centerY = rowCenterY;
 
                 if (outside && !wall.closedLoop && profile.stone.endQuoins != null && profile.stone.endQuoins.enabled)
+                {
                     ApplyCachedEndQuoinClearance(profile, totalLength, rowCenterY, ref placement);
+                    // Hard clamp: keep first-pass cladding out of connector/filler zones.
+                    float mortar = Mathf.Max(profile.stone.horizontalSpacing * 2.00f, 0.0085f);
+                    float startLimit = GetCachedQuoinInnerLimit(rowCenterY, true) + mortar;
+                    float endLimit = totalLength - GetCachedQuoinInnerLimit(rowCenterY, false) - mortar;
+                    if (endLimit > startLimit + profile.stone.minStoneWidth * 0.35f)
+                    {
+                        float maxAllowedWidth = Mathf.Max(profile.stone.minStoneWidth * 0.30f, endLimit - startLimit);
+                        placement.width = Mathf.Min(placement.width, maxAllowedWidth);
+                        placement.centerDistance = Mathf.Clamp(
+                            placement.centerDistance,
+                            startLimit + placement.width * 0.5f,
+                            endLimit - placement.width * 0.5f);
+                    }
+                }
+
+                if (placement.width < profile.stone.minStoneWidth * 0.35f)
+                {
+                    cursor += profile.stone.horizontalSpacing * 0.8f;
+                    continue;
+                }
 
                 CreateStoneObject(profile, root, stoneMaterial, samples, sideSign, placement, rng, stoneIndex++, false);
                 RegisterUsage(placement.module);
 
-                cursor += placement.width + profile.stone.horizontalSpacing;
+                cursor += placement.width + profile.stone.horizontalSpacing * 1.5f;
             }
         }
 
         if (hasEndBoundaryZone)
             GenerateBoundaryBlendStone(profile, root, stoneMaterial, samples, sideSign, rowCenterY, rowHeight, endBoundaryDistance, endGapMin, endGapMax, rng, ref stoneIndex);
     }
-
 
     private void GenerateBoundaryBlendStone(
         WallCladdingProfile profile,
@@ -510,88 +520,164 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         if (zoneWidth < profile.stone.minStoneWidth * 0.5f)
             return;
 
-        float pad = Mathf.Min(profile.stone.horizontalSpacing * 0.5f, zoneWidth * 0.12f);
-        float workingMin = zoneMin + pad;
-        float workingMax = zoneMax - pad;
-        if (workingMax <= workingMin)
+        float mortarGap = Mathf.Clamp(
+            profile.stone.horizontalSpacing * 0.75f,
+            0.0030f,
+            Mathf.Max(0.0030f, profile.stone.minStoneWidth * 0.11f));
+
+        float workingMin = zoneMin + mortarGap * 0.5f;
+        float workingMax = zoneMax - mortarGap * 0.5f;
+        if (workingMax <= workingMin + 0.001f)
             return;
 
-        // Bug principal corrige :
-        // le connector stone ne doit pas etre centre sur le milieu d'une zone asymetrique.
-        // Il doit etre ancre sur la vraie frontiere du quoin, puis son mesh s'etend plus
-        // d'un cote que de l'autre.
-        float anchorDistance = Mathf.Clamp(boundaryDistance, workingMin, workingMax);
-        float leftReach = Mathf.Max(0f, anchorDistance - workingMin);
-        float rightReach = Mathf.Max(0f, workingMax - anchorDistance);
-        float workingWidth = leftReach + rightReach;
-        if (workingWidth < profile.stone.minStoneWidth * 0.4f)
+        float availableWidth = workingMax - workingMin;
+        float minPieceWidth = Mathf.Max(profile.stone.minStoneWidth * 0.52f, 0.045f);
+        float maxPieceWidth = Mathf.Max(minPieceWidth, Mathf.Min(profile.stone.maxStoneWidth * 0.90f, rowHeight * 1.25f));
+        if (availableWidth < minPieceWidth)
             return;
 
-        WallStoneModuleDefinition module = PickGapFillerModule(profile, rng);
-        if (module == null)
-            return;
+        float preferredWidth = Mathf.Clamp(
+            rowHeight * 1.28f,
+            minPieceWidth,
+            maxPieceWidth);
 
-        float baseDepth = Mathf.Lerp(profile.stone.minStoneDepth, profile.stone.maxStoneDepth, 0.5f) * Mathf.Max(0.75f, module.depthMultiplier);
-        baseDepth = Mathf.Clamp(baseDepth, profile.stone.minStoneDepth, profile.stone.maxStoneDepth);
+        int pieceCount = Mathf.Clamp(
+            Mathf.RoundToInt((availableWidth + mortarGap) / (preferredWidth + mortarGap)),
+            1,
+            5);
 
-        // Important:
-        // - protrusion / embed servent au POSITIONNEMENT de la face avant,
-        //   comme pour les pierres normales.
-        // - la profondeur arriere reelle sera etendue plus tard dans
-        //   CreateRebuiltGapFillerObject pour cacher la face back dans le mur.
-        float protrusion = Mathf.Min(profile.stone.surfaceProtrusion, baseDepth * 0.45f) * 0.40f;
-        protrusion = Mathf.Max(0.0135f, protrusion);
-
-        float visibleEmbed = Mathf.Min(profile.stone.embedDepth, baseDepth * 0.55f);
-        float minVisibleEmbed = Mathf.Max(profile.stone.minStoneDepth * 0.30f, protrusion * 0.80f);
-        float maxVisibleEmbed = Mathf.Max(minVisibleEmbed, baseDepth * 0.60f);
-        visibleEmbed = Mathf.Clamp(visibleEmbed, minVisibleEmbed, maxVisibleEmbed);
-
-        StonePlacement placement = new StonePlacement
+        while (pieceCount > 1)
         {
-            module = module,
-            centerDistance = anchorDistance,
-            centerY = rowCenterY,
-            width = Mathf.Clamp(workingWidth, profile.stone.minStoneWidth * 0.5f, profile.stone.maxStoneWidth),
-            height = Mathf.Clamp(rowHeight * 0.78f, profile.stone.minStoneHeight, profile.stone.maxStoneHeight),
-            depth = baseDepth,
-            protrusion = protrusion,
-            embed = visibleEmbed
-        };
+            float candidate = (availableWidth - mortarGap * (pieceCount - 1)) / pieceCount;
+            if (candidate >= minPieceWidth * 0.98f)
+                break;
+            pieceCount--;
+        }
 
-        // Fix vise uniquement les pierres interconnectrices :
-        // elles doivent ressortir davantage cote face du mur,
-        // sans repartir en POC extreme et sans elongation gauche/droite.
-        float connectorFrontDepth = Mathf.Max(
-            placement.protrusion * 2.60f,
-            profile.stone.surfaceProtrusion * 2.25f,
-            0.045f);
+        float cursor = workingMin;
+        for (int i = 0; i < pieceCount; i++)
+        {
+            int remainingPieces = pieceCount - i;
+            float remainingWidth = workingMax - cursor;
+            float idealWidth = (remainingWidth - mortarGap * (remainingPieces - 1)) / remainingPieces;
 
-        float connectorBackDepth = Mathf.Max(
-            placement.embed * 1.15f,
-            wall.thickness * 0.34f,
-            profile.stone.minStoneDepth);
+            float minAllowed = minPieceWidth;
+            float maxAllowed = Mathf.Min(
+                maxPieceWidth,
+                remainingWidth - (remainingPieces - 1) * (minPieceWidth + mortarGap));
+            if (maxAllowed < minAllowed)
+                break;
 
-        float leftSideTrim = 0f;
-        float rightSideExtension = 0f;
+            float width = idealWidth;
+            if (remainingPieces > 1)
+                width *= RandomRange(rng, 0.86f, 1.18f);
+            width *= ((i & 1) == 0) ? RandomRange(rng, 0.94f, 1.12f) : RandomRange(rng, 0.88f, 1.02f);
+            width = Mathf.Clamp(width, minAllowed, maxAllowed);
+            width = Mathf.Min(width + mortarGap * 1.18f, maxAllowed);
 
-        CreateRebuiltGapFillerObject(
-            profile,
-            root,
-            stoneMaterial,
-            samples,
-            sideSign,
-            placement,
-            rng,
-            stoneIndex++,
-            leftSideTrim,
-            rightSideExtension,
-            connectorFrontDepth,
-            connectorBackDepth);
+            WallStoneModuleDefinition module = PickGapFillerModule(profile, rng);
+            if (module == null)
+                module = PickEndQuoinModule(profile, rng);
+            if (module == null)
+                break;
 
-        RegisterUsage(module);
+            float pieceHeight = Mathf.Clamp(
+                rowHeight * RandomRange(rng, 0.82f, 1.02f),
+                profile.stone.minStoneHeight * 0.78f,
+                profile.stone.maxStoneHeight);
+            pieceHeight = Mathf.Min(pieceHeight + rowHeight * 0.10f, profile.stone.maxStoneHeight);
+            // Avoid "vertical blade" fillers: enforce a minimum width/height ratio.
+            float minWidthFromHeight = pieceHeight * 0.72f;
+            if (width < minWidthFromHeight)
+            {
+                float targetWidth = Mathf.Min(maxAllowed, minWidthFromHeight);
+                if (targetWidth > width)
+                    width = targetWidth;
+
+                float maxHeightFromWidth = width / 0.72f;
+                pieceHeight = Mathf.Min(pieceHeight, maxHeightFromWidth);
+            }
+
+            float protrusion = Mathf.Max(profile.stone.surfaceProtrusion * RandomRange(rng, 0.94f, 1.03f), 0.014f);
+            float throughWallEmbed = Mathf.Max(
+                wall.thickness + protrusion + mortarGap * 0.6f,
+                profile.stone.minStoneDepth * 1.15f);
+
+            float wallTop = Mathf.Max(0.10f, wall.height) - profile.general.sideInset;
+            float wallBottom = Mathf.Max(0f, profile.general.sideInset);
+            float maxAllowedHeightInWall = Mathf.Max(profile.stone.minStoneHeight * 0.75f, wallTop - wallBottom - 0.002f);
+            pieceHeight = Mathf.Min(pieceHeight, maxAllowedHeightInWall);
+
+            float centerY = rowCenterY + RandomRange(rng, -rowHeight * 0.07f, rowHeight * 0.07f);
+            centerY = Mathf.Clamp(centerY, wallBottom + pieceHeight * 0.5f, wallTop - pieceHeight * 0.5f);
+
+            StonePlacement placement = new StonePlacement
+            {
+                module = module,
+                centerDistance = cursor + width * 0.5f,
+                centerY = centerY,
+                width = width,
+                height = pieceHeight,
+                depth = throughWallEmbed,
+                protrusion = protrusion,
+                embed = throughWallEmbed
+            };
+
+            // rigidFacePlacement removes random yaw/pitch/roll and position jitter.
+            CreateStoneObject(profile, root, stoneMaterial, samples, sideSign, placement, rng, stoneIndex++, true);
+            RegisterUsage(module);
+
+            cursor += width + mortarGap * 0.92f;
+            if (cursor >= workingMax - minPieceWidth * 0.15f)
+                break;
+        }
     }
 
+    private void CreateGapFillerRectObject(
+        WallCladdingProfile profile,
+        Transform root,
+        Material stoneMaterial,
+        List<PathSample> samples,
+        float sideSign,
+        float centerDistance,
+        float centerY,
+        float width,
+        float height,
+        float protrusion,
+        float embed,
+        System.Random rng,
+        int index)
+    {
+        WallFrame frame = GetFrameAtDistance(samples, centerDistance, sideSign);
+        float halfThickness = Mathf.Max(0.01f, wall.thickness) * 0.5f;
+
+        Vector3 wallFacePoint = frame.centerline + Vector3.up * centerY;
+        wallFacePoint += frame.faceNormal * (halfThickness - profile.general.sideInset);
+
+        float visibleEmbedForPlacement = Mathf.Max(profile.stone.embedDepth, profile.stone.minStoneDepth * 0.35f);
+        float meshEmbed = Mathf.Max(embed, wall.thickness + protrusion);
+        float centerOffset = ((protrusion - visibleEmbedForPlacement) * 0.5f) + profile.general.depthOffset;
+        Vector3 center = wallFacePoint + frame.faceNormal * centerOffset;
+
+        Quaternion rot = Quaternion.LookRotation(frame.faceNormal, Vector3.up);
+        Mesh mesh = BuildGapFillerMesh(width, height, protrusion, meshEmbed, profile.stone.uvMetersPerUnit);
+        if (mesh == null || mesh.vertexCount == 0)
+            return;
+
+        GameObject go = new GameObject($"GapFiller_{index:000}");
+        go.transform.SetParent(root, false);
+        go.transform.localPosition = transform.InverseTransformPoint(center);
+        go.transform.localRotation = Quaternion.LookRotation(
+            transform.InverseTransformDirection(rot * Vector3.forward),
+            transform.InverseTransformDirection(rot * Vector3.up));
+        go.transform.localScale = Vector3.one;
+
+        MeshFilter mf = go.AddComponent<MeshFilter>();
+        MeshRenderer mr = go.AddComponent<MeshRenderer>();
+        mf.sharedMesh = mesh;
+        mr.sharedMaterial = stoneMaterial;
+        ApplyPerStoneMaterialVariation(profile, mr, rng, false);
+    }
 
     private WallStoneModuleDefinition PickGapFillerModule(WallCladdingProfile profile, System.Random rng)
     {
@@ -736,7 +822,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         return Mathf.Min(desired, remainingWidth);
     }
 
-
     private void AddQuoinSpan(bool startEnd, float yMin, float yMax, float innerLimit)
     {
         QuoinRowSpan span = new QuoinRowSpan
@@ -786,17 +871,13 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         if (distToStart < blendWidth)
         {
             float t = Mathf.Clamp01(Mathf.Max(0f, distToStart) / blendWidth);
-            placement.protrusion *= Mathf.Lerp(0.10f, 1f, t);
-            placement.embed *= Mathf.Lerp(2.80f, 1f, t);
-            placement.width *= Mathf.Lerp(0.84f, 1f, t);
+            placement.width *= Mathf.Lerp(0.70f, 1f, t);
         }
 
         if (distToEnd < blendWidth)
         {
             float t = Mathf.Clamp01(Mathf.Max(0f, distToEnd) / blendWidth);
-            placement.protrusion *= Mathf.Lerp(0.10f, 1f, t);
-            placement.embed *= Mathf.Lerp(2.80f, 1f, t);
-            placement.width *= Mathf.Lerp(0.84f, 1f, t);
+            placement.width *= Mathf.Lerp(0.70f, 1f, t);
         }
 
         placement.protrusion = Mathf.Max(0.0065f, placement.protrusion);
@@ -868,14 +949,16 @@ public sealed class WallCladdingGenerator : MonoBehaviour
                 rowHeight,
                 profile.stone.minStoneHeight * 1.15f,
                 Mathf.Max(profile.stone.minStoneHeight * 1.25f, profile.stone.maxStoneHeight * 1.75f));
-            rowHeight = Mathf.Min(rowHeight, yMax - rowBottom);
+            bool isLastQuoinRow = (rowBottom + rowHeight + settings.verticalSpacing) >= yMax;
+            float topOvershoot = isLastQuoinRow ? Mathf.Max(wall.thickness * 0.18f, profile.stone.surfaceProtrusion * 1.45f, 0.04f) : 0f;
+            rowHeight = Mathf.Min(rowHeight, yMax - rowBottom + topOvershoot);
 
             if (rowHeight < 0.10f)
                 break;
 
             float baseLength = RandomRange(rng, settings.minLength, settings.maxLength);
             float altScale = ((rowIndex & 1) == 0) ? settings.alternateLongScale : settings.alternateShortScale;
-            float length = baseLength * altScale * RandomRange(rng, 1f - settings.lengthJitter, 1f + settings.lengthJitter);
+            float length = baseLength * altScale * 1.08f * RandomRange(rng, 1f - settings.lengthJitter, 1f + settings.lengthJitter);
             length = Mathf.Clamp(length, settings.minLength * 0.85f, settings.maxLength * 1.35f);
 
             float revealAtWallEnd = Mathf.Clamp(
@@ -886,7 +969,9 @@ public sealed class WallCladdingGenerator : MonoBehaviour
             float inwardCoverage = Mathf.Max(0f, length - settings.edgeInset - revealAtWallEnd);
             AddQuoinSpan(startEnd, rowBottom, rowBottom + rowHeight, inwardCoverage);
 
-            float fullDepth = Mathf.Max(wall.thickness + settings.extraOutsideDepth * 2.0f, wall.thickness + 0.01f);
+            // Make end quoins read as structural pillars: +2 cm protrusion
+            // on both front and back faces.
+            float fullDepth = Mathf.Max(wall.thickness + settings.extraOutsideDepth * 2.0f + 0.04f, wall.thickness + 0.01f);
             float centerY = rowBottom + rowHeight * 0.5f;
 
             Vector3 center = endPoint;
@@ -983,39 +1068,40 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         float frontZ = depth * 0.5f;
         float backZ = -depth * 0.5f;
 
+        float leftX = -halfW;
+        float rightX = halfW;
+        float totalFrontWidth = width;
+
         float cutMin = module != null ? module.minCornerCut : 0.05f;
         float cutMax = module != null ? module.maxCornerCut : 0.12f;
-        float cutBL = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
-        float cutBR = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
-        float cutTR = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
-        float cutTL = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
+        float cutBottom = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
+        float cutTop = Mathf.Lerp(cutMin, cutMax, (float)rng.NextDouble());
+        float cutBL = cutBottom;
+        float cutBR = cutBottom;
+        float cutTR = cutTop;
+        float cutTL = cutTop;
 
         float relief = module != null ? module.frontRelief : 0.025f;
         float frontJitter = planeJitter + relief;
-        float backJitter = planeJitter * 0.90f + relief * 0.50f;
 
         Vector3[] front = new Vector3[8];
-        front[0] = new Vector3(-halfW + width * cutBL, -halfH, frontZ + RandomRange(rng, 0f, frontJitter));
-        front[1] = new Vector3( halfW - width * cutBR, -halfH, frontZ + RandomRange(rng, 0f, frontJitter));
-        front[2] = new Vector3( halfW, -halfH + height * cutBR, frontZ + RandomRange(rng, 0f, frontJitter));
-        front[3] = new Vector3( halfW,  halfH - height * cutTR, frontZ + RandomRange(rng, 0f, frontJitter));
-        front[4] = new Vector3( halfW - width * cutTR,  halfH, frontZ + RandomRange(rng, 0f, frontJitter));
-        front[5] = new Vector3(-halfW + width * cutTL,  halfH, frontZ + RandomRange(rng, 0f, frontJitter));
-        front[6] = new Vector3(-halfW,  halfH - height * cutTL, frontZ + RandomRange(rng, 0f, frontJitter));
-        front[7] = new Vector3(-halfW, -halfH + height * cutBL, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[0] = new Vector3(leftX + totalFrontWidth * cutBL, -halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[1] = new Vector3(rightX - totalFrontWidth * cutBR, -halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[2] = new Vector3(rightX, -halfH + height * cutBR, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[3] = new Vector3(rightX,  halfH - height * cutTR, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[4] = new Vector3(rightX - totalFrontWidth * cutTR,  halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[5] = new Vector3(leftX + totalFrontWidth * cutTL,  halfH, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[6] = new Vector3(leftX,  halfH - height * cutTL, frontZ + RandomRange(rng, 0f, frontJitter));
+        front[7] = new Vector3(leftX, -halfH + height * cutBL, frontZ + RandomRange(rng, 0f, frontJitter));
 
+        float backJitterQuoin = frontJitter;
         Vector3[] back = new Vector3[8];
         for (int i = 0; i < 8; i++)
         {
-            float leanX = module != null ? module.verticalEdgeLean : 0f;
-            float leanY = module != null ? module.horizontalEdgeLean : 0f;
-
-            float shiftX = RandomRange(rng, -leanX, leanX) * width * 0.16f;
-            float shiftY = RandomRange(rng, -leanY, leanY) * height * 0.12f;
             back[i] = new Vector3(
-                front[i].x + shiftX,
-                front[i].y + shiftY,
-                backZ + RandomRange(rng, -backJitter, backJitter));
+                front[i].x,
+                front[i].y,
+                backZ - RandomRange(rng, 0f, backJitterQuoin));
         }
 
         return BuildExtrudedPolygonMesh(front, back, uvMetersPerUnit);
@@ -1132,7 +1218,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         tris.Add(start + 3);
     }
 
-
     private void CreateStoneObject(
         WallCladdingProfile profile,
         Transform root,
@@ -1161,9 +1246,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
                 placement.embed,
                 wall.thickness + Mathf.Max(profile.stone.surfaceProtrusion, 0.02f));
 
-            // Important:
-            // keep the FRONT face exactly where it was before,
-            // and only extend the stone further backward.
             float centerOffset = ((placement.protrusion - placement.embed) * 0.5f) + profile.general.depthOffset;
             center = wallFacePoint + frame.faceNormal * centerOffset;
 
@@ -1179,11 +1261,10 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         }
         else
         {
-            // Gap filler : formule identique aux pierres normales.
-            // centerOffset utilise placement.embed (comme les normales),
-            // meshEmbed = throughWallEmbed pour cacher la face arriere.
             meshEmbed = Mathf.Max(placement.embed, wall.thickness + Mathf.Max(profile.stone.surfaceProtrusion, 0.02f));
-            float centerOffset = ((placement.protrusion - placement.embed) * 0.5f) + profile.general.depthOffset;
+            // For rigid connector/filler stones, anchor from the wall face
+            // to keep a balanced read on both sides.
+            float centerOffset = profile.general.depthOffset;
             center = wallFacePoint + frame.faceNormal * centerOffset;
         }
 
@@ -1243,17 +1324,10 @@ public sealed class WallCladdingGenerator : MonoBehaviour
 
         float halfThickness = Mathf.Max(0.01f, wall.thickness) * 0.5f;
 
-        // Reference de surface : meme face que les pierres normales.
         Vector3 wallFacePoint = frame.centerline + Vector3.up * placement.centerY;
         wallFacePoint += frame.faceNormal * (halfThickness - profile.general.sideInset);
 
         float frontDepth = Mathf.Max(forcedFrontDepth, placement.protrusion);
-
-        // Important :
-        // on garde l'ancrage de placement proche des pierres normales,
-        // puis on allonge seulement la face avant du connector.
-        // Comme ca, il ressort davantage d'un cote sans que tout l'objet
-        // se decale bizarrement au milieu du mur.
         float positionEmbed = Mathf.Max(
             placement.embed,
             profile.stone.minStoneDepth * 0.35f);
@@ -1262,7 +1336,8 @@ public sealed class WallCladdingGenerator : MonoBehaviour
             forcedBackDepth,
             positionEmbed);
 
-        float centerOffset = ((placement.protrusion - positionEmbed) * 0.5f) + profile.general.depthOffset;
+        float targetFrontWorld = profile.stone.surfaceProtrusion + profile.general.depthOffset;
+        float centerOffset = targetFrontWorld - frontDepth;
         Vector3 center = wallFacePoint + frame.faceNormal * centerOffset;
 
         Mesh mesh = BuildRebuiltGapFillerMesh(
@@ -1293,7 +1368,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         ApplyPerStoneMaterialVariation(profile, mr, rng, false);
     }
 
-
     private Mesh BuildRebuiltGapFillerMesh(
         float width,
         float height,
@@ -1311,8 +1385,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         float frontZ = frontDepth;
         float backZ = -backDepth;
 
-        // Rebuilt from zero:
-        // a single bridge stone mesh with explicit left/right shape control.
         float cornerCutW = width * 0.08f;
         float cornerCutH = height * 0.08f;
 
@@ -1381,7 +1453,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         propertyBlock.SetColor("_BaseColor", tint);
         mr.SetPropertyBlock(propertyBlock);
     }
-
 
     private Mesh BuildGapFillerMesh(
         float width,
@@ -1452,17 +1523,15 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         front[6] = new Vector3(-halfW,  halfH - height * cutTL, frontZ + RandomRange(rng, 0f, frontJitter));
         front[7] = new Vector3(-halfW, -halfH + height * cutBL, frontZ + RandomRange(rng, 0f, frontJitter));
 
-        float backJitter = planeJitter + module.frontRelief * 0.85f;
+        float backJitter = frontJitter;
 
         Vector3[] back = new Vector3[8];
         for (int i = 0; i < 8; i++)
         {
-            float shiftX = RandomRange(rng, -module.verticalEdgeLean, module.verticalEdgeLean) * width * 0.14f;
-            float shiftY = RandomRange(rng, -module.horizontalEdgeLean, module.horizontalEdgeLean) * height * 0.10f;
             back[i] = new Vector3(
-                front[i].x + shiftX,
-                front[i].y + shiftY,
-                backZ + RandomRange(rng, -backJitter, backJitter));
+                front[i].x,
+                front[i].y,
+                backZ + RandomRange(rng, 0f, backJitter));
         }
 
         Mesh mesh = BuildExtrudedPolygonMesh(front, back, uvMetersPerUnit);
