@@ -300,7 +300,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         var uvs = new List<Vector2>(segCount * 24 + 16);
         var tris = new List<int>(segCount * 36 + 24);
 
-        float uAcross = thickness / Mathf.Max(0.01f, uvMetersPerU);
+        // Outer/inner faces should tile across wall height, while top/bottom tile across thickness.
+        float uHeight = height / Mathf.Max(0.01f, uvMetersPerU);
+        float uThickness = thickness / Mathf.Max(0.01f, uvMetersPerU);
 
         for (int i = 0; i < segCount; i++)
         {
@@ -317,24 +319,24 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             // OUTER face
             AddQuad(verts, uvs, tris,
                 outB[i], outT[i], outT[n], outB[n],
-                0f, v0, uAcross, v1);
+                0f, v0, uHeight, v1);
 
             // INNER face
             AddQuad(verts, uvs, tris,
                 inB[n], inT[n], inT[i], inB[i],
-                0f, v1, uAcross, v0);
+                0f, v1, uHeight, v0);
 
             // TOP face
             AddQuad(verts, uvs, tris,
                 outT[i], inT[i], inT[n], outT[n],
-                0f, v0, uAcross, v1);
+                0f, v0, uThickness, v1);
 
             // BOTTOM face
             if (addBottom)
             {
                 AddQuad(verts, uvs, tris,
                     outB[n], inB[n], inB[i], outB[i],
-                    0f, v1, uAcross, v0);
+                    0f, v1, uThickness, v0);
             }
         }
 
@@ -438,9 +440,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         verts.Add(d);
 
         uvs.Add(new Vector2(u0, v0));
-        uvs.Add(new Vector2(u0, v0 + 1f));
-        uvs.Add(new Vector2(u1, v1 + 1f));
+        uvs.Add(new Vector2(u1, v0));
         uvs.Add(new Vector2(u1, v1));
+        uvs.Add(new Vector2(u0, v1));
 
         tris.Add(start + 0);
         tris.Add(start + 1);
