@@ -1,0 +1,271 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class HierarchicalGridManager : MonoBehaviour
+{
+    [Header("References")]
+    public HierarchicalGridSettings settings;
+    public HierarchicalGridRenderer gridRenderer;
+    public Camera focusCamera;
+    public Transform focusTarget;
+
+    [Header("Runtime (ReadOnly)")]
+    [SerializeField] Vector3 currentFocus;
+    [SerializeField] int currentLeafCount;
+    [SerializeField] int currentRenderNodeCount;
+    [SerializeField] int currentDepthUsed;
+
+    readonly List<HierarchicalGridNode> _leafNodes = new List<HierarchicalGridNode>(4096);
+    readonly List<HierarchicalGridNode> _renderNodes = new List<HierarchicalGridNode>(12000);
+    HierarchicalGridNode _root;
+    HierarchicalGridNode _hoverCell;
+    Vector2 _rootCenter;
+    Vector3 _lastFocus;
+    float _lastFocusHeight;
+    float _lastBuildTime;
+    bool _initialized;
+    bool _treeBuiltOnce;
+    bool _hasRenderedOnce;
+    int _lastRenderedNodeCount;
+    float _nextHoverSampleTime;
+
+    public IReadOnlyList<HierarchicalGridNode> LeafNodes => _leafNodes;
+    public HierarchicalGridNode HoverCell => _hoverCell;
+
+    void Awake()
+    {
+        if (gridRenderer == null)
+            gridRenderer = GetComponent<HierarchicalGridRenderer>();
+        if (gridRenderer == null)
+            gridRenderer = gameObject.AddComponent<HierarchicalGridRenderer>();
+
+        if (focusCamera == null)
+            focusCamera = Camera.main;
+    }
+
+    void OnEnable()
+    {
+        _initialized = false;
+        _treeBuiltOnce = false;
+        _hasRenderedOnce = false;
+        _lastRenderedNodeCount = -1;
+    }
+
+    void LateUpdate()
+    {
+        if (settings == null || gridRenderer == null)
+            return;
+
+        Vector3 focus = ResolveFocusWorld();
+        currentFocus = focus;
+        float focusHeight = Mathf.Abs(focus.y - settings.gridPlaneY);
+
+        bool recentered = EnsureRootCenter(focus);
+        bool shouldRebuild = ShouldRebuild(focus, focusHeight, recentered);
+
+        bool didRebuild = false;
+        if (shouldRebuild)
+        {
+            RebuildTree();
+            _lastFocus = focus;
+            _lastFocusHeight = focusHeight;
+            _lastBuildTime = Time.unscaledTime;
+            _initialized = true;
+            _treeBuiltOnce = true;
+            didRebuild = true;
+        }
+
+        bool hoverChanged = UpdateHoverCell();
+        bool nodeCountChanged = _lastRenderedNodeCount != _renderNodes.Count;
+        bool shouldRender = !_hasRenderedOnce || didRebuild || hoverChanged || nodeCountChanged;
+        if (shouldRender)
+        {
+            gridRenderer.Render(_renderNodes, _hoverCell, settings);
+            _hasRenderedOnce = true;
+            _lastRenderedNodeCount = _renderNodes.Count;
+        }
+    }
+
+    public bool TryGetCellAtWorld(Vector3 worldPoint, out HierarchicalGridNode cell)
+    {
+        Vector2 p = new Vector2(worldPoint.x, worldPoint.z);
+        for (int i = 0; i < _leafNodes.Count; i++)
+        {
+            HierarchicalGridNode c = _leafNodes[i];
+            if (c != null && c.ContainsXZ(p))
+            {
+                cell = c;
+                return true;
+            }
+        }
+
+        cell = null;
+        return false;
+    }
+
+    public Vector3 GetCellCenterWorld(HierarchicalGridNode cell)
+    {
+        if (cell == null)
+            return new Vector3(0f, settings != null ? settings.gridPlaneY : 0f, 0f);
+        return new Vector3(cell.center.x, settings != null ? settings.gridPlaneY : 0f, cell.center.y);
+    }
+
+    Vector3 ResolveFocusWorld()
+    {
+        if (settings == null)
+            return Vector3.zero;
+
+        switch (settings.focusMode)
+        {
+            case HierarchicalGridSettings.FocusMode.TargetTransform:
+                if (focusTarget != null)
+                    return focusTarget.position;
+                break;
+            case HierarchicalGridSettings.FocusMode.ManualPoint:
+                return settings.manualFocusPoint;
+        }
+
+        if (focusCamera == null)
+            focusCamera = Camera.main;
+        if (focusCamera != null)
+            return focusCamera.transform.position;
+
+        return settings.manualFocusPoint;
+    }
+
+    bool EnsureRootCenter(Vector3 focusWorld)
+    {
+        float size = Mathf.Max(8f, settings.rootCellSize);
+        Vector2 p = new Vector2(focusWorld.x, focusWorld.z);
+
+        if (!_initialized)
+        {
+            _rootCenter = SnapToRootCenter(p, size);
+            return true;
+        }
+
+        if (!settings.recenterRootOnFocus)
+            return false;
+
+        if (_root == null || !_root.ContainsXZ(p))
+        {
+            _rootCenter = SnapToRootCenter(p, size);
+            return true;
+        }
+
+        return false;
+    }
+
+    bool ShouldRebuild(Vector3 focus, float focusHeight, bool recentered)
+    {
+        // Mode demandé: tout rendre en même temps, sans LOD au zoom.
+        // On construit l'arbre complet une seule fois (sauf recenter explicite).
+        if (!_treeBuiltOnce)
+            return true;
+
+        if (!settings.recenterRootOnFocus)
+            return false;
+
+        if (!_initialized || _root == null)
+            return true;
+        if (recentered)
+            return true;
+
+        float now = Time.unscaledTime;
+        if (now - _lastBuildTime < settings.minRebuildInterval)
+            return false;
+
+        if (Vector2.Distance(new Vector2(focus.x, focus.z), new Vector2(_lastFocus.x, _lastFocus.z)) >= settings.rebuildMoveThreshold)
+            return true;
+
+        if (Mathf.Abs(focusHeight - _lastFocusHeight) >= settings.rebuildHeightThreshold)
+            return true;
+
+        return false;
+    }
+
+    void RebuildTree()
+    {
+        _leafNodes.Clear();
+        _renderNodes.Clear();
+        currentDepthUsed = 0;
+
+        float rootSize = Mathf.Max(8f, settings.rootCellSize);
+        _root = new HierarchicalGridNode(_rootCenter, rootSize, 0);
+
+        BuildRecursive(_root);
+
+        currentLeafCount = _leafNodes.Count;
+        currentRenderNodeCount = _renderNodes.Count;
+
+        if (settings.enableDebugLogs)
+            Debug.Log($"[HierarchicalGrid] rebuild leaves={currentLeafCount} depth={currentDepthUsed}");
+    }
+
+    void BuildRecursive(HierarchicalGridNode node)
+    {
+        _renderNodes.Add(node);
+
+        if (_leafNodes.Count >= settings.maxLeafNodes)
+        {
+            _leafNodes.Add(node);
+            return;
+        }
+
+        bool canSubdivide =
+            node.depth < settings.maxDepth &&
+            node.size / 3f >= settings.minCellSize;
+
+        if (!canSubdivide)
+        {
+            _leafNodes.Add(node);
+            if (node.depth > currentDepthUsed)
+                currentDepthUsed = node.depth;
+            return;
+        }
+
+        node.Subdivide();
+        for (int i = 0; i < node.children.Length; i++)
+            BuildRecursive(node.children[i]);
+    }
+
+    bool UpdateHoverCell()
+    {
+        HierarchicalGridNode before = _hoverCell;
+        if (settings == null || !settings.highlightCellUnderMouse)
+        {
+            _hoverCell = null;
+            return before != _hoverCell;
+        }
+
+        float now = Time.unscaledTime;
+        if (now < _nextHoverSampleTime)
+            return false;
+        _nextHoverSampleTime = now + 0.05f;
+
+        _hoverCell = null;
+
+        if (focusCamera == null)
+            focusCamera = Camera.main;
+        if (focusCamera == null)
+            return before != _hoverCell;
+
+        Ray ray = focusCamera.ScreenPointToRay(Input.mousePosition);
+        Plane gridPlane = new Plane(Vector3.up, new Vector3(0f, settings.gridPlaneY, 0f));
+        if (!gridPlane.Raycast(ray, out float enter))
+            return before != _hoverCell;
+
+        Vector3 p = ray.GetPoint(enter);
+        TryGetCellAtWorld(p, out _hoverCell);
+        return before != _hoverCell;
+    }
+
+    static Vector2 SnapToRootCenter(Vector2 p, float size)
+    {
+        float x = Mathf.Floor(p.x / size) * size + size * 0.5f;
+        float z = Mathf.Floor(p.y / size) * size + size * 0.5f;
+        return new Vector2(x, z);
+    }
+}
+

@@ -5,8 +5,12 @@ using UnityEngine;
 [DisallowMultipleComponent]
 [RequireComponent(typeof(WallObject))]
 [RequireComponent(typeof(WallCladdingRuntime))]
-public sealed class WallCladdingGenerator : MonoBehaviour
+public sealed partial class WallCladdingGenerator : MonoBehaviour
 {
+    private static int s_GlobalRebuildSuspendCounter;
+    private static int s_LastBudgetFrame = -1;
+    private static int s_RebuildsThisFrame = 0;
+
     [Header("Profile")]
     [SerializeField] private WallCladdingProfile defaultProfile;
     [SerializeField] private bool autoRegenerate = true;
@@ -22,6 +26,16 @@ public sealed class WallCladdingGenerator : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool logDebug = false;
 
+    [Header("Performance")]
+    [SerializeField, Min(0f)] private float minRebuildInterval = 0.18f;
+    [SerializeField, Min(0f)] private float geometryHashPollInterval = 0.12f;
+    [SerializeField, Min(0f)] private float rebuildAfterDragDelay = 0.08f;
+    [SerializeField, Min(1)] private int globalRebuildBudgetPerFrame = 2;
+    [SerializeField, Min(64)] private int maxGeneratedStonesPerSide = 7000;
+    [SerializeField, Min(1)] private int maxRowsPerSide = 220;
+    [SerializeField, Min(8)] private int maxStonesPerRow = 320;
+    [SerializeField, Min(1)] private int maxTailGapFillStonesPerRow = 48;
+
     [Header("Connector Stones")]
     [SerializeField] private float connectorRightShift = 0.10f;
     [SerializeField] private float cornerSideExtensionMultiplier = 0f;
@@ -30,15 +44,15 @@ public sealed class WallCladdingGenerator : MonoBehaviour
     [SerializeField] private bool alignCornerLateralStack = true;
     [SerializeField] private bool invertOtherWallCornerColumn = true;
     [SerializeField] private bool growOppositeVoidLateralFace = false;
-    [SerializeField] private float cornerStackColumnOffset = -0.125f;
+    [SerializeField] private float cornerStackColumnOffset = -0.18f;
     [SerializeField] private bool randomizeSingleCornerLateralFace = true;
     [SerializeField] private float cornerSingleFaceExtraMin = 0.02f;
     [SerializeField] private float cornerSingleFaceExtraMax = 0.60f;
     [SerializeField] private float cornerSingleFaceExtraHardCap = 0.85f;
     private const bool forceCornerSideExtensionFromCode = false;
     private const float forcedCornerSideExtensionMultiplier = 0f;
-    private const bool forceCornerStackColumnOffsetFromCode = true;
-    private const float forcedCornerStackColumnOffset = -0.125f;
+    private const bool forceCornerStackColumnOffsetFromCode = false;
+    private const float forcedCornerStackColumnOffset = -0.18f;
 
     private WallObject wall;
     private WallCladdingRuntime runtime;
@@ -53,6 +67,10 @@ public sealed class WallCladdingGenerator : MonoBehaviour
 
     private WallStoneModuleDefinition lastUsed;
     private WallStoneModuleDefinition secondLastUsed;
+    private float _lastRebuildTime = -999f;
+    private float _nextHashCheckTime;
+    private float _dragCooldownUntil;
+    private float _nextWarnPathTooShortTime;
 
     /// <summary>Detected once per rebuild for closed-loop walls; drives which corner / edge rules run.</summary>
     private WallLoopShapeKind loopShapeKind = WallLoopShapeKind.Unknown;
@@ -68,6 +86,37 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         Triangle = 4,
         /// <summary>Many short edges, approximately constant radius from centroid (XZ).</summary>
         CircleLike = 5,
+    }
+
+    public static bool IsGlobalRebuildSuspended => s_GlobalRebuildSuspendCounter > 0;
+
+    public static void SetGlobalRebuildSuspended(bool suspended)
+    {
+        if (suspended)
+        {
+            s_GlobalRebuildSuspendCounter++;
+            return;
+        }
+
+        if (s_GlobalRebuildSuspendCounter > 0)
+            s_GlobalRebuildSuspendCounter--;
+    }
+
+    private bool TryConsumeGlobalRebuildBudget()
+    {
+        int frame = Time.frameCount;
+        if (s_LastBudgetFrame != frame)
+        {
+            s_LastBudgetFrame = frame;
+            s_RebuildsThisFrame = 0;
+        }
+
+        int budget = Mathf.Max(1, globalRebuildBudgetPerFrame);
+        if (s_RebuildsThisFrame >= budget)
+            return false;
+
+        s_RebuildsThisFrame++;
+        return true;
     }
 
     private float EffectiveCornerSideExtensionMultiplier()
@@ -152,8 +201,10 @@ public sealed class WallCladdingGenerator : MonoBehaviour
     private void OnEnable()
     {
         CacheRefs();
-        if (autoRegenerate)
+        if (autoRegenerate && !IsGlobalRebuildSuspended)
             ForceRebuild();
+        else
+            runtime?.MarkDirty();
     }
 
 #if UNITY_EDITOR
@@ -176,7 +227,7 @@ public sealed class WallCladdingGenerator : MonoBehaviour
                 return;
 
             CacheRefs();
-            if (runtime != null)
+            if (runtime != null && !IsGlobalRebuildSuspended)
                 ForceRebuild();
         };
     }
@@ -187,9 +238,31 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         if (!autoRegenerate)
             return;
 
+        if (ControlPointHandleUI.IsDraggingAnyHandle)
+        {
+            CacheRefs();
+            runtime?.MarkDirty();
+            _dragCooldownUntil = Time.unscaledTime + Mathf.Max(0f, rebuildAfterDragDelay);
+            return;
+        }
+
         CacheRefs();
         if (wall == null || runtime == null)
             return;
+
+        if (IsGlobalRebuildSuspended)
+        {
+            runtime.MarkDirty();
+            return;
+        }
+
+        float now = Time.unscaledTime;
+        if (now < _dragCooldownUntil)
+            return;
+
+        if (now < _nextHashCheckTime)
+            return;
+        _nextHashCheckTime = now + geometryHashPollInterval;
 
         WallCladdingProfile profile = runtime.CurrentProfile != null ? runtime.CurrentProfile : defaultProfile;
         if (profile == null)
@@ -199,11 +272,16 @@ public sealed class WallCladdingGenerator : MonoBehaviour
             return;
         }
 
-        int geometryHash = ComputeGeometryHash();
-        if (runtime.IsDirty || runtime.LastGeometryHash != geometryHash)
+        if (runtime.IsDirty)
         {
+            if (now - _lastRebuildTime < minRebuildInterval)
+                return;
+
+            if (!TryConsumeGlobalRebuildBudget())
+                return;
+
             if (logDebug)
-                Debug.Log($"[WallCladdingGenerator] LateUpdate rebuild on {name} (dirty={runtime.IsDirty}, last={runtime.LastGeometryHash}, new={geometryHash})", this);
+                Debug.Log($"[WallCladdingGenerator] LateUpdate rebuild on {name} (dirty={runtime.IsDirty})", this);
 
             ForceRebuild();
         }
@@ -214,6 +292,12 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         CacheRefs();
         if (wall == null || runtime == null)
             return;
+
+        if (IsGlobalRebuildSuspended)
+        {
+            runtime.MarkDirty();
+            return;
+        }
 
         WallCladdingProfile profile = runtime.CurrentProfile != null ? runtime.CurrentProfile : defaultProfile;
         if (profile == null)
@@ -233,8 +317,11 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         List<Vector3> path = GetWallPath();
         if (path == null || path.Count < 2)
         {
-            if (logDebug)
+            if (logDebug && Time.unscaledTime >= _nextWarnPathTooShortTime)
+            {
                 Debug.LogWarning("[WallCladdingGenerator] Wall path is null or too short.", this);
+                _nextWarnPathTooShortTime = Time.unscaledTime + 1f;
+            }
 
             ClearGenerated();
             return;
@@ -274,6 +361,7 @@ public sealed class WallCladdingGenerator : MonoBehaviour
 
         runtime.LastGeometryHash = ComputeGeometryHash();
         runtime.MarkClean();
+        _lastRebuildTime = Time.unscaledTime;
 
         if (logDebug)
             Debug.Log($"[WallCladdingGenerator] Rebuild OK on {name} (cornerSideExtensionMultiplier={EffectiveCornerSideExtensionMultiplier():0.###}, cornerStackColumnOffset={EffectiveCornerStackColumnOffset():0.###})", this);
@@ -594,6 +682,9 @@ public sealed class WallCladdingGenerator : MonoBehaviour
 
         while (rowBottom < yMax - profile.stone.minStoneHeight)
         {
+            if (rowIndex >= maxRowsPerSide || stoneIndex >= maxGeneratedStonesPerSide)
+                break;
+
             float rowHeight = BuildRowHeight(profile, yMax - rowBottom, rng);
             if (rowHeight < profile.stone.minStoneHeight)
                 break;
@@ -608,7 +699,7 @@ public sealed class WallCladdingGenerator : MonoBehaviour
             }
 
             float rowCenterY = rowBottom + rowHeight * 0.5f;
-            GenerateRow(profile, root, stoneMat, samples, totalLength, outside, rowIndex, rowCenterY, rowHeight, sideSign, rng, ref stoneIndex);
+            GenerateRow(profile, root, stoneMat, samples, totalLength, outside, rowIndex, rowCenterY, rowHeight, sideSign, rng, ref stoneIndex, maxGeneratedStonesPerSide);
 
             rowBottom += rowHeight + profile.stone.verticalSpacing * 1.28f;
             rowIndex++;
@@ -634,7 +725,8 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         float rowHeight,
         float sideSign,
         System.Random rng,
-        ref int stoneIndex)
+        ref int stoneIndex,
+        int maxStoneBudget)
     {
         float usableStart = Mathf.Max(0f, profile.general.sideInset);
         float usableEnd = Mathf.Max(usableStart, totalLength - profile.general.sideInset);
@@ -679,9 +771,17 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         {
             float stagger = ((rowIndex & 1) == 1) ? rowHeight * profile.stone.staggerFraction : 0f;
             float cursor = Mathf.Min(usableEnd, usableStart + stagger);
+            int rowStoneCount = 0;
+            bool stoppedByBudget = false;
 
             while (cursor < usableEnd - profile.stone.minRowUsableWidth)
             {
+                if (stoneIndex >= maxStoneBudget || rowStoneCount >= maxStonesPerRow)
+                {
+                    stoppedByBudget = true;
+                    break;
+                }
+
                 float remaining = usableEnd - cursor;
 
                 bool nearCorner =
@@ -751,7 +851,8 @@ public sealed class WallCladdingGenerator : MonoBehaviour
                     }
                 }
 
-                if (wall != null && wall.closedLoop && profile.stone.endQuoins != null && profile.stone.endQuoins.enabled)
+                if (wall != null && wall.closedLoop && profile.stone.endQuoins != null && profile.stone.endQuoins.enabled &&
+                    (loopShapeKind == WallLoopShapeKind.Rectangle || loopShapeKind == WallLoopShapeKind.Triangle))
                 {
                     if (TryGetNearestCornerAngleAtDistance(samples, totalLength, placement.centerDistance, out float deltaToCorner, out float cornerAngleDeg))
                     {
@@ -763,19 +864,84 @@ public sealed class WallCladdingGenerator : MonoBehaviour
                             placement.useTerminalHalfRound = true;
                             placement.terminalRoundTowardPositiveDistance = deltaToCorner >= 0f;
                         }
+
                     }
                 }
 
                 CreateStoneObject(profile, root, stoneMaterial, samples, sideSign, placement, rng, stoneIndex++, false);
+                rowStoneCount++;
                 RegisterUsage(placement.module);
 
                 cursor += placement.width + profile.stone.horizontalSpacing * 1.16f;
             }
+
+            // If budget cap stops row generation early, continue with real
+            // generated stones (small/medium modules), not stretched fillers.
+            if (stoppedByBudget && cursor < usableEnd - profile.stone.minStoneWidth * 0.40f && stoneIndex < maxStoneBudget)
+                FillTailGapWithGeneratedStones(
+                    profile,
+                    root,
+                    stoneMaterial,
+                    samples,
+                    sideSign,
+                    rowCenterY,
+                    rowHeight,
+                    cursor,
+                    usableEnd,
+                    rng,
+                    ref stoneIndex,
+                    maxStoneBudget);
         }
 
         if (hasEndBoundaryZone)
             GenerateBoundaryBlendStone(profile, root, stoneMaterial, samples, sideSign, rowCenterY, rowHeight, endBoundaryDistance, endGapMin, endGapMax, false, rng, ref stoneIndex);
 
+    }
+
+    private void FillTailGapWithGeneratedStones(
+        WallCladdingProfile profile,
+        Transform root,
+        Material stoneMaterial,
+        List<PathSample> samples,
+        float sideSign,
+        float rowCenterY,
+        float rowHeight,
+        float gapStart,
+        float gapEnd,
+        System.Random rng,
+        ref int stoneIndex,
+        int maxStoneBudget)
+    {
+        float width = gapEnd - gapStart;
+        if (width <= profile.stone.minStoneWidth * 0.25f)
+            return;
+
+        float cursor = gapStart;
+        int emitted = 0;
+        int maxExtra = Mathf.Max(1, maxTailGapFillStonesPerRow);
+        while (cursor < gapEnd - profile.stone.minStoneWidth * 0.30f)
+        {
+            if (stoneIndex >= maxStoneBudget || emitted >= maxExtra)
+                break;
+
+            float remaining = gapEnd - cursor;
+            if (!ChoosePlacement(profile, rowHeight, remaining, true, rng, out StonePlacement placement))
+                break;
+
+            if (placement.width < profile.stone.minStoneWidth * 0.30f)
+                break;
+
+            placement.centerDistance = cursor + placement.width * 0.5f;
+            placement.centerY = rowCenterY;
+            placement.useTerminalHalfRound = false;
+            placement.terminalRoundTowardPositiveDistance = false;
+
+            CreateStoneObject(profile, root, stoneMaterial, samples, sideSign, placement, rng, stoneIndex++, false);
+            RegisterUsage(placement.module);
+
+            cursor += placement.width + profile.stone.horizontalSpacing * 1.08f;
+            emitted++;
+        }
     }
 
     private bool GenerateBoundaryBlendStone(
@@ -1254,300 +1420,6 @@ public sealed class WallCladdingGenerator : MonoBehaviour
         GenerateSingleEndQuoinStack(profile, root, stoneMaterial, last.b, last.tangent, sideSign, false, yMin, yMax, settings, rng, ref stoneIndex);
     }
 
-    private void GenerateClosedLoopTriangleEndQuoins(
-        WallCladdingProfile profile,
-        Transform root,
-        Material stoneMaterial,
-        List<PathSample> samples,
-        float sideSign,
-        float yMin,
-        float yMax,
-        System.Random rng,
-        ref int stoneIndex)
-    {
-        if (profile == null || profile.stone == null || profile.stone.endQuoins == null)
-            return;
-
-        EndQuoinSettings settings = profile.stone.endQuoins;
-        if (!settings.enabled || wall == null || !wall.closedLoop || samples == null || samples.Count != 3)
-            return;
-
-        for (int i = 0; i < samples.Count; i++)
-        {
-            PathSample prev = samples[i];
-            PathSample next = samples[(i + 1) % samples.Count];
-            Vector3 cornerPoint = prev.b;
-            float cornerAngleDeg = Vector3.Angle(prev.tangent, next.tangent);
-            bool useHalfRoundForAcuteCorner = cornerAngleDeg < 35f;
-
-            Vector3 inwardA = -prev.tangent.normalized;
-            Vector3 inwardB = next.tangent.normalized;
-            Vector3 inwardBisector = (inwardA + inwardB).normalized;
-            if (inwardBisector.sqrMagnitude < 0.000001f)
-                inwardBisector = inwardA.sqrMagnitude > 0.000001f ? inwardA : inwardB;
-
-            Vector3 outwardA = Vector3.Cross(Vector3.up, prev.tangent).normalized * sideSign;
-            Vector3 outwardB = Vector3.Cross(Vector3.up, next.tangent).normalized * sideSign;
-            Vector3 outward = (outwardA + outwardB).normalized;
-            if (outward.sqrMagnitude < 0.000001f)
-                outward = outwardA.sqrMagnitude > 0.000001f ? outwardA : outwardB;
-
-            float rowBottom = yMin;
-            int rowIndex = 0;
-            while (rowBottom < yMax - 0.10f)
-            {
-                float rowHeight = settings.targetHeight * RandomRange(rng, 1f - settings.rowHeightJitter, 1f + settings.rowHeightJitter);
-                rowHeight = Mathf.Clamp(
-                    rowHeight,
-                    profile.stone.minStoneHeight * 1.15f,
-                    Mathf.Max(profile.stone.minStoneHeight * 1.25f, profile.stone.maxStoneHeight * 1.75f));
-                bool isLastQuoinRow = (rowBottom + rowHeight + settings.verticalSpacing) >= yMax;
-                float topOvershoot = isLastQuoinRow ? Mathf.Max(wall.thickness * 0.18f, profile.stone.surfaceProtrusion * 1.45f, 0.04f) : 0f;
-                rowHeight = Mathf.Min(rowHeight, yMax - rowBottom + topOvershoot);
-                if (rowHeight < 0.10f)
-                    break;
-
-                float baseLength = RandomRange(rng, settings.minLength, settings.maxLength);
-                float altScale = ((rowIndex & 1) == 0) ? settings.alternateLongScale : settings.alternateShortScale;
-                float length = baseLength * altScale * 1.08f * RandomRange(rng, 1f - settings.lengthJitter, 1f + settings.lengthJitter);
-                length = Mathf.Clamp(length, settings.minLength * 0.85f, settings.maxLength * 1.35f);
-
-                float revealAtCorner = Mathf.Clamp(
-                    Mathf.Max(wall.thickness * 0.10f, settings.extraOutsideDepth * 0.55f),
-                    0.02f,
-                    Mathf.Max(0.02f, length * 0.20f));
-
-                float fullDepth = Mathf.Max(wall.thickness + settings.extraOutsideDepth * 2.0f + 0.04f, wall.thickness + 0.01f);
-                float centerY = rowBottom + rowHeight * 0.5f;
-
-                Vector3 center = cornerPoint;
-                bool useA = (rowIndex & 1) == 0;
-                Vector3 inwardDir = useHalfRoundForAcuteCorner ? inwardBisector : (useA ? inwardA : inwardB);
-                center += inwardDir * Mathf.Max(0f, length * 0.5f - settings.edgeInset - revealAtCorner);
-                center += Vector3.up * centerY;
-
-                Vector3 outwardDir = useHalfRoundForAcuteCorner ? outward : (useA ? outwardA : outwardB);
-                Quaternion rot = Quaternion.LookRotation(outwardDir, Vector3.up);
-                WallStoneModuleDefinition module = PickEndQuoinModule(profile, rng);
-                Mesh mesh = useHalfRoundForAcuteCorner
-                    ? BuildTerminalHalfRoundStoneMesh(
-                        module,
-                        length,
-                        rowHeight,
-                        Mathf.Max(profile.stone.surfaceProtrusion * 1.05f, 0.01f),
-                        Mathf.Max(wall.thickness + settings.extraOutsideDepth, profile.stone.minStoneDepth),
-                        profile.stone.facePlaneJitter,
-                        profile.stone.uvMetersPerUnit,
-                        rng,
-                        true)
-                    : BuildEndQuoinMesh(module, length, rowHeight, fullDepth, profile.stone.facePlaneJitter, profile.stone.uvMetersPerUnit, rng);
-                if (mesh != null && mesh.vertexCount > 0)
-                {
-                    GameObject go = new GameObject($"TriangleEndQuoin_{i:00}_{rowIndex:00}");
-                    go.transform.SetParent(root, false);
-                    go.transform.localPosition = transform.InverseTransformPoint(center);
-                    go.transform.localRotation = Quaternion.LookRotation(
-                        transform.InverseTransformDirection(rot * Vector3.forward),
-                        transform.InverseTransformDirection(rot * Vector3.up));
-                    go.transform.localScale = Vector3.one;
-
-                    MeshFilter mf = go.AddComponent<MeshFilter>();
-                    MeshRenderer mr = go.AddComponent<MeshRenderer>();
-                    mf.sharedMesh = mesh;
-                    mr.sharedMaterial = stoneMaterial;
-                    ApplyPerStoneMaterialVariation(profile, mr, rng, true);
-                    stoneIndex++;
-                }
-
-                rowBottom += rowHeight + settings.verticalSpacing;
-                rowIndex++;
-            }
-        }
-    }
-
-    private void GenerateClosedLoopCornerQuoins(
-        WallCladdingProfile profile,
-        Transform root,
-        Material stoneMaterial,
-        List<PathSample> samples,
-        float sideSign,
-        float yMin,
-        float yMax,
-        System.Random rng,
-        ref int stoneIndex)
-    {
-        if (profile == null || profile.stone == null || profile.stone.endQuoins == null)
-            return;
-
-        EndQuoinSettings settings = profile.stone.endQuoins;
-        if (!settings.enabled || wall == null || !wall.closedLoop || samples == null || samples.Count < 3)
-            return;
-        if (loopShapeKind != WallLoopShapeKind.Rectangle)
-            return;
-
-        for (int i = 0; i < samples.Count; i++)
-        {
-            PathSample prev = samples[i];
-            PathSample next = samples[(i + 1) % samples.Count];
-            Vector3 cornerPoint = prev.b;
-
-            float cornerDot = Vector3.Dot(prev.tangent, next.tangent);
-            // Ignore near-straight joints; only build crossed corner quoins on real corners.
-            if (cornerDot > 0.965f)
-                continue;
-
-            Vector3 outwardA = Vector3.Cross(Vector3.up, prev.tangent).normalized * sideSign;
-            Vector3 outwardB = Vector3.Cross(Vector3.up, next.tangent).normalized * sideSign;
-            Vector3 inwardA = -prev.tangent.normalized;
-            Vector3 inwardB = next.tangent.normalized;
-
-            float rowBottom = yMin;
-            int rowIndex = 0;
-            while (rowBottom < yMax - 0.10f)
-            {
-                float rowHeight = settings.targetHeight * RandomRange(rng, 1f - settings.rowHeightJitter, 1f + settings.rowHeightJitter);
-                rowHeight = Mathf.Clamp(
-                    rowHeight,
-                    profile.stone.minStoneHeight * 1.15f,
-                    Mathf.Max(profile.stone.minStoneHeight * 1.25f, profile.stone.maxStoneHeight * 1.75f));
-                bool isLastQuoinRow = (rowBottom + rowHeight + settings.verticalSpacing) >= yMax;
-                float topOvershoot = isLastQuoinRow ? Mathf.Max(wall.thickness * 0.18f, profile.stone.surfaceProtrusion * 1.45f, 0.04f) : 0f;
-                rowHeight = Mathf.Min(rowHeight, yMax - rowBottom + topOvershoot);
-                if (rowHeight < 0.10f)
-                    break;
-
-                float baseLength = RandomRange(rng, settings.minLength, settings.maxLength);
-                float altScale = ((rowIndex & 1) == 0) ? settings.alternateLongScale : settings.alternateShortScale;
-                float length = baseLength * altScale * 1.08f * RandomRange(rng, 1f - settings.lengthJitter, 1f + settings.lengthJitter);
-                length = Mathf.Clamp(length, settings.minLength * 0.85f, settings.maxLength * 1.35f);
-
-                float fullDepth = Mathf.Max(wall.thickness + settings.extraOutsideDepth * 2.0f + 0.04f, wall.thickness + 0.01f);
-                fullDepth *= Mathf.Max(1f, settings.cornerLDepthMul) * 1.20f;
-
-                // Corner block should read as a bigger near-square mass (not a long thin rectangle).
-                float cornerWidth = Mathf.Clamp(
-                    Mathf.Max(length * 0.78f, fullDepth * 1.10f),
-                    settings.minLength * 0.90f,
-                    settings.maxLength * 1.60f);
-                float centerY = rowBottom + rowHeight * 0.5f;
-
-                // One stone per row, alternating wall side (zipper pattern).
-                bool useA = (rowIndex & 1) == 0;
-                Vector3 outward = useA ? outwardA : outwardB;
-                Quaternion rot = Quaternion.LookRotation(outward, Vector3.up);
-                ComputeCornerLateralExtension(profile, settings, cornerWidth, useA, rng, out bool widenRightSide, out float sideExtra);
-
-                // Use the true exterior rectangle corner (offset from centerline corner),
-                // then anchor each quoin by its local inner corner.
-                float sideOffset = Mathf.Max(0f, wall.thickness * 0.5f - profile.general.sideInset);
-                Vector3 exteriorCorner = cornerPoint + (outwardA + outwardB) * sideOffset;
-
-                // Anchor by the inner corner of the stone (not by center):
-                // worldCenter = exteriorCorner - rot * localInnerCornerAnchor
-                float cornerAnchorInset = Mathf.Clamp(
-                    Mathf.Max(profile.stone.horizontalSpacing * 0.18f, 0.002f),
-                    0.001f,
-                    0.006f);
-                float halfLen = cornerWidth * 0.5f;
-                float baseAnchorX = useA
-                    ? (-halfLen + cornerAnchorInset)  // anchor on base left corner
-                    : ( halfLen - cornerAnchorInset); // anchor on base right corner
-                float anchorX = baseAnchorX;
-                // Lateral move referenced from the anchor face (not mesh center):
-                // - A rows: push from right side
-                // - B rows: push from left side
-                float faceReferenceOffsetX = useA ? -cornerFaceReferenceShift : cornerFaceReferenceShift;
-                anchorX += faceReferenceOffsetX;
-                anchorX = ApplyCornerLateralStackAlignment(anchorX);
-                anchorX = ResolveOtherWallColumnOffset(useA, anchorX);
-                Vector3 localInnerCornerAnchor = new Vector3(anchorX, 0f, 0f);
-                Vector3 center = exteriorCorner - (rot * localInnerCornerAnchor) + Vector3.up * centerY;
-
-                // Fine tuning:
-                // - tiny outward nudge on corner bisector so the corner read stays visible,
-                // - slight recess on active face to prevent excessive protrusion.
-                Vector3 cornerBisector = (outwardA + outwardB).normalized;
-                float cornerExposeNudge = Mathf.Clamp(
-                    Mathf.Max(profile.stone.horizontalSpacing * 0.16f, profile.stone.surfaceProtrusion * 0.18f),
-                    0.0015f,
-                    0.006f);
-                center += cornerBisector * cornerExposeNudge;
-
-                // Slightly bias toward the wall interior so the back side reads a bit more.
-                float backSideBias = Mathf.Clamp(
-                    settings.extraOutsideDepth * 0.24f + profile.stone.surfaceProtrusion * 0.18f,
-                    0.003f,
-                    0.011f);
-                if (alignExteriorCornerColumn)
-                    center += cornerBisector * (cornerExposeNudge - backSideBias);
-                else
-                {
-                    center += cornerBisector * cornerExposeNudge;
-                    center -= outward * backSideBias;
-                }
-
-                // Make the active side (left or right depending row/wall) pop out more
-                // so mortar read stays visible around corner bricks.
-                float sideExtrusionT = EvaluateCornerExtrusionStrength(EffectiveCornerSideExtensionMultiplier());
-                float sideWallPop = Mathf.Clamp(
-                    Mathf.Max(profile.stone.surfaceProtrusion * 10f, rowHeight * 0.06f) * sideExtrusionT,
-                    0f,
-                    Mathf.Max(0.200f, wall.thickness * 0.45f));
-                if (!alignExteriorCornerColumn)
-                {
-                    // Mirror side direction for A/B corner rows so both stone types push toward the intended side.
-                    float signedSideWallPop = ResolveCornerSignedSideOffset(useA, sideWallPop, EffectiveCornerSideExtensionMultiplier());
-                    center += (rot * Vector3.right) * signedSideWallPop;
-                }
-
-                WallStoneModuleDefinition module = PickEndQuoinModule(profile, rng);
-                // Keep mesh growth coherent with anchor-face lateral displacement:
-                // if anchor shifts by X on one side, mesh must gain at least X on that same side.
-                float anchorShiftX = anchorX - baseAnchorX;
-                float meshFollowExtra = Mathf.Abs(anchorShiftX);
-                bool meshFollowRightSide = anchorShiftX >= 0f;
-
-                // Swap lateral growth side according to requested artistic orientation.
-                bool widenRightSideForMesh = growOppositeVoidLateralFace ? widenRightSide : !widenRightSide;
-                if (meshFollowExtra > 0.0001f)
-                {
-                    widenRightSideForMesh = meshFollowRightSide;
-                    sideExtra += meshFollowExtra;
-                }
-                // Dedicated corner-quoin mesh: 4 vertical faces receive 3D relief (front/back/right/left).
-                Mesh mesh = BuildCornerFourFaceReliefMesh(
-                    module,
-                    cornerWidth,
-                    rowHeight,
-                    fullDepth,
-                    widenRightSideForMesh,
-                    sideExtra,
-                    profile.stone.facePlaneJitter,
-                    profile.stone.uvMetersPerUnit,
-                    rng);
-                if (mesh != null && mesh.vertexCount > 0)
-                {
-                    GameObject go = new GameObject($"CornerQuoin_{i:00}_{rowIndex:00}");
-                    go.transform.SetParent(root, false);
-                    go.transform.localPosition = transform.InverseTransformPoint(center);
-                    go.transform.localRotation = Quaternion.LookRotation(
-                        transform.InverseTransformDirection(rot * Vector3.forward),
-                        transform.InverseTransformDirection(rot * Vector3.up));
-                    go.transform.localScale = Vector3.one;
-
-                    MeshFilter mf = go.AddComponent<MeshFilter>();
-                    MeshRenderer mr = go.AddComponent<MeshRenderer>();
-                    mf.sharedMesh = mesh;
-                    mr.sharedMaterial = stoneMaterial;
-                    ApplyPerStoneMaterialVariation(profile, mr, rng, true);
-                    stoneIndex++;
-                }
-
-                rowBottom += rowHeight + settings.verticalSpacing;
-                rowIndex++;
-            }
-        }
-    }
 
     private void GenerateSingleEndQuoinStack(
         WallCladdingProfile profile,
@@ -2097,6 +1969,55 @@ public sealed class WallCladdingGenerator : MonoBehaviour
 
         Mesh mesh = new Mesh();
         mesh.name = "GeneratedExtrudedStone";
+        if (verts.Count > 65535)
+            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
+        mesh.SetVertices(verts);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    /// <summary>
+    /// Like <see cref="BuildExtrudedPolygonMesh"/> but vertical bands use the same height-map relief as corner quoins.
+    /// Top/bottom caps stay flat triangulated polygons.
+    /// </summary>
+    private Mesh BuildExtrudedPolygonReliefMesh(
+        Vector3[] front,
+        Vector3[] back,
+        float uvMetersPerUnit,
+        float planeJitter,
+        float relief,
+        System.Random rng)
+    {
+        if (front == null || back == null || front.Length < 3 || back.Length != front.Length)
+            return null;
+
+        List<Vector3> verts = new List<Vector3>(front.Length * 40);
+        List<int> tris = new List<int>(front.Length * 72);
+        List<Vector2> uvs = new List<Vector2>(front.Length * 40);
+
+        AddPolygonFace(verts, tris, uvs, front, true, uvMetersPerUnit);
+        AddPolygonFace(verts, tris, uvs, back, false, uvMetersPerUnit);
+
+        for (int i = 0; i < front.Length; i++)
+        {
+            int next = (i + 1) % front.Length;
+            Vector3 a = front[i];
+            Vector3 b = front[next];
+            Vector3 c = back[next];
+            Vector3 d = back[i];
+
+            Vector3 outward = Vector3.Cross(b - a, d - a).normalized;
+            float faceSpan = Mathf.Min((b - a).magnitude, (d - a).magnitude);
+            float reliefDepth = Mathf.Clamp((planeJitter + relief) * 1.55f, 0.0015f, Mathf.Max(0.0015f, faceSpan * 0.28f));
+            AddDoubleSidedReliefQuad(verts, tris, uvs, a, b, c, d, outward, reliefDepth, uvMetersPerUnit, rng);
+        }
+
+        Mesh mesh = new Mesh();
+        mesh.name = "GeneratedExtrudedStoneRelief";
         if (verts.Count > 65535)
             mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
 

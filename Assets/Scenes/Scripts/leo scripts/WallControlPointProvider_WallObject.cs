@@ -25,9 +25,13 @@ public class WallControlPointProvider_WallObject : MonoBehaviour, IControlPointP
             if (wall == null || wall.Points == null) return 0;
 
             int count = wall.Points.Count;
+            bool hasDuplicateClosurePoint =
+                wall.closedLoop &&
+                count >= 2 &&
+                Vector3.Distance(wall.Points[0], wall.Points[count - 1]) < 0.001f;
 
             // Si boucle fermée (Tiny Glade style), on ne veut pas un handle doublon
-            if (wall.closedLoop && count > 0)
+            if (hasDuplicateClosurePoint && count > 0)
                 count -= 1;
 
             return Mathf.Max(0, count);

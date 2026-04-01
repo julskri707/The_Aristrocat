@@ -27,8 +27,25 @@ public class WallDrawInput : MonoBehaviour
     [Header("Line Preview")]
     [Min(0.001f)] public float lineWidth = 0.12f;
 
+    [Header("Grid")]
+    public bool enableGridSnap = true;
+    [Min(0.05f)] public float gridSize = 1.0f;
+    public bool showGridInGame = false;
+    public bool showGridGizmos = true;
+    [Range(4, 200)] public int gridHalfExtent = 25;
+    [Range(3, 8)] public int gridHierarchyLevels = 5;
+    [Range(4f, 512f)] public float gridRootCellMultiplier = 64f;
+    [Range(0.6f, 8f)] public float gridZoomRevealFactor = 2.4f;
+    [Range(24, 220)] public int gridMaxLinesPerAxis = 120;
+    [Range(0.0005f, 0.20f)] public float gridLineWidth = 0.02f;
+    [Range(0.02f, 1.0f)] public float gridInnerAlpha = 0.38f;
+    [Range(0.01f, 0.8f)] public float gridOuterAlpha = 0.06f;
+    [Range(-0.05f, 0.2f)] public float gridVisualYOffset = 0.01f;
+    public Vector3 gridOrigin = Vector3.zero;
+
     [Header("Auto Shapes")]
     public bool enableAutoShapes = true;
+    public bool useGridShapeDetectionOnlyWhenGridSnap = true;
     public bool requireClosedLoop = true;
     [Range(0.01f, 0.5f)] public float tolerance = 0.12f;
     public bool autoStraightLine = true;
@@ -88,8 +105,12 @@ public class WallDrawInput : MonoBehaviour
     private readonly List<Vector3> _points = new List<Vector3>();
     private bool _isDrawing;
     private LineRenderer _lr;
+    private Transform _gridVisualRoot;
+    private readonly List<LineRenderer> _gridLines = new List<LineRenderer>();
 
     private static Material s_SharedPreviewMaterial;
+    private static Material s_SharedGridMaterial;
+    private bool _legacyGridForcedOff;
 
     struct ShapeCandidate
     {
@@ -129,6 +150,9 @@ public class WallDrawInput : MonoBehaviour
     {
         _lr = GetComponent<LineRenderer>();
         ApplyLineRendererSetup();
+        EvaluateLegacyGridCompatibility();
+        EnsureGridVisualObjects();
+        UpdateGridVisuals();
     }
 
     void OnValidate()
@@ -136,6 +160,16 @@ public class WallDrawInput : MonoBehaviour
         pointSpacing = Mathf.Max(0.01f, pointSpacing);
         snapCloseDistance = Mathf.Max(0.01f, snapCloseDistance);
         lineWidth = Mathf.Max(0.001f, lineWidth);
+        gridSize = Mathf.Max(0.05f, gridSize);
+        gridHalfExtent = Mathf.Clamp(gridHalfExtent, 4, 200);
+        gridHierarchyLevels = Mathf.Clamp(gridHierarchyLevels, 3, 8);
+        gridRootCellMultiplier = Mathf.Clamp(gridRootCellMultiplier, 4f, 512f);
+        gridZoomRevealFactor = Mathf.Clamp(gridZoomRevealFactor, 0.6f, 8f);
+        gridMaxLinesPerAxis = Mathf.Clamp(gridMaxLinesPerAxis, 24, 220);
+        gridLineWidth = Mathf.Clamp(gridLineWidth, 0.0005f, 0.20f);
+        gridInnerAlpha = Mathf.Clamp(gridInnerAlpha, 0.02f, 1f);
+        gridOuterAlpha = Mathf.Clamp(gridOuterAlpha, 0.01f, 0.8f);
+        gridVisualYOffset = Mathf.Clamp(gridVisualYOffset, -0.05f, 0.2f);
         tolerance = Mathf.Clamp(tolerance, 0.01f, 0.5f);
         straightLineToleranceMultiplier = Mathf.Clamp(straightLineToleranceMultiplier, 0.005f, 0.2f);
         circleResolution = Mathf.Clamp(circleResolution, 16, 128);
@@ -160,12 +194,21 @@ public class WallDrawInput : MonoBehaviour
 
         if (_lr != null)
             ApplyLineRendererSetup();
+
+        EvaluateLegacyGridCompatibility();
+
+        // Avoid creating/updating runtime grid visuals during OnValidate.
+        // Unity warns when Transform/AddComponent messages are triggered here,
+        // and it can spam hundreds of operations.
     }
 
     void Update()
     {
         if (cam == null)
             return;
+
+        EvaluateLegacyGridCompatibility();
+        UpdateGridVisuals();
 
         if (Input.GetMouseButtonDown(0))
             BeginDraw();
@@ -175,6 +218,33 @@ public class WallDrawInput : MonoBehaviour
 
         if (_isDrawing && Input.GetMouseButtonUp(0))
             EndDraw();
+    }
+
+    void OnDisable()
+    {
+        for (int i = 0; i < _gridLines.Count; i++)
+        {
+            if (_gridLines[i] != null)
+                _gridLines[i].enabled = false;
+        }
+    }
+
+    void EvaluateLegacyGridCompatibility()
+    {
+        bool shouldForceOff = FindFirstObjectByType<HierarchicalGridManager>() != null;
+        if (shouldForceOff == _legacyGridForcedOff)
+            return;
+
+        _legacyGridForcedOff = shouldForceOff;
+
+        if (_legacyGridForcedOff)
+        {
+            for (int i = 0; i < _gridLines.Count; i++)
+            {
+                if (_gridLines[i] != null)
+                    _gridLines[i].enabled = false;
+            }
+        }
     }
 
     void ApplyLineRendererSetup()
@@ -210,6 +280,240 @@ public class WallDrawInput : MonoBehaviour
         s_SharedPreviewMaterial = new Material(shader);
         s_SharedPreviewMaterial.name = "WallDrawInput_Preview_Shared";
         return s_SharedPreviewMaterial;
+    }
+
+    static Material GetOrCreateSharedGridMaterial()
+    {
+        if (s_SharedGridMaterial != null)
+            return s_SharedGridMaterial;
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+
+        if (shader == null)
+            return null;
+
+        s_SharedGridMaterial = new Material(shader);
+        s_SharedGridMaterial.name = "WallDrawInput_Grid_Shared";
+        return s_SharedGridMaterial;
+    }
+
+    void EnsureGridVisualObjects()
+    {
+        if (_gridVisualRoot == null)
+        {
+            Transform existing = transform.Find("__GridVisual");
+            if (existing != null)
+                _gridVisualRoot = existing;
+            else
+            {
+                GameObject root = new GameObject("__GridVisual");
+                root.transform.SetParent(transform, false);
+                _gridVisualRoot = root.transform;
+            }
+        }
+
+        int wanted = CountHierarchicalGridLineCount();
+        Material mat = GetOrCreateSharedGridMaterial();
+
+        while (_gridLines.Count < wanted)
+        {
+            GameObject go = new GameObject($"GridLine_{_gridLines.Count:000}");
+            go.transform.SetParent(_gridVisualRoot, false);
+            LineRenderer lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = true;
+            lr.loop = false;
+            lr.alignment = LineAlignment.View;
+            lr.textureMode = LineTextureMode.Stretch;
+            lr.positionCount = 2;
+            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lr.receiveShadows = false;
+            lr.sharedMaterial = mat;
+            _gridLines.Add(lr);
+        }
+    }
+
+    void UpdateGridVisuals()
+    {
+        EnsureGridVisualObjects();
+
+        if (_legacyGridForcedOff || !showGridInGame || !enableGridSnap || _gridLines.Count == 0)
+        {
+            for (int i = 0; i < _gridLines.Count; i++)
+            {
+                if (_gridLines[i] != null && _gridLines[i].enabled)
+                    _gridLines[i].enabled = false;
+            }
+            return;
+        }
+
+        Camera gridCam = cam != null ? cam : Camera.main;
+        if (gridCam == null)
+            return;
+
+        float fineStep = Mathf.Max(0.05f, gridSize);
+        int levels = Mathf.Clamp(gridHierarchyLevels, 3, 8);
+        float rootStep = ComputeRootGridStep(fineStep);
+        float coverage = rootStep * Mathf.Clamp(gridHalfExtent, 4, 200);
+        float baseY = (flattenYToZero ? 0f : gridOrigin.y) + gridVisualYOffset;
+        float cx = gridCam.transform.position.x;
+        float cz = gridCam.transform.position.z;
+        float camHeight = Mathf.Abs(gridCam.transform.position.y - baseY);
+        float widthBase = Mathf.Clamp(gridLineWidth, 0.0005f, 0.20f);
+        float minX = cx - coverage;
+        float maxX = cx + coverage;
+        float minZ = cz - coverage;
+        float maxZ = cz + coverage;
+        int lineCursor = 0;
+
+        for (int level = 0; level < levels; level++)
+        {
+            float levelStep = ComputeLevelStep(rootStep, level);
+            float visibility = ComputeLevelVisibility(camHeight, levelStep, level);
+            if (visibility <= 0.001f)
+                continue;
+
+            float t = levels <= 1 ? 0f : level / (float)(levels - 1);
+            float alpha = Mathf.Lerp(gridInnerAlpha, gridOuterAlpha, t) * visibility;
+            float gray = Mathf.Lerp(0.62f, 0.83f, t);
+            float width = widthBase * Mathf.Lerp(1.9f, 0.6f, t);
+            Color color = new Color(gray, gray, gray, alpha);
+
+            int xStartIndex = Mathf.FloorToInt((minX - gridOrigin.x) / levelStep);
+            int xEndIndex = Mathf.CeilToInt((maxX - gridOrigin.x) / levelStep);
+            int zStartIndex = Mathf.FloorToInt((minZ - gridOrigin.z) / levelStep);
+            int zEndIndex = Mathf.CeilToInt((maxZ - gridOrigin.z) / levelStep);
+
+            int xSampleStep = ComputeIndexSampleStep(xStartIndex, xEndIndex);
+            int zSampleStep = ComputeIndexSampleStep(zStartIndex, zEndIndex);
+
+            int firstX = AlignIndexToStride(xStartIndex, xSampleStep);
+            int firstZ = AlignIndexToStride(zStartIndex, zSampleStep);
+
+            for (int i = firstX; i <= xEndIndex; i += xSampleStep)
+            {
+                float x = gridOrigin.x + i * levelStep;
+                EmitGridLine(ref lineCursor, new Vector3(x, baseY, minZ), new Vector3(x, baseY, maxZ), width, color);
+            }
+
+            for (int i = firstZ; i <= zEndIndex; i += zSampleStep)
+            {
+                float z = gridOrigin.z + i * levelStep;
+                EmitGridLine(ref lineCursor, new Vector3(minX, baseY, z), new Vector3(maxX, baseY, z), width, color);
+            }
+        }
+
+        for (int i = lineCursor; i < _gridLines.Count; i++)
+        {
+            if (_gridLines[i] != null)
+                _gridLines[i].enabled = false;
+        }
+    }
+
+    int CountHierarchicalGridLineCount()
+    {
+        float fineStep = Mathf.Max(0.05f, gridSize);
+        int levels = Mathf.Clamp(gridHierarchyLevels, 3, 8);
+        float rootStep = ComputeRootGridStep(fineStep);
+        float coverage = rootStep * Mathf.Clamp(gridHalfExtent, 4, 200);
+        int total = 0;
+
+        for (int level = 0; level < levels; level++)
+        {
+            float levelStep = ComputeLevelStep(rootStep, level);
+
+            int xStart = Mathf.FloorToInt((-coverage) / levelStep);
+            int xEnd = Mathf.CeilToInt((coverage) / levelStep);
+            int zStart = xStart;
+            int zEnd = xEnd;
+
+            int xSampleStep = ComputeIndexSampleStep(xStart, xEnd);
+            int zSampleStep = ComputeIndexSampleStep(zStart, zEnd);
+
+            int xFirst = AlignIndexToStride(xStart, xSampleStep);
+            int zFirst = AlignIndexToStride(zStart, zSampleStep);
+
+            int xCount = Mathf.Max(0, ((xEnd - xFirst) / xSampleStep) + 1);
+            int zCount = Mathf.Max(0, ((zEnd - zFirst) / zSampleStep) + 1);
+            total += xCount + zCount;
+        }
+
+        return Mathf.Max(1, total);
+    }
+
+    float ComputeRootGridStep(float fineStep)
+    {
+        return fineStep * Mathf.Max(4f, gridRootCellMultiplier);
+    }
+
+    float ComputeLevelStep(float rootStep, int level)
+    {
+        if (level <= 0)
+            return rootStep;
+
+        if (level == 1)
+            return rootStep * 0.5f;
+
+        float divisor = 2f * Mathf.Pow(4f, level - 1);
+        return rootStep / Mathf.Max(1f, divisor);
+    }
+
+    float ComputeLevelVisibility(float cameraHeight, float levelStep, int level)
+    {
+        if (level == 0)
+            return 1f;
+
+        float reveal = Mathf.Max(0.6f, gridZoomRevealFactor);
+        float appearStart = levelStep * reveal * 2.4f;
+        float appearEnd = levelStep * reveal * 0.85f;
+        if (appearStart <= appearEnd + 0.0001f)
+            return cameraHeight <= appearEnd ? 1f : 0f;
+
+        float t = Mathf.InverseLerp(appearStart, appearEnd, cameraHeight);
+        return 1f - Mathf.Clamp01(t);
+    }
+
+    int ComputeIndexSampleStep(int startIndex, int endIndex)
+    {
+        int count = Mathf.Max(1, endIndex - startIndex + 1);
+        int maxLines = Mathf.Clamp(gridMaxLinesPerAxis, 24, 220);
+        if (count <= maxLines)
+            return 1;
+
+        return Mathf.Max(1, Mathf.CeilToInt(count / (float)maxLines));
+    }
+
+    static int AlignIndexToStride(int value, int stride)
+    {
+        int remainder = value % stride;
+        if (remainder == 0)
+            return value;
+
+        if (value >= 0)
+            return value + (stride - remainder);
+
+        return value - remainder;
+    }
+
+    void EmitGridLine(ref int lineCursor, Vector3 a, Vector3 b, float width, Color color)
+    {
+        if (lineCursor >= _gridLines.Count)
+            return;
+
+        LineRenderer lr = _gridLines[lineCursor++];
+        if (lr == null)
+            return;
+
+        lr.enabled = true;
+        lr.loop = false;
+        lr.positionCount = 2;
+        lr.startWidth = width;
+        lr.endWidth = width;
+        lr.startColor = color;
+        lr.endColor = color;
+        lr.SetPosition(0, a);
+        lr.SetPosition(1, b);
     }
 
     void BeginDraw()
@@ -271,8 +575,24 @@ public class WallDrawInput : MonoBehaviour
             }
         }
 
-        if (enableAutoShapes)
+        if (enableGridSnap && closed && TryBuildGridRectangleFromPoints(_points, out List<Vector3> gridFitted, out string gridShapeName))
         {
+            _points.Clear();
+            _points.AddRange(gridFitted);
+            RefreshLine();
+            committedShapeName = gridShapeName;
+
+            if (logDetectedShape)
+                Debug.Log($"GridShape ✅ : {gridShapeName}");
+        }
+        else if (enableAutoShapes)
+        {
+            if (enableGridSnap && closed && useGridShapeDetectionOnlyWhenGridSnap)
+            {
+                committedShapeName = "Free";
+            }
+            else
+            {
             bool canTryClosedShapes = (!requireClosedLoop || closed);
             bool canTryLine = autoStraightLine && !closed;
 
@@ -292,6 +612,7 @@ public class WallDrawInput : MonoBehaviour
                 {
                     committedShapeName = closed ? "Free" : "Free";
                 }
+            }
             }
         }
 
@@ -330,7 +651,123 @@ public class WallDrawInput : MonoBehaviour
         if (flattenYToZero)
             p.y = 0f;
 
+        if (enableGridSnap)
+            p = SnapPointToGrid(p);
+
         return p;
+    }
+
+    Vector3 SnapPointToGrid(Vector3 p)
+    {
+        float step = Mathf.Max(0.05f, gridSize);
+        float x = SnapAxis(p.x, gridOrigin.x, step);
+        float z = SnapAxis(p.z, gridOrigin.z, step);
+        return new Vector3(x, p.y, z);
+    }
+
+    static float SnapAxis(float value, float origin, float step)
+    {
+        return origin + Mathf.Round((value - origin) / step) * step;
+    }
+
+    bool TryBuildGridRectangleFromPoints(List<Vector3> points, out List<Vector3> fitted, out string shapeName)
+    {
+        fitted = null;
+        shapeName = "Free";
+
+        if (points == null || points.Count < 4)
+            return false;
+
+        List<Vector3> clean = BuildClosedUniquePath(points);
+        if (clean.Count < 4)
+            return false;
+
+        float minX = float.PositiveInfinity;
+        float maxX = float.NegativeInfinity;
+        float minZ = float.PositiveInfinity;
+        float maxZ = float.NegativeInfinity;
+
+        for (int i = 0; i < clean.Count; i++)
+        {
+            Vector3 p = clean[i];
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.z < minZ) minZ = p.z;
+            if (p.z > maxZ) maxZ = p.z;
+        }
+
+        float width = maxX - minX;
+        float depth = maxZ - minZ;
+        float step = Mathf.Max(0.05f, gridSize);
+        if (width < step || depth < step)
+            return false;
+
+        int nearLeft = 0;
+        int nearRight = 0;
+        int nearBottom = 0;
+        int nearTop = 0;
+        float borderTolerance = Mathf.Max(step * 0.40f, pointSpacing * 0.45f);
+        float avgDistance = 0f;
+
+        for (int i = 0; i < clean.Count; i++)
+        {
+            Vector3 p = clean[i];
+            float dLeft = Mathf.Abs(p.x - minX);
+            float dRight = Mathf.Abs(p.x - maxX);
+            float dBottom = Mathf.Abs(p.z - minZ);
+            float dTop = Mathf.Abs(p.z - maxZ);
+            float d = Mathf.Min(Mathf.Min(dLeft, dRight), Mathf.Min(dBottom, dTop));
+            avgDistance += d;
+
+            if (dLeft <= borderTolerance) nearLeft++;
+            if (dRight <= borderTolerance) nearRight++;
+            if (dBottom <= borderTolerance) nearBottom++;
+            if (dTop <= borderTolerance) nearTop++;
+        }
+
+        avgDistance /= clean.Count;
+        if (avgDistance > borderTolerance)
+            return false;
+
+        if (nearLeft == 0 || nearRight == 0 || nearBottom == 0 || nearTop == 0)
+            return false;
+
+        float y = points[0].y;
+        fitted = new List<Vector3>(5)
+        {
+            new Vector3(minX, y, maxZ),
+            new Vector3(minX, y, minZ),
+            new Vector3(maxX, y, minZ),
+            new Vector3(maxX, y, maxZ),
+            new Vector3(minX, y, maxZ)
+        };
+
+        EnsureCounterClockwiseXZ(fitted);
+        float ratio = Mathf.Abs(width - depth) / Mathf.Max(0.0001f, Mathf.Max(width, depth));
+        shapeName = ratio <= Mathf.Max(squareRatioTolerance, step / Mathf.Max(0.0001f, width + depth)) ? "Square" : "Rectangle";
+        return true;
+    }
+
+    static List<Vector3> BuildClosedUniquePath(List<Vector3> source)
+    {
+        var result = new List<Vector3>();
+        if (source == null || source.Count == 0)
+            return result;
+
+        const float eps = 0.0001f;
+        float epsSqr = eps * eps;
+
+        for (int i = 0; i < source.Count; i++)
+        {
+            Vector3 p = source[i];
+            if (result.Count == 0 || (p - result[result.Count - 1]).sqrMagnitude > epsSqr)
+                result.Add(p);
+        }
+
+        if (result.Count > 1 && (result[0] - result[result.Count - 1]).sqrMagnitude <= epsSqr)
+            result.RemoveAt(result.Count - 1);
+
+        return result;
     }
 
     void RefreshLine()
@@ -1433,6 +1870,64 @@ public class WallDrawInput : MonoBehaviour
             else
             {
                 pts.Reverse();
+            }
+        }
+    }
+
+    void OnDrawGizmos()
+    {
+        if (!showGridGizmos || FindFirstObjectByType<HierarchicalGridManager>() != null)
+            return;
+
+        float fineStep = Mathf.Max(0.05f, gridSize);
+        int levels = Mathf.Clamp(gridHierarchyLevels, 3, 8);
+        float rootStep = ComputeRootGridStep(fineStep);
+        float coverage = rootStep * Mathf.Clamp(gridHalfExtent, 4, 200);
+
+        Vector3 center = transform.position;
+        if (cam != null)
+            center = cam.transform.position;
+
+        float baseY = flattenYToZero ? 0f : gridOrigin.y;
+        float minX = center.x - coverage;
+        float maxX = center.x + coverage;
+        float minZ = center.z - coverage;
+        float maxZ = center.z + coverage;
+        float camHeight = Mathf.Abs(center.y - baseY);
+
+        for (int level = 0; level < levels; level++)
+        {
+            float levelStep = ComputeLevelStep(rootStep, level);
+            float visibility = ComputeLevelVisibility(camHeight, levelStep, level);
+            if (visibility <= 0.001f)
+                continue;
+
+            float t = levels <= 1 ? 0f : level / (float)(levels - 1);
+            float alpha = Mathf.Lerp(gridInnerAlpha, gridOuterAlpha, t) * visibility;
+            float gray = Mathf.Lerp(0.62f, 0.83f, t);
+            Gizmos.color = new Color(gray, gray, gray, alpha);
+
+            int xStartIndex = Mathf.FloorToInt((minX - gridOrigin.x) / levelStep);
+            int xEndIndex = Mathf.CeilToInt((maxX - gridOrigin.x) / levelStep);
+            int zStartIndex = Mathf.FloorToInt((minZ - gridOrigin.z) / levelStep);
+            int zEndIndex = Mathf.CeilToInt((maxZ - gridOrigin.z) / levelStep);
+
+            int xSampleStep = ComputeIndexSampleStep(xStartIndex, xEndIndex);
+            int zSampleStep = ComputeIndexSampleStep(zStartIndex, zEndIndex);
+
+            int firstX = AlignIndexToStride(xStartIndex, xSampleStep);
+            int firstZ = AlignIndexToStride(zStartIndex, zSampleStep);
+
+            for (int i = firstX; i <= xEndIndex; i += xSampleStep)
+            {
+                float x = gridOrigin.x + i * levelStep;
+                Gizmos.DrawLine(new Vector3(x, baseY, minZ), new Vector3(x, baseY, maxZ));
+            }
+
+            for (int i = firstZ; i <= zEndIndex; i += zSampleStep)
+            {
+                float z = gridOrigin.z + i * levelStep;
+                Gizmos.DrawLine(new Vector3(minX, baseY, z), new Vector3(maxX, baseY, z));
             }
         }
     }
