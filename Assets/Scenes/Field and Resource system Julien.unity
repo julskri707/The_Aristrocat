@@ -612,7 +612,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4415907483452501633, guid: ab17835a6bdc46148b7499a4ff0cb1bc, type: 3}
       propertyPath: m_Name
-      value: Capsule
+      value: Bauer
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -778,7 +778,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 431195438572650952, guid: 6a6792d36ff27ca43ae7c3f342a3e548, type: 3}
       propertyPath: m_Name
-      value: GameObject
+      value: Field
       objectReference: {fileID: 0}
     - target: {fileID: 737572741206296623, guid: 6a6792d36ff27ca43ae7c3f342a3e548, type: 3}
       propertyPath: tickSystem

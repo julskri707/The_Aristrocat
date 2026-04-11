@@ -17,6 +17,23 @@ public class WorldPickupItem : MonoBehaviour
     public int Amount => amount;
     public bool AllowLookPickup => allowLookPickup;
 
+    private void Awake()
+    {
+        ApplyWorldScale();
+    }
+
+    private void OnValidate()
+    {
+        ApplyWorldScale();
+    }
+
+    public void Initialize(InventoryItemData newItemData, int newAmount)
+    {
+        itemData = newItemData;
+        amount = Mathf.Max(1, newAmount);
+        ApplyWorldScale();
+    }
+
     public bool TryPickup(PlayerInventory inventory)
     {
         if (inventory == null || itemData == null || amount <= 0)
@@ -56,5 +73,13 @@ public class WorldPickupItem : MonoBehaviour
             return;
 
         TryPickup(inventory);
+    }
+
+    private void ApplyWorldScale()
+    {
+        if (itemData == null)
+            return;
+
+        transform.localScale = itemData.worldObjectScale;
     }
 }

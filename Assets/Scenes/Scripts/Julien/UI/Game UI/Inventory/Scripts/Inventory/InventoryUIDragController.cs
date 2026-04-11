@@ -74,6 +74,13 @@ public class InventoryUIDragController : MonoBehaviour
 
     public void EndDrag()
     {
+        if (!dropHandled && isDragging)
+        {
+            PlayerItemDropper dropper = PlayerItemDropper.Instance;
+            if (dropper != null)
+                dropper.TryDropDraggedItem(originType, sourceIndex, draggedItem);
+        }
+
         isDragging = false;
         originType = DragOriginType.None;
         sourceIndex = -1;

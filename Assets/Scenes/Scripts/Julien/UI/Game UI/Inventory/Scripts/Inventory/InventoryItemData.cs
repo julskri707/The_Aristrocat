@@ -16,6 +16,11 @@ public class InventoryItemData : ScriptableObject
     public EquipmentSlotType allowedEquipmentSlot = EquipmentSlotType.ExtraSlot1;
     public GameObject handPrefab;
 
+    [Header("World Drop")]
+    public GameObject worldDropPrefab;
+    public Vector3 worldObjectScale = new Vector3(115f, 115f, 115f);
+    public Vector3 handObjectScale = new Vector3(200f, 200f, 200f);
+
     [Header("Tool")]
     [Min(0)] public int chopPower = 0;
 }

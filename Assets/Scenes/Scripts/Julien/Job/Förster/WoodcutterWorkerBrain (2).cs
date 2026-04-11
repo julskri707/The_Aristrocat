@@ -39,6 +39,11 @@ public class WoodcutterWorkerBrain : MonoBehaviour
     [SerializeField] private float pickupInterval = 0.2f;
     [SerializeField] private float depositInterval = 0.35f;
 
+    [Header("Pickup Radius")]
+    [SerializeField] private bool usePickupCollectRadius = true;
+    [SerializeField] private float pickupCollectRadius = 1.5f;
+    [SerializeField] private bool facePickupWhileCollecting = true;
+
     [Header("Runtime Debug")]
     [SerializeField] private WorkerState currentState = WorkerState.Idle;
     [SerializeField] private int carriedWood = 0;
@@ -85,6 +90,7 @@ public class WoodcutterWorkerBrain : MonoBehaviour
         chopInterval = Mathf.Max(0.01f, chopInterval);
         pickupInterval = Mathf.Max(0.01f, pickupInterval);
         depositInterval = Mathf.Max(0.01f, depositInterval);
+        pickupCollectRadius = Mathf.Max(0.05f, pickupCollectRadius);
         CacheAnimatorHashes();
     }
 
@@ -284,10 +290,25 @@ public class WoodcutterWorkerBrain : MonoBehaviour
             return;
         }
 
-        MoveTowards(currentPickup.transform.position);
+        Vector3 pickupPosition = GetPickupApproachPosition(currentPickup);
 
-        if (IsAt(currentPickup.transform.position))
+        if (IsInPickupRange(currentPickup))
         {
+            if (facePickupWhileCollecting)
+                FaceTowards(currentPickup.transform.position);
+
+            actionTimer = 0f;
+            SetState(WorkerState.PickingUp);
+            return;
+        }
+
+        MoveTowards(pickupPosition);
+
+        if (IsAt(pickupPosition) || IsInPickupRange(currentPickup))
+        {
+            if (facePickupWhileCollecting)
+                FaceTowards(currentPickup.transform.position);
+
             actionTimer = 0f;
             SetState(WorkerState.PickingUp);
         }
@@ -301,45 +322,54 @@ public class WoodcutterWorkerBrain : MonoBehaviour
             return;
         }
 
+        if (facePickupWhileCollecting)
+            FaceTowards(currentPickup.transform.position);
+
         if (actionTimer > 0f)
             return;
 
-        if (!currentPickup.TryCollect(this, out int amount))
+        if (!usePickupCollectRadius || IsInPickupRange(currentPickup))
         {
-            DecideNextAfterMissingPickup();
-            return;
-        }
+            if (!currentPickup.TryCollect(this, out int amount))
+            {
+                DecideNextAfterMissingPickup();
+                return;
+            }
 
-        carriedWood += amount;
-        carriedWood = Mathf.Clamp(carriedWood, 0, carryCapacity);
-        currentPickup = null;
+            carriedWood += amount;
+            carriedWood = Mathf.Clamp(carriedWood, 0, carryCapacity);
+            currentPickup = null;
 
-        if (carriedWood >= carryCapacity)
-        {
-            if (TryFindStorage())
+            if (carriedWood >= carryCapacity)
+            {
+                if (TryFindStorage())
+                    SetState(WorkerState.MovingToStorage);
+                else
+                    SetState(WorkerState.Idle);
+                return;
+            }
+
+            if (TryFindPickupFromCurrentTree())
+                return;
+
+            if (TryFindAnyPickup())
+                return;
+
+            if (carriedWood > 0 && TryFindStorage())
+            {
                 SetState(WorkerState.MovingToStorage);
-            else
-                SetState(WorkerState.Idle);
+                return;
+            }
+
+            if (TryFindTree())
+                return;
+
+            actionTimer = pickupInterval;
+            SetState(WorkerState.Idle);
             return;
         }
 
-        if (TryFindPickupFromCurrentTree())
-            return;
-
-        if (TryFindAnyPickup())
-            return;
-
-        if (carriedWood > 0 && TryFindStorage())
-        {
-            SetState(WorkerState.MovingToStorage);
-            return;
-        }
-
-        if (TryFindTree())
-            return;
-
-        actionTimer = pickupInterval;
-        SetState(WorkerState.Idle);
+        SetState(WorkerState.MovingToPickup);
     }
 
     private void TickMoveToStorage()
@@ -500,6 +530,38 @@ public class WoodcutterWorkerBrain : MonoBehaviour
             return;
 
         SetState(WorkerState.Idle);
+    }
+
+    private Vector3 GetPickupApproachPosition(WoodPickup pickup)
+    {
+        if (pickup == null)
+            return transform.position;
+
+        if (!usePickupCollectRadius)
+            return pickup.transform.position;
+
+        Vector3 from = transform.position;
+        Vector3 target = pickup.transform.position;
+        Vector3 flatDir = target - from;
+        flatDir.y = 0f;
+
+        if (flatDir.sqrMagnitude <= 0.0001f)
+            return target;
+
+        flatDir.Normalize();
+        return target - flatDir * Mathf.Max(stopDistance, pickupCollectRadius * 0.8f);
+    }
+
+    private bool IsInPickupRange(WoodPickup pickup)
+    {
+        if (pickup == null)
+            return false;
+
+        float allowedRange = usePickupCollectRadius ? Mathf.Max(stopDistance, pickupCollectRadius) : stopDistance;
+
+        Vector3 a = new Vector3(transform.position.x, 0f, transform.position.z);
+        Vector3 b = new Vector3(pickup.transform.position.x, 0f, pickup.transform.position.z);
+        return Vector3.Distance(a, b) <= allowedRange;
     }
 
     private void MoveTowards(Vector3 target)

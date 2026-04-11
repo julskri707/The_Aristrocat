@@ -172,6 +172,34 @@ public class PlayerEquipment : MonoBehaviour
         spawnedHeldObject = Instantiate(activeItem.handPrefab, handHolder);
         spawnedHeldObject.transform.localPosition = Vector3.zero;
         spawnedHeldObject.transform.localRotation = Quaternion.identity;
-        spawnedHeldObject.transform.localScale = Vector3.one;
+        spawnedHeldObject.transform.localScale = activeItem.handObjectScale;
+
+        DisablePhysicsOnHeldObject(spawnedHeldObject);
+    }
+
+    private void DisablePhysicsOnHeldObject(GameObject heldObject)
+    {
+        if (heldObject == null)
+            return;
+
+        Rigidbody[] rigidbodies = heldObject.GetComponentsInChildren<Rigidbody>(true);
+        for (int i = 0; i < rigidbodies.Length; i++)
+        {
+            if (rigidbodies[i] == null)
+                continue;
+
+            rigidbodies[i].linearVelocity = Vector3.zero;
+            rigidbodies[i].angularVelocity = Vector3.zero;
+            rigidbodies[i].isKinematic = true;
+            rigidbodies[i].useGravity = false;
+            rigidbodies[i].detectCollisions = false;
+        }
+
+        Collider[] colliders = heldObject.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] != null)
+                colliders[i].enabled = false;
+        }
     }
 }
