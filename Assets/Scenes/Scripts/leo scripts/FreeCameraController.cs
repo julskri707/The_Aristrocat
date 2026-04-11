@@ -34,6 +34,11 @@ public class FreeCameraController : MonoBehaviour
     {
         HandleLook();
         HandleMove();
+    }
+
+    void LateUpdate()
+    {
+        // Après ControlPointHandleUI (rotation mur à la molette) pour pouvoir ignorer le zoom cette frame.
         HandleZoom();
     }
 
@@ -76,6 +81,9 @@ public class FreeCameraController : MonoBehaviour
 
     void HandleZoom()
     {
+        if (ControlPointHandleUI.ConsumeWallScrollBlockForCamera())
+            return;
+
         // Zoom molette
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) > 0.0001f)

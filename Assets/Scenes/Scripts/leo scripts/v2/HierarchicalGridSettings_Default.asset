@@ -26,6 +26,8 @@ MonoBehaviour:
   minRebuildInterval: 0.015
   manualFocusPoint: {x: 0, y: 0, z: 0}
   gridPlaneY: 0
+  gridWorldCenterXZ: {x: 0, y: 0}
+  gridFocusOffsetXZ: {x: 0, y: 0}
   baseLineThickness: 0.05
   deepLevelThicknessFactor: 0.35
   globalOpacity: 0.8
@@ -33,10 +35,6 @@ MonoBehaviour:
   surfaceYOffset: 0.01
   castShadows: 0
   receiveShadows: 0
-  showInternalSubGrid: 0
-  internalSubGridResolution: 4
-  internalSubGridOpacity: 0.35
-  internalSubGridThicknessFactor: 0.5
   levelColorGradient:
     serializedVersion: 2
     key0: {r: 0.55, g: 0.55, b: 0.55, a: 0.9}

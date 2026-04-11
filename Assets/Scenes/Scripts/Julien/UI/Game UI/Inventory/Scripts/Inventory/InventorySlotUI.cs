@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class InventorySlotUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IBeginDragHandler, IDragHandler, IEndDragHandler, IDropHandler
+public class InventorySlotUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IBeginDragHandler, IEndDragHandler, IDropHandler
 {
     [Header("UI")]
     [SerializeField] private RawImage iconRawImage;
@@ -37,10 +37,14 @@ public class InventorySlotUI : MonoBehaviour, IPointerEnterHandler, IPointerExit
         }
 
         if (amountText != null)
+        {
             amountText.text = hasItem ? boundSlot.amount.ToString() : "";
+        }
 
         if (emptyStateGraphic != null)
+        {
             emptyStateGraphic.SetActive(!hasItem);
+        }
     }
 
     public void OnPointerEnter(PointerEventData eventData)
@@ -68,10 +72,6 @@ public class InventorySlotUI : MonoBehaviour, IPointerEnterHandler, IPointerExit
         InventoryUIDragController.Instance.BeginInventoryDrag(slotIndex, boundSlot.itemData);
     }
 
-    public void OnDrag(PointerEventData eventData)
-    {
-    }
-
     public void OnEndDrag(PointerEventData eventData)
     {
         if (InventoryUIDragController.Instance == null || !InventoryUIDragController.Instance.IsDragging)
@@ -97,8 +97,5 @@ public class InventorySlotUI : MonoBehaviour, IPointerEnterHandler, IPointerExit
 
         InventoryUIDragController.Instance.MarkDropHandled();
         InventoryUIDragController.Instance.EndDrag();
-
-        if (inventory != null)
-            inventory.ForceRefresh();
     }
 }

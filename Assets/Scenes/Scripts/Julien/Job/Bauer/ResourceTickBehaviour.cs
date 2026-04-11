@@ -90,7 +90,7 @@ public class ResourceTickBehaviour : MonoBehaviour
     {
         if (resourceManager == null)
         {
-            resourceManager = FindObjectOfType<ResourceManager>();
+            resourceManager = FindFirstObjectByType<ResourceManager>();
             if (resourceManager == null)
                 Debug.LogWarning($"[ResourceTickBehaviour] No ResourceManager found in scene for '{name}'.");
             else if (debugLogs)
@@ -99,7 +99,7 @@ public class ResourceTickBehaviour : MonoBehaviour
 
         if (tickSystem == null)
         {
-            tickSystem = FindObjectOfType<TickSystem>();
+            tickSystem = FindFirstObjectByType<TickSystem>();
             if (tickSystem == null)
                 Debug.LogWarning($"[ResourceTickBehaviour] No TickSystem found in scene for '{name}'.");
             else if (debugLogs)

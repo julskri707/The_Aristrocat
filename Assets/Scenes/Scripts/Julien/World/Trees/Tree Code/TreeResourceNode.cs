@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -34,13 +33,6 @@ public class TreeResourceNode : MonoBehaviour
     [SerializeField] private float woodDropRadius = 1.25f;
     [Min(0f)]
     [SerializeField] private float woodDropHeightOffset = 0.1f;
-
-    [Header("Drop Overlap Prevention")]
-    [SerializeField] private bool preventWoodDropOverlap = true;
-    [Min(0.05f)]
-    [SerializeField] private float woodDropMinSpacing = 0.65f;
-    [Min(1)]
-    [SerializeField] private int woodDropMaxPlacementAttemptsPerPickup = 20;
 
     [Header("Worker Points")]
     [SerializeField] private Transform interactionPoint;
@@ -143,30 +135,57 @@ public class TreeResourceNode : MonoBehaviour
 
     public bool CanBeAssigned()
     {
-        if (isFelled) return false;
-        if (isFallingOrRemoving) return false;
-        if (currentWood <= 0) return false;
-        if (currentHealth <= 0) return false;
-        if (isReserved) return false;
+        if (isFelled)
+            return false;
+
+        if (isFallingOrRemoving)
+            return false;
+
+        if (currentWood <= 0)
+            return false;
+
+        if (currentHealth <= 0)
+            return false;
+
+        if (isReserved)
+            return false;
+
         return true;
     }
 
     public bool CanBeAssigned(object worker)
     {
-        if (worker == null) return CanBeAssigned();
-        if (isFelled) return false;
-        if (isFallingOrRemoving) return false;
-        if (currentWood <= 0) return false;
-        if (currentHealth <= 0) return false;
-        if (!isReserved) return true;
+        if (worker == null)
+            return CanBeAssigned();
+
+        if (isFelled)
+            return false;
+
+        if (isFallingOrRemoving)
+            return false;
+
+        if (currentWood <= 0)
+            return false;
+
+        if (currentHealth <= 0)
+            return false;
+
+        if (!isReserved)
+            return true;
+
         return ReferenceEquals(reservedBy, worker);
     }
 
     public bool Reserve(object worker)
     {
-        if (worker == null) return false;
-        if (!CanBeAssigned(worker)) return false;
-        if (ReferenceEquals(reservedBy, worker)) return true;
+        if (worker == null)
+            return false;
+
+        if (!CanBeAssigned(worker))
+            return false;
+
+        if (ReferenceEquals(reservedBy, worker))
+            return true;
 
         reservedBy = worker;
         isReserved = true;
@@ -178,11 +197,17 @@ public class TreeResourceNode : MonoBehaviour
 
     public bool Release(object worker)
     {
-        if (!isReserved) return true;
-        if (worker == null) return false;
-        if (!ReferenceEquals(reservedBy, worker)) return false;
+        if (!isReserved)
+            return true;
+
+        if (worker == null)
+            return false;
+
+        if (!ReferenceEquals(reservedBy, worker))
+            return false;
 
         object previousWorker = reservedBy;
+
         reservedBy = null;
         isReserved = false;
         reservedByDebugName = string.Empty;
@@ -193,7 +218,9 @@ public class TreeResourceNode : MonoBehaviour
 
     public bool IsReservedBy(object worker)
     {
-        if (!isReserved || worker == null) return false;
+        if (!isReserved || worker == null)
+            return false;
+
         return ReferenceEquals(reservedBy, worker);
     }
 
@@ -204,12 +231,18 @@ public class TreeResourceNode : MonoBehaviour
 
     public bool ApplyChopDamage(int amount)
     {
-        if (amount <= 0) return false;
-        if (isFelled) return false;
-        if (isFallingOrRemoving) return false;
+        if (amount <= 0)
+            return false;
+
+        if (isFelled)
+            return false;
+
+        if (isFallingOrRemoving)
+            return false;
 
         currentHealth -= amount;
         currentHealth = Mathf.Clamp(currentHealth, 0, maxHealth);
+
         OnDamaged?.Invoke(this, amount);
 
         if (currentHealth <= 0)
@@ -220,8 +253,11 @@ public class TreeResourceNode : MonoBehaviour
 
     public void Fell()
     {
-        if (isFelled) return;
-        if (isFallingOrRemoving) return;
+        if (isFelled)
+            return;
+
+        if (isFallingOrRemoving)
+            return;
 
         isFelled = true;
         currentHealth = 0;
@@ -237,26 +273,30 @@ public class TreeResourceNode : MonoBehaviour
 
     public void SpawnWoodDrops()
     {
-        if (hasSpawnedWoodDrops) return;
-        if (woodPickupPrefab == null) return;
-        if (currentWood <= 0) return;
+        if (hasSpawnedWoodDrops)
+            return;
+
+        if (woodPickupPrefab == null)
+            return;
+
+        if (currentWood <= 0)
+            return;
 
         int totalWoodToDrop = currentWood;
         int droppedAmount = totalWoodToDrop;
         int safeWoodPerPickup = Mathf.Max(1, woodPerPickup);
 
         Vector3 center = woodDropOrigin != null ? woodDropOrigin.position : GetInteractionPosition();
-        List<Vector3> usedPositions = new List<Vector3>();
 
         while (totalWoodToDrop > 0)
         {
             int amountForThisPickup = Mathf.Min(safeWoodPerPickup, totalWoodToDrop);
-            Vector3 spawnPosition = FindWoodDropSpawnPosition(center, usedPositions);
+            Vector2 randomCircle = UnityEngine.Random.insideUnitCircle * woodDropRadius;
+            Vector3 spawnPosition = center + new Vector3(randomCircle.x, woodDropHeightOffset, randomCircle.y);
 
             WoodPickup pickup = Instantiate(woodPickupPrefab, spawnPosition, Quaternion.identity);
             pickup.Initialize(this, amountForThisPickup, owningWorkArea);
 
-            usedPositions.Add(spawnPosition);
             totalWoodToDrop -= amountForThisPickup;
         }
 
@@ -265,72 +305,20 @@ public class TreeResourceNode : MonoBehaviour
         OnWoodDropsSpawned?.Invoke(this, droppedAmount);
     }
 
-    private Vector3 FindWoodDropSpawnPosition(Vector3 center, List<Vector3> usedPositions)
-    {
-        if (!preventWoodDropOverlap)
-            return GetRandomDropPosition(center);
-
-        int attempts = Mathf.Max(1, woodDropMaxPlacementAttemptsPerPickup);
-        float minSpacing = Mathf.Max(0.05f, woodDropMinSpacing);
-        float minSpacingSqr = minSpacing * minSpacing;
-
-        for (int i = 0; i < attempts; i++)
-        {
-            Vector3 candidate = GetRandomDropPosition(center);
-            if (IsDropPositionFree(candidate, usedPositions, minSpacingSqr))
-                return candidate;
-        }
-
-        float angleStep = 360f / Mathf.Max(6, attempts);
-        float startAngle = UnityEngine.Random.Range(0f, 360f);
-
-        for (int i = 0; i < attempts; i++)
-        {
-            float angle = (startAngle + angleStep * i) * Mathf.Deg2Rad;
-            float radius = Mathf.Min(woodDropRadius, minSpacing * (1f + (i * 0.35f)));
-            Vector3 candidate = center + new Vector3(Mathf.Cos(angle) * radius, woodDropHeightOffset, Mathf.Sin(angle) * radius);
-            if (IsDropPositionFree(candidate, usedPositions, minSpacingSqr))
-                return candidate;
-        }
-
-        int fallbackIndex = usedPositions != null ? usedPositions.Count : 0;
-        float fallbackAngle = (fallbackIndex * 47.5f) * Mathf.Deg2Rad;
-        float fallbackRadius = Mathf.Max(woodDropRadius, minSpacing) + (fallbackIndex * minSpacing);
-        return center + new Vector3(Mathf.Cos(fallbackAngle) * fallbackRadius, woodDropHeightOffset, Mathf.Sin(fallbackAngle) * fallbackRadius);
-    }
-
-    private Vector3 GetRandomDropPosition(Vector3 center)
-    {
-        Vector2 randomCircle = UnityEngine.Random.insideUnitCircle * woodDropRadius;
-        return center + new Vector3(randomCircle.x, woodDropHeightOffset, randomCircle.y);
-    }
-
-    private bool IsDropPositionFree(Vector3 candidate, List<Vector3> usedPositions, float minSpacingSqr)
-    {
-        if (usedPositions == null || usedPositions.Count == 0)
-            return true;
-
-        Vector2 candidateXZ = new Vector2(candidate.x, candidate.z);
-
-        for (int i = 0; i < usedPositions.Count; i++)
-        {
-            Vector3 existing = usedPositions[i];
-            Vector2 existingXZ = new Vector2(existing.x, existing.z);
-            if ((candidateXZ - existingXZ).sqrMagnitude < minSpacingSqr)
-                return false;
-        }
-
-        return true;
-    }
-
     public int HarvestWood(int amount, object worker = null)
     {
-        if (amount <= 0) return 0;
-        if (currentWood <= 0) return 0;
-        if (isReserved && worker != null && !ReferenceEquals(reservedBy, worker)) return 0;
+        if (amount <= 0)
+            return 0;
+
+        if (currentWood <= 0)
+            return 0;
+
+        if (isReserved && worker != null && !ReferenceEquals(reservedBy, worker))
+            return 0;
 
         int harvested = Mathf.Min(amount, currentWood);
         currentWood -= harvested;
+
         OnWoodHarvested?.Invoke(this, harvested);
         return harvested;
     }
@@ -342,14 +330,20 @@ public class TreeResourceNode : MonoBehaviour
 
     public Vector3 GetInteractionPosition()
     {
-        if (interactionPoint != null) return interactionPoint.position;
-        if (treeCollider != null) return treeCollider.bounds.center;
+        if (interactionPoint != null)
+            return interactionPoint.position;
+
+        if (treeCollider != null)
+            return treeCollider.bounds.center;
+
         return transform.position;
     }
 
     public Vector3 GetWorkerLookAtPosition()
     {
-        if (workerLookAtPoint != null) return workerLookAtPoint.position;
+        if (workerLookAtPoint != null)
+            return workerLookAtPoint.position;
+
         return GetInteractionPosition();
     }
 
@@ -427,6 +421,7 @@ public class TreeResourceNode : MonoBehaviour
             float deltaAngle = currentAngle - previousAngle;
 
             targetRoot.RotateAround(pivot, fallAxis, deltaAngle);
+
             previousAngle = currentAngle;
             yield return null;
         }
@@ -437,9 +432,13 @@ public class TreeResourceNode : MonoBehaviour
             yield return StartCoroutine(FadeOutRoutine());
 
         if (destroyAfterFell)
+        {
             Destroy(gameObject);
+        }
         else
+        {
             isFallingOrRemoving = false;
+        }
     }
 
     private IEnumerator FadeOutRoutine()
@@ -609,8 +608,10 @@ public class TreeResourceNode : MonoBehaviour
             CacheComponents();
 
         for (int i = 0; i < cachedColliders.Length; i++)
+        {
             if (cachedColliders[i] != null)
                 cachedColliders[i].enabled = false;
+        }
     }
 
     private void EnableAllColliders()
@@ -619,8 +620,10 @@ public class TreeResourceNode : MonoBehaviour
             CacheComponents();
 
         for (int i = 0; i < cachedColliders.Length; i++)
+        {
             if (cachedColliders[i] != null)
                 cachedColliders[i].enabled = true;
+        }
     }
 
     private void ApplyInitialState()
@@ -663,8 +666,6 @@ public class TreeResourceNode : MonoBehaviour
         woodPerPickup = Mathf.Max(1, woodPerPickup);
         woodDropRadius = Mathf.Max(0f, woodDropRadius);
         woodDropHeightOffset = Mathf.Max(0f, woodDropHeightOffset);
-        woodDropMinSpacing = Mathf.Max(0.05f, woodDropMinSpacing);
-        woodDropMaxPlacementAttemptsPerPickup = Mathf.Max(1, woodDropMaxPlacementAttemptsPerPickup);
         fallbackWorkerSnapDistance = Mathf.Max(0.25f, fallbackWorkerSnapDistance);
 
         if (fallDuration < 0.01f)
