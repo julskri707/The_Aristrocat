@@ -159,6 +159,7 @@ MonoBehaviour:
   applyFallbackWallMaterial: 1
   clearWhenProfileMissing: 0
   logDebug: 1
+  connectorRightShift: 10
 --- !u!114 &-7829102596514257101
 MonoBehaviour:
   m_ObjectHideFlags: 0

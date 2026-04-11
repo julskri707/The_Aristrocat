@@ -8,7 +8,8 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
     {
         Free,
         Rectangle,
-        Ellipse
+        Ellipse,
+        Triangle
     }
 
     [Header("References")]
@@ -38,6 +39,9 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
 
     [Header("Free Shape")]
     public List<Vector3> freeControlPoints = new List<Vector3>();
+
+    [Header("Triangle Shape Data")]
+    public List<Vector3> triangleControlPoints = new List<Vector3>();
 
     [Header("Free Shape Settings")]
     public float freeHandleSpacing = 2.5f;
@@ -110,6 +114,13 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             return;
         }
 
+        if (TrySetupTriangle(src))
+        {
+            shapeKind = ShapeKind.Triangle;
+            ApplyToWall();
+            return;
+        }
+
         SetupFree(src);
         CacheInitialFreeRawPath(src);
         shapeKind = ShapeKind.Free;
@@ -137,6 +148,7 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         bool wantsRectangle =
             detectedKind == WallDrawInput.DetectedShapeKind.Rectangle ||
             detectedKind == WallDrawInput.DetectedShapeKind.Square;
+        bool wantsTriangle = detectedKind == WallDrawInput.DetectedShapeKind.Triangle;
 
         if (wantsRectangle)
         {
@@ -150,6 +162,22 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             if (TrySetupRectangle(src))
             {
                 shapeKind = ShapeKind.Rectangle;
+                ApplyToWall();
+                return;
+            }
+
+            SetupFree(src);
+            CacheInitialFreeRawPath(src);
+            shapeKind = ShapeKind.Free;
+            ApplyToWall();
+            return;
+        }
+
+        if (wantsTriangle)
+        {
+            if (TrySetupTriangle(src))
+            {
+                shapeKind = ShapeKind.Triangle;
                 ApplyToWall();
                 return;
             }
@@ -192,7 +220,10 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
                     return 4;
 
                 case ShapeKind.Rectangle:
-                    return 8;
+                    return 9;
+
+                case ShapeKind.Triangle:
+                    return triangleControlPoints != null ? Mathf.Min(3, triangleControlPoints.Count) : 0;
 
                 default:
                     return freeControlPoints != null ? freeControlPoints.Count : 0;
@@ -209,6 +240,11 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
 
             case ShapeKind.Rectangle:
                 return GetRectangleControlPoint(index);
+
+            case ShapeKind.Triangle:
+                if (triangleControlPoints == null || index < 0 || index >= triangleControlPoints.Count)
+                    return Vector3.zero;
+                return triangleControlPoints[index];
 
             default:
                 if (freeControlPoints == null || index < 0 || index >= freeControlPoints.Count)
@@ -228,6 +264,14 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
 
             case ShapeKind.Rectangle:
                 SetRectangleControlPoint(index, worldPos);
+                break;
+
+            case ShapeKind.Triangle:
+                if (triangleControlPoints == null || index < 0 || index >= triangleControlPoints.Count)
+                    return;
+                triangleControlPoints[index] = new Vector3(worldPos.x, shapeY, worldPos.z);
+                EnsureCounterClockwiseXZ(triangleControlPoints);
+                ComputeBounds(BuildTrianglePath());
                 break;
 
             default:
@@ -257,6 +301,9 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
             case ShapeKind.Rectangle:
                 return BuildRectanglePath();
 
+            case ShapeKind.Triangle:
+                return BuildTrianglePath();
+
             default:
                 return BuildFreePreviewPath();
         }
@@ -283,6 +330,132 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
 
         ApplyToWall();
         return true;
+    }
+
+    public bool RemoveFreeControlPointAt(int index)
+    {
+        if (shapeKind != ShapeKind.Free)
+            return false;
+
+        if (freeControlPoints == null)
+            return false;
+
+        if (index < 0 || index >= freeControlPoints.Count)
+            return false;
+
+        int minCount = _closedLoop ? 3 : 2;
+        if (freeControlPoints.Count <= minCount)
+            return false;
+
+        freeControlPoints.RemoveAt(index);
+        _freePathWasEdited = true;
+        ApplyToWall();
+        return true;
+    }
+
+    public bool RemoveControlPointAt(int index)
+    {
+        if (shapeKind == ShapeKind.Free)
+            return RemoveFreeControlPointAt(index);
+
+        if (index < 0 || index >= ControlPointCount)
+            return false;
+
+        List<Vector3> freePts;
+        int removeIndex;
+        bool isClosed = _closedLoop;
+
+        if (shapeKind == ShapeKind.Rectangle)
+        {
+            // Keep the 8 rectangle handles as independent points.
+            freePts = new List<Vector3>(8);
+            for (int i = 0; i < 8; i++)
+                freePts.Add(GetRectangleControlPoint(i));
+
+            if (index == 8)
+            {
+                // Center handle is not an edge point: remove nearest perimeter point.
+                Vector3 selectedWorld = GetControlPointWorld(index);
+                removeIndex = FindClosestPointIndexXZ(freePts, selectedWorld);
+            }
+            else
+            {
+                removeIndex = Mathf.Clamp(index, 0, freePts.Count - 1);
+            }
+        }
+        else
+        {
+            Vector3 selectedWorld = GetControlPointWorld(index);
+            List<Vector3> currentPath = GetPreviewPathWorld();
+            if (currentPath == null || currentPath.Count < 3)
+                return false;
+
+            freePts = BuildUniquePathWithoutClosure(currentPath);
+            if (freePts == null || freePts.Count < 3)
+                return false;
+
+            removeIndex = FindClosestPointIndexXZ(freePts, selectedWorld);
+        }
+
+        if (removeIndex < 0 || removeIndex >= freePts.Count)
+            return false;
+
+        int minCount = isClosed ? 3 : 2;
+        if (freePts.Count <= minCount)
+            return false;
+
+        freePts.RemoveAt(removeIndex);
+        if (freePts.Count < minCount)
+            return false;
+
+        shapeKind = ShapeKind.Free;
+        freeControlPoints = freePts;
+        _freePathWasEdited = true;
+        ComputeBounds(BuildFreePreviewPath() ?? freeControlPoints);
+        ApplyToWall();
+        return true;
+    }
+
+    static List<Vector3> BuildUniquePathWithoutClosure(List<Vector3> path)
+    {
+        List<Vector3> result = new List<Vector3>();
+        if (path == null || path.Count == 0)
+            return result;
+
+        const float epsSqr = 0.0001f * 0.0001f;
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector3 p = path[i];
+            if (result.Count == 0 || (p - result[result.Count - 1]).sqrMagnitude > epsSqr)
+                result.Add(p);
+        }
+
+        if (result.Count > 1 && (result[0] - result[result.Count - 1]).sqrMagnitude <= epsSqr)
+            result.RemoveAt(result.Count - 1);
+
+        return result;
+    }
+
+    static int FindClosestPointIndexXZ(List<Vector3> points, Vector3 target)
+    {
+        if (points == null || points.Count == 0)
+            return -1;
+
+        int bestIndex = -1;
+        float bestSqr = float.MaxValue;
+        Vector2 t = new Vector2(target.x, target.z);
+        for (int i = 0; i < points.Count; i++)
+        {
+            Vector2 p = new Vector2(points[i].x, points[i].z);
+            float sqr = (p - t).sqrMagnitude;
+            if (sqr < bestSqr)
+            {
+                bestSqr = sqr;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
     }
 
     int FindBestInsertIndexForFreePoint(Vector3 worldPos)
@@ -781,6 +954,15 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
 
     void SetRectangleControlPoint(int index, Vector3 worldPos)
     {
+        if (index == 8)
+        {
+            Vector3 centerBefore = GetRectangleCenterWorld();
+            Vector3 delta = new Vector3(worldPos.x - centerBefore.x, 0f, worldPos.z - centerBefore.z);
+            rectangleOriginXZ += new Vector2(delta.x, delta.z);
+            ComputeBounds(BuildRectanglePath());
+            return;
+        }
+
         Vector2 local = RectangleWorldToLocal(worldPos);
 
         switch (index)
@@ -862,6 +1044,68 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         float cx = (rectangleMinX + rectangleMaxX) * 0.5f;
         float cy = (rectangleMinY + rectangleMaxY) * 0.5f;
         return RectangleLocalToWorld(cx, cy);
+    }
+
+    bool TrySetupTriangle(List<Vector3> points)
+    {
+        if (!_closedLoop) return false;
+        if (points == null || points.Count < 3) return false;
+
+        List<Vector3> work = new List<Vector3>(points);
+        if (work.Count > 1 && Vector3.Distance(work[0], work[work.Count - 1]) < 0.001f)
+            work.RemoveAt(work.Count - 1);
+        if (work.Count < 3) return false;
+
+        List<Vector2> hull = ComputeConvexHullXZ(work);
+        if (hull == null || hull.Count < 3) return false;
+
+        float bestArea = 0f;
+        int ia = -1, ib = -1, ic = -1;
+        for (int i = 0; i < hull.Count - 2; i++)
+        {
+            for (int j = i + 1; j < hull.Count - 1; j++)
+            {
+                for (int k = j + 1; k < hull.Count; k++)
+                {
+                    float area = Mathf.Abs(Cross(hull[j] - hull[i], hull[k] - hull[i]));
+                    if (area > bestArea)
+                    {
+                        bestArea = area;
+                        ia = i; ib = j; ic = k;
+                    }
+                }
+            }
+        }
+
+        if (ia < 0 || ib < 0 || ic < 0 || bestArea < 0.01f)
+            return false;
+
+        shapeY = work[0].y;
+        triangleControlPoints = new List<Vector3>(3)
+        {
+            new Vector3(hull[ia].x, shapeY, hull[ia].y),
+            new Vector3(hull[ib].x, shapeY, hull[ib].y),
+            new Vector3(hull[ic].x, shapeY, hull[ic].y)
+        };
+        EnsureCounterClockwiseXZ(triangleControlPoints);
+        ComputeBounds(BuildTrianglePath());
+        return true;
+    }
+
+    List<Vector3> BuildTrianglePath()
+    {
+        if (triangleControlPoints == null || triangleControlPoints.Count < 3)
+            return new List<Vector3>();
+
+        List<Vector3> pts = new List<Vector3>(4)
+        {
+            new Vector3(triangleControlPoints[0].x, shapeY, triangleControlPoints[0].z),
+            new Vector3(triangleControlPoints[1].x, shapeY, triangleControlPoints[1].z),
+            new Vector3(triangleControlPoints[2].x, shapeY, triangleControlPoints[2].z)
+        };
+        EnsureCounterClockwiseXZ(pts);
+        pts.Add(pts[0]);
+        return pts;
     }
 
     void SetupFree(List<Vector3> points)
@@ -1504,6 +1748,10 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
                 path = BuildRectanglePath();
                 break;
 
+            case ShapeKind.Triangle:
+                path = BuildTrianglePath();
+                break;
+
             default:
                 path = BuildFreePreviewPath();
                 break;
@@ -1542,7 +1790,8 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
         if (points == null || points.Count < 3)
             return false;
 
-        return Vector3.Distance(points[0], points[points.Count - 1]) < 0.2f;
+        // Keep closure detection consistent with WallObject.SetPath.
+        return Vector3.Distance(points[0], points[points.Count - 1]) < 0.001f;
     }
 
     float ComputePerimeter(List<Vector3> points, bool closed)

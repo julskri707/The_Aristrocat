@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
@@ -5,6 +6,8 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class WallUndoManager : MonoBehaviour
 {
+    const int MaxUndoSnapshotsHardCap = 5;
+
     [Header("References")]
     public WallBuildController buildController;
     public ControlPointOverlayManager overlay;
@@ -16,17 +19,25 @@ public class WallUndoManager : MonoBehaviour
     public KeyCode undoKey = KeyCode.Z;
 
     [Header("Stack")]
-    [Min(1)] public int maxSnapshots = 40;
+    [Range(1, MaxUndoSnapshotsHardCap)] public int maxSnapshots = MaxUndoSnapshotsHardCap;
     public bool logDebug = false;
+
+    [Header("Stability")]
+    public bool suspendCladdingRebuildDuringUndo = true;
+    public bool rebuildCladdingAfterUndo = true;
+    [Min(1)] public int claddingRebuildBudgetPerFrame = 2;
 
     private readonly Stack<SceneUndoSnapshot> _undoStack = new Stack<SceneUndoSnapshot>();
     private bool _isRestoring;
+    private Coroutine _rebuildCoroutine;
 
     public bool IsRestoring => _isRestoring;
     public int UndoCount => _undoStack.Count;
 
     void Awake()
     {
+        maxSnapshots = Mathf.Clamp(maxSnapshots, 1, MaxUndoSnapshotsHardCap);
+
         if (buildController == null)
             buildController = FindFirstObjectByType<WallBuildController>();
 
@@ -62,7 +73,8 @@ public class WallUndoManager : MonoBehaviour
 
         _undoStack.Push(snapshot);
 
-        while (_undoStack.Count > maxSnapshots)
+        int maxAllowed = Mathf.Clamp(maxSnapshots, 1, MaxUndoSnapshotsHardCap);
+        while (_undoStack.Count > maxAllowed)
             TrimBottom();
 
         if (logDebug)
@@ -85,7 +97,8 @@ public class WallUndoManager : MonoBehaviour
 
     void TrimBottom()
     {
-        if (_undoStack.Count <= maxSnapshots)
+        int maxAllowed = Mathf.Clamp(maxSnapshots, 1, MaxUndoSnapshotsHardCap);
+        if (_undoStack.Count <= maxAllowed)
             return;
 
         SceneUndoSnapshot[] arr = _undoStack.ToArray();
@@ -182,6 +195,11 @@ public class WallUndoManager : MonoBehaviour
     void RestoreSceneSnapshot(SceneUndoSnapshot snapshot)
     {
         _isRestoring = true;
+        bool usedGlobalSuspend = suspendCladdingRebuildDuringUndo;
+        if (usedGlobalSuspend)
+            WallCladdingGenerator.SetGlobalRebuildSuspended(true);
+
+        List<WallCladdingGenerator> claddingToRebuild = new List<WallCladdingGenerator>(snapshot.walls.Count);
 
         try
         {
@@ -209,23 +227,70 @@ public class WallUndoManager : MonoBehaviour
             {
                 WallUndoWallSnapshot wallSnap = snapshot.walls[i];
                 WallObject wall = RestoreWallSnapshot(wallSnap);
+                if (wall == null)
+                    continue;
 
                 if (buildController != null)
                     buildController.RegisterExistingWall(wall);
 
                 if (i == snapshot.selectedIndex)
                     selectedRestoredWall = wall;
+
+                WallCladdingGenerator cladding = wall.GetComponent<WallCladdingGenerator>();
+                if (cladding != null)
+                {
+                    cladding.MarkDirty();
+                    claddingToRebuild.Add(cladding);
+                }
             }
 
             if (buildController != null)
                 buildController.ForceSelectWall(selectedRestoredWall);
             else if (overlay != null)
                 overlay.ClearTarget();
+
+            if (rebuildCladdingAfterUndo && claddingToRebuild.Count > 0)
+                StartDeferredCladdingRebuild(claddingToRebuild);
         }
         finally
         {
+            if (usedGlobalSuspend)
+                WallCladdingGenerator.SetGlobalRebuildSuspended(false);
             _isRestoring = false;
         }
+    }
+
+    void StartDeferredCladdingRebuild(List<WallCladdingGenerator> claddingToRebuild)
+    {
+        if (_rebuildCoroutine != null)
+            StopCoroutine(_rebuildCoroutine);
+        _rebuildCoroutine = StartCoroutine(RebuildCladdingDeferred(claddingToRebuild));
+    }
+
+    IEnumerator RebuildCladdingDeferred(List<WallCladdingGenerator> claddingToRebuild)
+    {
+        int budget = Mathf.Max(1, claddingRebuildBudgetPerFrame);
+        int done = 0;
+
+        for (int i = 0; i < claddingToRebuild.Count; i++)
+        {
+            WallCladdingGenerator cladding = claddingToRebuild[i];
+            if (cladding == null || !cladding.isActiveAndEnabled)
+                continue;
+
+            // Avoid forcing many heavy mesh rebuilds in the same frame after undo.
+            // Let each generator rebuild progressively via its own throttled LateUpdate.
+            cladding.MarkDirty();
+            done++;
+
+            if (done >= budget)
+            {
+                done = 0;
+                yield return null;
+            }
+        }
+
+        _rebuildCoroutine = null;
     }
 
     WallObject RestoreWallSnapshot(WallUndoWallSnapshot snap)

@@ -40,6 +40,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
     [Tooltip("Below this dot threshold, corners use bevel fallback instead of long miters.")]
     [Range(0.05f, 0.95f)] public float sharpCornerThreshold = 0.35f;
 
+    [Tooltip("Cuts closed-loop corner tips on centerline before extrusion (meters).")]
+    [Min(0f)] public float closedLoopCornerBevel = 0.035f;
+
     [Header("Debug")]
     public bool logWarnings = false;
     public bool drawGizmos = false;
@@ -50,6 +53,7 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
     private MeshRenderer _mr;
     private MeshCollider _mc;
     private Mesh _mesh;
+    private WallCladdingGenerator _claddingGenerator;
 
     public IReadOnlyList<Vector3> Points => _points;
 
@@ -93,6 +97,7 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         }
 
         RebuildMesh();
+        MarkCladdingDirty();
     }
 
     public bool IsControlPointEditable(int index)
@@ -127,6 +132,7 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         _mf = GetComponent<MeshFilter>();
         _mr = GetComponent<MeshRenderer>();
         _mc = GetComponent<MeshCollider>();
+        _claddingGenerator = GetComponent<WallCladdingGenerator>();
 
         _mesh = new Mesh();
         _mesh.name = "WallMesh";
@@ -143,10 +149,14 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         _points.Clear();
         if (points != null) _points.AddRange(points);
 
-        if (_points.Count >= 3 && Vector3.Distance(_points[0], _points[_points.Count - 1]) < 0.001f)
-            closedLoop = true;
+        // Keep loop state consistent with the actual path payload.
+        // This prevents stale "closedLoop=true" on open paths, which can remove end caps.
+        closedLoop =
+            _points.Count >= 3 &&
+            Vector3.Distance(_points[0], _points[_points.Count - 1]) < 0.001f;
 
         RebuildMesh();
+        MarkCladdingDirty();
     }
 
     public void SetPoint(int index, Vector3 worldPos)
@@ -154,18 +164,30 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         if (index < 0 || index >= _points.Count) return;
         _points[index] = worldPos;
         RebuildMesh();
+        MarkCladdingDirty();
     }
 
     public void SetHeight(float newHeight)
     {
         height = Mathf.Max(0.1f, newHeight);
         RebuildMesh();
+        MarkCladdingDirty();
     }
 
     public void SetThickness(float newThickness)
     {
         thickness = Mathf.Max(0.01f, newThickness);
         RebuildMesh();
+        MarkCladdingDirty();
+    }
+
+    void MarkCladdingDirty()
+    {
+        if (_claddingGenerator == null)
+            _claddingGenerator = GetComponent<WallCladdingGenerator>();
+
+        if (_claddingGenerator != null)
+            _claddingGenerator.MarkDirty();
     }
 
     // ---------------------------------------------
@@ -177,20 +199,12 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
 
         _mesh.Clear();
 
-        if (_points.Count < 2)
-        {
-            SyncCollider();
-            return;
-        }
-
-        int count = closedLoop ? _points.Count - 1 : _points.Count;
-        if (count < 2)
-        {
-            SyncCollider();
-            return;
-        }
-
-        int segCount = closedLoop ? count : (count - 1);
+        List<Vector3> points = BuildRenderablePoints(_points, closedLoop);
+        bool isClosed = closedLoop && points.Count >= 3;
+        if (isClosed && closedLoopCornerBevel > 0.0001f)
+            points = ApplyClosedLoopCornerBevel(points, closedLoopCornerBevel);
+        int count = points.Count;
+        int segCount = isClosed ? count : count - 1;
         if (segCount < 1)
         {
             SyncCollider();
@@ -198,18 +212,51 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         }
 
         float outsideSign = 1f;
-        if (closedLoop)
+        Vector3 loopCentroid = Vector3.zero;
+        if (isClosed)
         {
-            bool isCCW = ComputeIsCCW_XZ(_points, count);
-            outsideSign = isCCW ? 1f : -1f;
+            for (int i = 0; i < count; i++)
+                loopCentroid += points[i];
+            loopCentroid /= Mathf.Max(1, count);
         }
 
         float halfT = thickness * 0.5f;
+        var segDir = new Vector3[segCount];
+        var segRight = new Vector3[segCount];
+        var segLen = new float[segCount];
+
+        for (int i = 0; i < segCount; i++)
+        {
+            int n = i + 1;
+            if (isClosed) n %= count;
+            Vector3 d = points[n] - points[i];
+            d.y = 0f;
+            float len = d.magnitude;
+            if (len < 0.0001f)
+                d = (i > 0 ? segDir[i - 1] : Vector3.forward);
+            else
+                d /= len;
+            segDir[i] = d;
+            segLen[i] = Mathf.Max(len, 0.0001f);
+            Vector3 right = Vector3.Cross(Vector3.up, d).normalized;
+            if (isClosed)
+            {
+                // Choose the normal that truly points outward from loop centroid.
+                Vector3 mid = (points[i] + points[n]) * 0.5f;
+                Vector3 toOutsideR = (mid + right * 0.05f) - loopCentroid;
+                Vector3 toOutsideL = (mid - right * 0.05f) - loopCentroid;
+                segRight[i] = toOutsideR.sqrMagnitude >= toOutsideL.sqrMagnitude ? right : -right;
+            }
+            else
+            {
+                segRight[i] = right * outsideSign;
+            }
+        }
 
         float[] dist = new float[count];
         dist[0] = 0f;
         for (int i = 1; i < count; i++)
-            dist[i] = dist[i - 1] + Vector3.Distance(_points[i - 1], _points[i]);
+            dist[i] = dist[i - 1] + Vector3.Distance(points[i - 1], points[i]);
 
         var outB = new Vector3[count];
         var inB = new Vector3[count];
@@ -218,80 +265,38 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
 
         for (int i = 0; i < count; i++)
         {
-            Vector3 p = _points[i];
+            Vector3 p = points[i];
 
-            Vector3 dirPrev = GetDirPrev(i, count);
-            Vector3 dirNext = GetDirNext(i, count);
-
-            // open wall endpoints: use segment normal directly
-            if (!closedLoop && i == 0)
+            if (!isClosed && i == 0)
             {
-                Vector3 right = Vector3.Cross(Vector3.up, dirNext).normalized;
-                Vector3 outsideOffset = right * (halfT * outsideSign);
-                Vector3 insideOffset = -outsideOffset;
-
-                outB[i] = p + outsideOffset;
-                inB[i] = p + insideOffset;
-                outT[i] = outB[i] + Vector3.up * height;
-                inT[i] = inB[i] + Vector3.up * height;
-                continue;
+                Vector3 off = segRight[0] * halfT;
+                outB[i] = p + off;
+                inB[i] = p - off;
             }
-
-            if (!closedLoop && i == count - 1)
+            else if (!isClosed && i == count - 1)
             {
-                Vector3 right = Vector3.Cross(Vector3.up, dirPrev).normalized;
-                Vector3 outsideOffset = right * (halfT * outsideSign);
-                Vector3 insideOffset = -outsideOffset;
-
-                outB[i] = p + outsideOffset;
-                inB[i] = p + insideOffset;
-                outT[i] = outB[i] + Vector3.up * height;
-                inT[i] = inB[i] + Vector3.up * height;
-                continue;
-            }
-
-            Vector3 bis = dirPrev + dirNext;
-            bis.y = 0f;
-
-            if (bis.sqrMagnitude < 0.000001f)
-            {
-                Vector3 right = Vector3.Cross(Vector3.up, dirNext).normalized;
-                Vector3 outsideOffset = right * (halfT * outsideSign);
-                Vector3 insideOffset = -outsideOffset;
-
-                outB[i] = p + outsideOffset;
-                inB[i] = p + insideOffset;
-                outT[i] = outB[i] + Vector3.up * height;
-                inT[i] = inB[i] + Vector3.up * height;
-                continue;
-            }
-
-            bis.Normalize();
-
-            Vector3 rightBis = Vector3.Cross(Vector3.up, bis).normalized;
-            Vector3 rightNext = Vector3.Cross(Vector3.up, dirNext).normalized;
-
-            float denom = Mathf.Abs(Vector3.Dot(rightBis, rightNext));
-
-            Vector3 outside;
-            Vector3 inside;
-
-            // sharp angles -> bevel fallback
-            if (denom < sharpCornerThreshold)
-            {
-                Vector3 right = Vector3.Cross(Vector3.up, dirNext).normalized;
-                outside = right * (halfT * outsideSign);
-                inside = -outside;
+                Vector3 off = segRight[segCount - 1] * halfT;
+                outB[i] = p + off;
+                inB[i] = p - off;
             }
             else
             {
-                float miterLen = Mathf.Min(halfT / denom, halfT * miterLimit);
-                outside = rightBis * (miterLen * outsideSign);
-                inside = -outside;
+                int prev = isClosed ? (i - 1 + segCount) % segCount : i - 1;
+                int next = isClosed ? i % segCount : i;
+                bool strictTriangleJoin = isClosed && count == 3;
+                float localMiterLimit = strictTriangleJoin ? Mathf.Max(miterLimit, 100f) : miterLimit;
+
+                Vector3 outsideOff = strictTriangleJoin
+                    ? ComputeTriangleJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, 1f)
+                    : ComputeJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, 1f, localMiterLimit);
+                Vector3 insideOff = strictTriangleJoin
+                    ? ComputeTriangleJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, -1f)
+                    : ComputeJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, -1f, localMiterLimit);
+
+                outB[i] = p + outsideOff;
+                inB[i] = p + insideOff;
             }
 
-            outB[i] = p + outside;
-            inB[i] = p + inside;
             outT[i] = outB[i] + Vector3.up * height;
             inT[i] = inB[i] + Vector3.up * height;
         }
@@ -300,55 +305,60 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         var uvs = new List<Vector2>(segCount * 24 + 16);
         var tris = new List<int>(segCount * 36 + 24);
 
-        float uAcross = thickness / Mathf.Max(0.01f, uvMetersPerU);
+        float uHeight = height / Mathf.Max(0.01f, uvMetersPerU);
+        float uThickness = thickness / Mathf.Max(0.01f, uvMetersPerU);
 
         for (int i = 0; i < segCount; i++)
         {
-            int n = (i + 1) % count;
-
+            int n = isClosed ? (i + 1) % count : i + 1;
             float v0 = dist[i] / Mathf.Max(0.01f, uvMetersPerV);
-            float v1;
+            float v1 = dist[n] / Mathf.Max(0.01f, uvMetersPerV);
+            if (isClosed && n == 0)
+                v1 = (dist[count - 1] + Vector3.Distance(points[count - 1], points[0])) / Mathf.Max(0.01f, uvMetersPerV);
 
-            if (closedLoop && n == 0)
-                v1 = (dist[count - 1] + Vector3.Distance(_points[count - 1], _points[0])) / Mathf.Max(0.01f, uvMetersPerV);
-            else
-                v1 = dist[n] / Mathf.Max(0.01f, uvMetersPerV);
+            Vector3 expectedOuterNormal = outB[i] - inB[i];
+            expectedOuterNormal.y = 0f;
+            if (expectedOuterNormal.sqrMagnitude < 0.000001f)
+                expectedOuterNormal = segRight[i];
+            expectedOuterNormal.Normalize();
 
-            // OUTER face
-            AddQuad(verts, uvs, tris,
+            AddQuadTwoSided(verts, uvs, tris,
                 outB[i], outT[i], outT[n], outB[n],
-                0f, v0, uAcross, v1);
+                0f, v0, uHeight, v1,
+                expectedOuterNormal);
 
-            // INNER face
-            AddQuad(verts, uvs, tris,
+            AddQuadTwoSided(verts, uvs, tris,
                 inB[n], inT[n], inT[i], inB[i],
-                0f, v1, uAcross, v0);
+                0f, v1, uHeight, v0,
+                -expectedOuterNormal);
 
-            // TOP face
-            AddQuad(verts, uvs, tris,
+            AddQuadOriented(verts, uvs, tris,
                 outT[i], inT[i], inT[n], outT[n],
-                0f, v0, uAcross, v1);
+                0f, v0, uThickness, v1,
+                Vector3.up);
 
-            // BOTTOM face
             if (addBottom)
             {
-                AddQuad(verts, uvs, tris,
+                AddQuadOriented(verts, uvs, tris,
                     outB[n], inB[n], inB[i], outB[i],
-                    0f, v1, uAcross, v0);
+                    0f, v1, uThickness, v0,
+                    Vector3.down);
             }
         }
 
-        // Caps for open walls
-        if (addCaps && !closedLoop && count >= 2)
+        if (addCaps && !isClosed)
         {
-            AddQuad(verts, uvs, tris,
+            Vector3 startDir = segDir[0];
+            AddQuadTwoSided(verts, uvs, tris,
                 inB[0], inT[0], outT[0], outB[0],
-                0f, 0f, 1f, 1f);
+                0f, 0f, 1f, 1f,
+                -startDir);
 
-            int last = count - 1;
-            AddQuad(verts, uvs, tris,
-                outB[last], outT[last], inT[last], inB[last],
-                0f, 0f, 1f, 1f);
+            Vector3 endDir = segDir[segCount - 1];
+            AddQuadTwoSided(verts, uvs, tris,
+                outB[count - 1], outT[count - 1], inT[count - 1], inB[count - 1],
+                0f, 0f, 1f, 1f,
+                endDir);
         }
 
         if (doubleSided)
@@ -357,7 +367,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         _mesh.SetVertices(verts);
         _mesh.SetUVs(0, uvs);
         _mesh.SetTriangles(tris, 0);
-
         _mesh.RecalculateNormals();
         _mesh.RecalculateBounds();
         _mesh.RecalculateTangents();
@@ -365,9 +374,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         SyncCollider();
         ApplyMaterial();
 
-        if (logWarnings && closedLoop && count >= 3)
+        if (logWarnings && isClosed && count >= 3)
         {
-            float areaAbs = Mathf.Abs(ComputeSignedAreaXZ(_points, count));
+            float areaAbs = Mathf.Abs(ComputeSignedAreaXZ(points, count));
             if (areaAbs < 0.001f)
                 Debug.LogWarning("[WallObject] Closed loop area is near zero (loop might be degenerate/self-intersecting).");
         }
@@ -402,22 +411,237 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         return area;
     }
 
-    private Vector3 GetDirPrev(int i, int count)
+    private static Vector3 GetDirPrev(List<Vector3> points, int i, int count, bool closed)
     {
-        int prev = (i - 1 + count) % count;
-        Vector3 d = _points[i] - _points[prev];
-        d.y = 0f;
-        if (d.sqrMagnitude < 0.000001f) d = Vector3.forward;
-        return d.normalized;
+        const float eps = 0.000001f;
+
+        if (closed)
+        {
+            for (int step = 1; step < count; step++)
+            {
+                int prev = (i - step + count) % count;
+                Vector3 d = points[i] - points[prev];
+                d.y = 0f;
+                if (d.sqrMagnitude >= eps)
+                    return d.normalized;
+            }
+        }
+
+        for (int prev = i - 1; prev >= 0; prev--)
+        {
+            Vector3 d = points[i] - points[prev];
+            d.y = 0f;
+            if (d.sqrMagnitude >= eps)
+                return d.normalized;
+        }
+
+        for (int next = i + 1; next < count; next++)
+        {
+            Vector3 d = points[next] - points[i];
+            d.y = 0f;
+            if (d.sqrMagnitude >= eps)
+                return d.normalized;
+        }
+
+        return Vector3.forward;
     }
 
-    private Vector3 GetDirNext(int i, int count)
+    private static Vector3 GetDirNext(List<Vector3> points, int i, int count, bool closed)
     {
-        int next = (i + 1) % count;
-        Vector3 d = _points[next] - _points[i];
-        d.y = 0f;
-        if (d.sqrMagnitude < 0.000001f) d = Vector3.forward;
-        return d.normalized;
+        const float eps = 0.000001f;
+
+        if (closed)
+        {
+            for (int step = 1; step < count; step++)
+            {
+                int next = (i + step) % count;
+                Vector3 d = points[next] - points[i];
+                d.y = 0f;
+                if (d.sqrMagnitude >= eps)
+                    return d.normalized;
+            }
+        }
+
+        for (int next = i + 1; next < count; next++)
+        {
+            Vector3 d = points[next] - points[i];
+            d.y = 0f;
+            if (d.sqrMagnitude >= eps)
+                return d.normalized;
+        }
+
+        for (int prev = i - 1; prev >= 0; prev--)
+        {
+            Vector3 d = points[i] - points[prev];
+            d.y = 0f;
+            if (d.sqrMagnitude >= eps)
+                return d.normalized;
+        }
+
+        return Vector3.forward;
+    }
+
+    private static List<Vector3> BuildRenderablePoints(List<Vector3> source, bool closed)
+    {
+        var cleaned = new List<Vector3>();
+        if (source == null || source.Count == 0)
+            return cleaned;
+
+        const float minPointSpacing = 0.001f;
+        float minPointSpacingSqr = minPointSpacing * minPointSpacing;
+
+        for (int i = 0; i < source.Count; i++)
+        {
+            Vector3 p = source[i];
+            if (cleaned.Count == 0 || (p - cleaned[cleaned.Count - 1]).sqrMagnitude > minPointSpacingSqr)
+                cleaned.Add(p);
+        }
+
+        if (closed && cleaned.Count >= 2 && (cleaned[0] - cleaned[cleaned.Count - 1]).sqrMagnitude <= minPointSpacingSqr)
+            cleaned.RemoveAt(cleaned.Count - 1);
+
+        return cleaned;
+    }
+
+    private static List<Vector3> ApplyClosedLoopCornerBevel(List<Vector3> pts, float bevelDistance)
+    {
+        var result = new List<Vector3>(pts.Count * 2);
+        int count = pts.Count;
+        if (count < 3)
+            return new List<Vector3>(pts);
+
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 p = pts[i];
+            Vector3 prev = pts[(i - 1 + count) % count];
+            Vector3 next = pts[(i + 1) % count];
+
+            Vector3 toPrev = p - prev;
+            Vector3 toNext = next - p;
+            toPrev.y = 0f;
+            toNext.y = 0f;
+
+            float lenPrev = toPrev.magnitude;
+            float lenNext = toNext.magnitude;
+            if (lenPrev < 0.0001f || lenNext < 0.0001f)
+            {
+                result.Add(p);
+                continue;
+            }
+
+            Vector3 dirPrev = toPrev / lenPrev;
+            Vector3 dirNext = toNext / lenNext;
+            float cut = Mathf.Min(bevelDistance, lenPrev * 0.35f, lenNext * 0.35f);
+            if (cut < 0.0001f)
+            {
+                result.Add(p);
+                continue;
+            }
+
+            result.Add(p - dirPrev * cut);
+            result.Add(p + dirNext * cut);
+        }
+
+        return result;
+    }
+
+    private Vector3 ComputeJoinOffset(
+        Vector3 pivot,
+        Vector3 dirPrev,
+        Vector3 rightPrev,
+        Vector3 dirNext,
+        Vector3 rightNext,
+        float halfThickness,
+        float sideSign,
+        float localMiterLimit)
+    {
+        Vector3 n1 = rightPrev * sideSign;
+        Vector3 n2 = rightNext * sideSign;
+        n1.y = 0f;
+        n2.y = 0f;
+
+        if (n1.sqrMagnitude < 0.000001f) n1 = n2;
+        if (n2.sqrMagnitude < 0.000001f) n2 = n1;
+        if (n1.sqrMagnitude < 0.000001f)
+            return Vector3.zero;
+
+        n1.Normalize();
+        n2.Normalize();
+
+        Vector3 bis = n1 + n2;
+        bis.y = 0f;
+        if (bis.sqrMagnitude < 0.000001f)
+            return n2 * halfThickness;
+        bis.Normalize();
+
+        float denom = Mathf.Abs(Vector3.Dot(bis, n2));
+        float minTurn = Mathf.Clamp01(sharpCornerThreshold) * 0.25f;
+        float turnAmount = Vector3.Cross(dirPrev, dirNext).magnitude;
+        if (denom < 0.0001f || turnAmount < minTurn)
+            return n2 * halfThickness;
+
+        float miterLen = halfThickness / denom;
+        float maxMiter = halfThickness * Mathf.Max(1f, localMiterLimit);
+        if (miterLen > maxMiter)
+            miterLen = maxMiter;
+
+        return bis * miterLen;
+    }
+
+    private Vector3 ComputeTriangleJoinOffset(
+        Vector3 pivot,
+        Vector3 dirPrev,
+        Vector3 rightPrev,
+        Vector3 dirNext,
+        Vector3 rightNext,
+        float halfThickness,
+        float sideSign)
+    {
+        Vector3 p1 = pivot + rightPrev * (halfThickness * sideSign);
+        Vector3 p2 = pivot + rightNext * (halfThickness * sideSign);
+        if (TryLineIntersectionXZ(p1, dirPrev, p2, dirNext, out Vector3 hit))
+        {
+            Vector3 miter = hit - pivot;
+            miter.y = 0f;
+            if (miter.sqrMagnitude > 0.000001f)
+                return miter;
+        }
+
+        return ComputeBevelOffset(rightPrev, rightNext, halfThickness, sideSign);
+    }
+
+    private static Vector3 ComputeBevelOffset(Vector3 rightPrev, Vector3 rightNext, float halfThickness, float sideSign)
+    {
+        Vector3 avg = rightPrev + rightNext;
+        avg.y = 0f;
+        if (avg.sqrMagnitude < 0.000001f)
+            avg = rightNext.sqrMagnitude > 0.000001f ? rightNext : rightPrev;
+        avg.Normalize();
+        return avg * (halfThickness * sideSign);
+    }
+
+    private static bool TryLineIntersectionXZ(Vector3 p1, Vector3 d1, Vector3 p2, Vector3 d2, out Vector3 intersection)
+    {
+        intersection = p1;
+        Vector2 a1 = new Vector2(p1.x, p1.z);
+        Vector2 v1 = new Vector2(d1.x, d1.z);
+        Vector2 a2 = new Vector2(p2.x, p2.z);
+        Vector2 v2 = new Vector2(d2.x, d2.z);
+
+        float denom = Cross2(v1, v2);
+        if (Mathf.Abs(denom) < 0.00001f)
+            return false;
+
+        Vector2 delta = a2 - a1;
+        float t = Cross2(delta, v2) / denom;
+        Vector2 hit = a1 + v1 * t;
+        intersection = new Vector3(hit.x, p1.y, hit.y);
+        return true;
+    }
+
+    private static float Cross2(Vector2 a, Vector2 b)
+    {
+        return a.x * b.y - a.y * b.x;
     }
 
     // ---------------------------------------------
@@ -438,9 +662,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         verts.Add(d);
 
         uvs.Add(new Vector2(u0, v0));
-        uvs.Add(new Vector2(u0, v0 + 1f));
-        uvs.Add(new Vector2(u1, v1 + 1f));
+        uvs.Add(new Vector2(u1, v0));
         uvs.Add(new Vector2(u1, v1));
+        uvs.Add(new Vector2(u0, v1));
 
         tris.Add(start + 0);
         tris.Add(start + 1);
@@ -449,6 +673,66 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         tris.Add(start + 0);
         tris.Add(start + 2);
         tris.Add(start + 3);
+    }
+
+    private void AddQuadOriented(
+        List<Vector3> verts,
+        List<Vector2> uvs,
+        List<int> tris,
+        Vector3 a, Vector3 b, Vector3 c, Vector3 d,
+        float u0, float v0, float u1, float v1,
+        Vector3 expectedNormal)
+    {
+        int start = verts.Count;
+
+        verts.Add(a);
+        verts.Add(b);
+        verts.Add(c);
+        verts.Add(d);
+
+        uvs.Add(new Vector2(u0, v0));
+        uvs.Add(new Vector2(u1, v0));
+        uvs.Add(new Vector2(u1, v1));
+        uvs.Add(new Vector2(u0, v1));
+
+        Vector3 triNormal = Vector3.Cross(b - a, c - a);
+        bool sameDirection =
+            expectedNormal.sqrMagnitude < 0.000001f ||
+            triNormal.sqrMagnitude < 0.000001f ||
+            Vector3.Dot(triNormal, expectedNormal) >= 0f;
+
+        if (sameDirection)
+        {
+            tris.Add(start + 0);
+            tris.Add(start + 1);
+            tris.Add(start + 2);
+
+            tris.Add(start + 0);
+            tris.Add(start + 2);
+            tris.Add(start + 3);
+        }
+        else
+        {
+            tris.Add(start + 0);
+            tris.Add(start + 2);
+            tris.Add(start + 1);
+
+            tris.Add(start + 0);
+            tris.Add(start + 3);
+            tris.Add(start + 2);
+        }
+    }
+
+    private void AddQuadTwoSided(
+        List<Vector3> verts,
+        List<Vector2> uvs,
+        List<int> tris,
+        Vector3 a, Vector3 b, Vector3 c, Vector3 d,
+        float u0, float v0, float u1, float v1,
+        Vector3 expectedNormal)
+    {
+        AddQuadOriented(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, expectedNormal);
+        AddQuadOriented(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, -expectedNormal);
     }
 
     private void AddBackfaces(List<int> tris)
