@@ -16,8 +16,13 @@ public class WoodcutterWorkerBrain : MonoBehaviour
 
     [Header("References")]
     [SerializeField] private WorkerAssignment workerAssignment;
+    [SerializeField] private NPCDecisionBrain decisionBrain;
     [SerializeField] private Animator animator;
     [SerializeField] private GameObject axeInHandObject;
+
+    [Header("Decision Integration")]
+    [SerializeField] private bool obeyDecisionBrain = true;
+    [SerializeField] private bool releaseTargetsWhenNotWorking = true;
 
     [Header("Animator")]
     [SerializeField] private bool useAnimator = true;
@@ -52,6 +57,7 @@ public class WoodcutterWorkerBrain : MonoBehaviour
     [SerializeField] private WoodPickup currentPickup;
     [SerializeField] private WoodStorage currentStorage;
     [SerializeField] private Vector3 currentTreeSnapPosition;
+    [SerializeField] private bool pausedByDecision = false;
 
     private ResourceTickBehaviour lastAssignedField;
     private float actionTimer = 0f;
@@ -72,6 +78,9 @@ public class WoodcutterWorkerBrain : MonoBehaviour
     {
         if (workerAssignment == null)
             workerAssignment = GetComponent<WorkerAssignment>();
+
+        if (decisionBrain == null)
+            decisionBrain = GetComponent<NPCDecisionBrain>();
 
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
@@ -100,11 +109,20 @@ public class WoodcutterWorkerBrain : MonoBehaviour
 
         if (currentArea == null)
         {
+            pausedByDecision = false;
             SetState(WorkerState.Idle);
             UpdateVisualWorkState(false);
             return;
         }
 
+        if (!CanWorkRightNow())
+        {
+            PauseWorkBehaviour();
+            UpdateVisualWorkState(false);
+            return;
+        }
+
+        pausedByDecision = false;
         actionTimer -= Time.deltaTime;
 
         switch (currentState)
@@ -143,6 +161,28 @@ public class WoodcutterWorkerBrain : MonoBehaviour
 
     public void ShowAssignedWorkArea()
     {
+    }
+
+    private bool CanWorkRightNow()
+    {
+        if (!obeyDecisionBrain)
+            return true;
+
+        if (decisionBrain == null)
+            return true;
+
+        return decisionBrain.CurrentActionType == NPCActionType.Work;
+    }
+
+    private void PauseWorkBehaviour()
+    {
+        pausedByDecision = true;
+        actionTimer = 0f;
+
+        if (releaseTargetsWhenNotWorking)
+            ReleaseTargets();
+
+        SetState(WorkerState.Idle);
     }
 
     private void RefreshAssignedAreaIfNeeded()
@@ -644,11 +684,12 @@ public class WoodcutterWorkerBrain : MonoBehaviour
 
     private void UpdateVisualWorkState(bool force)
     {
-        bool isMoving = currentState == WorkerState.MovingToTree ||
-                        currentState == WorkerState.MovingToPickup ||
-                        currentState == WorkerState.MovingToStorage;
+        bool isMoving = !pausedByDecision &&
+                        (currentState == WorkerState.MovingToTree ||
+                         currentState == WorkerState.MovingToPickup ||
+                         currentState == WorkerState.MovingToStorage);
 
-        bool isChopping = currentState == WorkerState.Chopping;
+        bool isChopping = !pausedByDecision && currentState == WorkerState.Chopping;
 
         if (axeInHandObject != null)
             axeInHandObject.SetActive(isChopping);

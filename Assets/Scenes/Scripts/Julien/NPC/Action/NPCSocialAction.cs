@@ -10,6 +10,7 @@ public class NPCSocialAction : NPCAction
     public override float ContinueBonus => 24f;
 
     private NPCActionAnimationBridge bridge;
+    private bool poseStarted;
 
     private NPCActionAnimationBridge GetBridge(NPCDecisionBrain brain)
     {
@@ -23,16 +24,11 @@ public class NPCSocialAction : NPCAction
     {
         return base.CanRun(brain)
                && brain.SocialPoint != null
-               && brain.CurrentLeisureSite != null
                && brain.Needs.social < SocialStopThreshold;
     }
 
     public override float CalculateUtility(NPCDecisionBrain brain, float timeOfDay)
     {
-        LeisureSite leisureSite = brain.CurrentLeisureSite;
-        if (leisureSite == null)
-            return 0f;
-
         float social = brain.Needs.social;
 
         if (brain.CurrentActionType != NPCActionType.Socialize && social >= SocialStartThreshold)
@@ -41,8 +37,7 @@ public class NPCSocialAction : NPCAction
         if (social >= SocialStopThreshold)
             return 0f;
 
-        float socialUrgency = NeedUrgency(social);
-        float score = socialUrgency * 75f;
+        float score = NeedUrgency(social) * 75f;
 
         if (brain.IsEveningTime(timeOfDay))
             score += 18f;
@@ -53,7 +48,7 @@ public class NPCSocialAction : NPCAction
         if (brain.IsNightTime(timeOfDay))
             score *= 0.15f;
 
-        if (brain.CurrentActionType == NPCActionType.Socialize && social < SocialStopThreshold)
+        if (brain.CurrentActionType == NPCActionType.Socialize)
             score += 35f;
 
         return score;
@@ -61,36 +56,41 @@ public class NPCSocialAction : NPCAction
 
     public override void OnEnter(NPCDecisionBrain brain)
     {
+        poseStarted = false;
         GetBridge(brain)?.ClearPose();
         brain.SetCurrentTarget(brain.SocialPoint);
     }
 
     public override void OnTick(NPCDecisionBrain brain, int tickIndex, float timeOfDay)
     {
-        LeisureSite leisureSite = brain.CurrentLeisureSite;
-        if (leisureSite == null)
-            return;
-
         if (!brain.IsAtCurrentTarget())
         {
-            GetBridge(brain)?.EndPose(ActionType);
+            if (brain.CurrentTarget != brain.SocialPoint)
+                brain.SetCurrentTarget(brain.SocialPoint);
             return;
         }
 
-        GetBridge(brain)?.BeginPose(ActionType, brain.SocialPoint);
+        NPCActionAnimationBridge actionBridge = GetBridge(brain);
+        if (!poseStarted && actionBridge != null)
+        {
+            actionBridge.BeginPose(ActionType, brain.SocialPoint);
+            poseStarted = true;
+        }
 
         if (brain.Needs.social >= SocialStopThreshold)
             return;
 
-        brain.Needs.ModifyNeed(NPCNeedType.Social, leisureSite.SocialBonusPerTick);
-        brain.Needs.ModifyNeed(NPCNeedType.Safety, leisureSite.SafetyBonusPerTick);
+        LeisureSite leisureSite = brain.CurrentLeisureSite;
+        float socialGain = leisureSite != null ? leisureSite.SocialBonusPerTick : 6f;
+        float safetyGain = leisureSite != null ? leisureSite.SafetyBonusPerTick : 1f;
 
-        if (brain.Needs.social > 100f)
-            brain.Needs.social = 100f;
+        brain.Needs.ModifyNeedPerTick(NPCNeedType.Social, socialGain);
+        brain.Needs.ModifyNeedPerTick(NPCNeedType.Safety, safetyGain);
     }
 
     public override void OnExit(NPCDecisionBrain brain)
     {
         GetBridge(brain)?.EndPose(ActionType);
+        poseStarted = false;
     }
 }
