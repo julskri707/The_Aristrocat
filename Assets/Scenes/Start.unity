@@ -1242,7 +1242,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 69d2ad63aed87054989e5605668edb7b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MainMenuUI
-  gameplaySceneName: Main V1
+  gameplaySceneName: Main
   fadeImage: {fileID: 0}
   fadeDuration: 0.35
   mainPanel: {fileID: 697153028}

@@ -2226,8 +2226,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &166204733
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2541,110 +2541,6 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 449396477}
   m_SourcePrefab: {fileID: 100100000, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
---- !u!1 &189844662 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 145251503630187960, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-  m_PrefabInstance: {fileID: 769989068}
-  m_PrefabAsset: {fileID: 0}
---- !u!23 &189844665
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 189844662}
-  m_Enabled: 1
-  m_CastShadows: 1
-  m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
-  m_StaticShadowCaster: 0
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RayTraceProcedural: 0
-  m_RayTracingAccelStructBuildFlagsOverride: 0
-  m_RayTracingAccelStructBuildFlags: 1
-  m_SmallMeshCulling: 1
-  m_ForceMeshLod: -1
-  m_MeshLodSelectionBias: 0
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 0}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_GlobalIlluminationMeshLod: 0
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
-  m_AdditionalVertexStreams: {fileID: 0}
---- !u!33 &189844666
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 189844662}
-  m_Mesh: {fileID: 0}
---- !u!64 &189844667
-MeshCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 189844662}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 5
-  m_Convex: 0
-  m_CookingOptions: 30
-  m_Mesh: {fileID: 0}
---- !u!65 &189844668
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 189844662}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 0.059114985, y: 0.11116224, z: 0.043499462}
-  m_Center: {x: 0.0008922482, y: 0.04830838, z: -0.00013400694}
 --- !u!1001 &191565969
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2913,8 +2809,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &212905100
 GameObject:
   m_ObjectHideFlags: 0
@@ -3137,8 +3033,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &220017531 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2969433353282931623, guid: 549ec97f4eb7ebd488005d5727d2a800, type: 3}
@@ -3171,8 +3067,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &240991534
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -3265,6 +3161,7 @@ GameObject:
   m_Component:
   - component: {fileID: 259893160}
   - component: {fileID: 259893161}
+  - component: {fileID: 259893162}
   m_Layer: 0
   m_Name: FoodSite
   m_TagString: Untagged
@@ -3303,16 +3200,30 @@ MonoBehaviour:
   servicePoint: {fileID: 2092106868}
   resourceManager: {fileID: 8555840518643687054, guid: 926e66797f83ea044943baabe886efba, type: 3}
   maxSeats: 10
-  standBeforeLeavingDelayTicks: 1
-  mealFoodCost: 1
+  mealFoodCost: 2
   requiresStoredFood: 0
   resourceKeyName: Essen
-  fallbackHungerRestore: 6
-  hungerRestorePerMeal: 1.1
-  energyRestorePerMeal: 2
-  safetyRestorePerMeal: 0.5
   debugLogs: 1
   debugWarnings: 1
+--- !u!114 &259893162
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 259893159}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fb8d4b3d81c6b2840abdf46e7b7c0bdf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FoodSiteEatSettings
+  waitSecondsAfterEating: 30
+  setHungerToFullOnEat: 1
+  hungerValueOnEat: 100
+  setEnergyOnEat: 0
+  energyValueOnEat: 100
+  consumeMealOnEatStart: 1
+  requireSuccessfulMealConsumption: 1
 --- !u!1 &260417450
 GameObject:
   m_ObjectHideFlags: 0
@@ -3543,8 +3454,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &274999221
 GameObject:
   m_ObjectHideFlags: 0
@@ -4681,329 +4592,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 343045998}
   m_CullTransparentMesh: 1
---- !u!1 &343640360 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-  m_PrefabInstance: {fileID: 1022054829262802799}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &343640361
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 644fe78759a902a4b865878ae44b3447, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NPCNeeds
-  hunger: 100
-  energy: 100
-  warmth: 100
-  safety: 100
-  social: 100
-  hungerDecay: 0.75
-  energyDecay: 0.45
-  warmthDecay: 0.2
-  safetyDecay: 0.05
-  socialDecay: 0.15
---- !u!114 &343640363
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2bcfc807ec7fab945ab10813eb1d2ebf, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NPCDecisionBrain
-  needs: {fileID: 343640361}
-  timeSystem: {fileID: 1158582897}
-  eventContext: {fileID: 343640365}
-  workerAssignment: {fileID: 343640372}
-  navMeshMovement: {fileID: 343640369}
-  autoAssignNearbySites: 1
-  siteRefreshIntervalTicks: 1
-  decisionIntervalTicks: 1
-  evaluateOnFirstTick: 1
-  minScoreAdvantageToSwitch: 8
-  nightStartHour: 23
-  nightEndHour: 6
-  workStartHour: 8
-  workEndHour: 17
-  eveningStartHour: 18
-  eveningEndHour: 23
-  forcedNightSleepHours: 6
-  emergencyDaySleepEnergyThreshold: 18
-  debugDecisionLogs: 0
-  debugWarnings: 1
-  currentTarget: {fileID: 0}
-  bedPoint: {fileID: 0}
-  foodPoint: {fileID: 0}
-  socialPoint: {fileID: 0}
-  workPoint: {fileID: 0}
-  homeSite: {fileID: 0}
-  foodSite: {fileID: 0}
-  leisureSite: {fileID: 0}
-  jobSite: {fileID: 0}
-  currentActionType: 0
-  currentActionStartTick: -2147483648
-  forcedSleepUntilTick: -2147483648
---- !u!114 &343640364
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c7960dfa2ccc02e47995dd7092ed6e3a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NPCBrain
-  decisionBrain: {fileID: 343640363}
-  movement: {fileID: 343640369}
-  workerAssignment: {fileID: 343640372}
-  debugWarnings: 1
---- !u!114 &343640365
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a8ba6292575b7de46bc4cbca02000b36, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NPCEventContext
-  panicRecommended: 0
-  panicScoreBonus: 0
---- !u!4 &343640366 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-  m_PrefabInstance: {fileID: 1022054829262802799}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &343640367
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fff11b1bb1b59e34c95b783aa0a779be, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SiteRegistry
---- !u!114 &343640369
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fab0910f548a04747aff591d92fef900, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NPCNavMeshMovementController
-  agent: {fileID: 343640370}
-  repathDistanceThreshold: 0.35
-  stopWhenNoTarget: 1
-  arrivalVelocityThreshold: 0.08
-  extraArrivalDistance: 0.05
-  debugLogs: 0
-  debugWarnings: 1
---- !u!195 &343640370
-NavMeshAgent:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_AgentTypeID: 0
-  m_Radius: 0.6
-  m_Speed: 3.5
-  m_Acceleration: 8
-  avoidancePriority: 51
-  m_AngularSpeed: 120
-  m_StoppingDistance: 0
-  m_AutoTraverseOffMeshLink: 1
-  m_AutoBraking: 1
-  m_AutoRepath: 1
-  m_Height: 4.8
-  m_BaseOffset: 0
-  m_WalkableMask: 4294967295
-  m_ObstacleAvoidanceType: 4
---- !u!114 &343640371
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1ebd57890b9044242a35d93dbff99d20, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NPCActionAnimationBridge
-  animator: {fileID: 545583119}
-  agent: {fileID: 343640370}
-  sleepingBool: IsSleeping
-  eatingBool: IsEating
-  socializingBool: IsSocializing
-  workingBool: IsWorking
-  panickingBool: IsPanicking
-  snapToAnchorPosition: 1
-  snapToAnchorRotation: 1
-  keepSnappedWhileActionActive: 1
-  debugWarnings: 1
---- !u!114 &343640372
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 14bf8479d865e3248878f20fd2e2299a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WorkerAssignment
-  assignedField: {fileID: 0}
---- !u!114 &343640373
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 026963169a819cb48a0923006d470e88, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WoodcutterWorkerBrain
-  workerAssignment: {fileID: 343640372}
-  animator: {fileID: 0}
-  axeInHandObject: {fileID: 0}
-  useAnimator: 1
-  isMovingParameter: IsMoving
-  isChoppingParameter: IsChopping
-  setCarriedWoodInt: 0
-  carriedWoodParameter: CarriedWood
-  moveSpeed: 7
-  stopDistance: 0.2
-  rotationSpeed: 8
-  hardSnapToTreePoint: 1
-  carryCapacity: 3
-  chopDamage: 1
-  chopInterval: 2
-  pickupInterval: 0.2
-  depositInterval: 0.35
-  usePickupCollectRadius: 1
-  pickupCollectRadius: 1.5
-  facePickupWhileCollecting: 1
-  currentState: 0
-  carriedWood: 0
-  currentArea: {fileID: 0}
-  currentTree: {fileID: 0}
-  currentPickup: {fileID: 0}
-  currentStorage: {fileID: 0}
-  currentTreeSnapPosition: {x: 0, y: 0, z: 0}
---- !u!114 &343640374
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 96353e8109bb49846b12ae859d78a61d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NPCIdentityRandomProfile
-  generateOnAwake: 1
-  minAge: 18
-  maxAge: 62
-  displayNameValue: 
-  ageValue: 0
-  originValue: 
-  talentValue: 
-  traitValue: 
-  firstNames:
-  - Alrik
-  - Borin
-  - Cedric
-  - Darin
-  - Elias
-  - Falk
-  - Gero
-  - Henrik
-  - Ivo
-  - Joran
-  - Kara
-  - Lina
-  - Mira
-  - Nora
-  - Oda
-  - Rhea
-  - Sina
-  - Thea
-  - Vera
-  - Yara
-  origins:
-  - vom Flusstal
-  - aus dem Nordwald
-  - vom Grenzhof
-  - "aus den H\xFCgeln"
-  - vom alten Markt
-  - "aus dem S\xFCddorf"
-  - vom Steinbruch
-  - von der Waldkante
-  - vom Seeweg
-  - aus der Oberstadt
-  talents:
-  - arbeitet schnell
-  - "tr\xE4gt viel"
-  - bleibt ruhig
-  - "lernt z\xFCgig"
-  - hat ein gutes Auge
-  - ist ausdauernd
-  - kann gut organisieren
-  - ist geschickt mit Werkzeug
-  - arbeitet sauber
-  - ist belastbar
-  traits:
-  - freundlich
-  - stolz
-  - vorsichtig
-  - ehrgeizig
-  - geduldig
-  - stillschweigend
-  - humorvoll
-  - "verl\xE4sslich"
-  - neugierig
-  - stur
---- !u!114 &343640375
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 343640360}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1302805ce4033d2499759218cf994661, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NPCAssignmentUIAdapter
-  workerAssignment: {fileID: 343640372}
-  identity: {fileID: 343640374}
-  npcTypeLabel: Bauer
 --- !u!4 &343852267 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3470328610474130563, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -5989,8 +5577,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &388024551 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1785748991163630896, guid: 449b66b87a35b2b4481d1f8bf3981d36, type: 3}
@@ -7261,8 +6849,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &448078603 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3967936388429983544, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -7290,8 +6878,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &454309575 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 6424722253844999180, guid: 97ce7aa75e0018c4a930327022fca4e3, type: 3}
@@ -7314,8 +6902,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &458896159 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2969433353282931623, guid: 549ec97f4eb7ebd488005d5727d2a800, type: 3}
@@ -7338,8 +6926,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &460134178 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1406127571881582474, guid: 449b66b87a35b2b4481d1f8bf3981d36, type: 3}
@@ -7362,8 +6950,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &464690271 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2485524419688010013, guid: 549ec97f4eb7ebd488005d5727d2a800, type: 3}
@@ -7381,8 +6969,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &467285393
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8173,83 +7761,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
---- !u!1 &545583116 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-  m_PrefabInstance: {fileID: 769989068}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &545583117 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-  m_PrefabInstance: {fileID: 769989068}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &545583118
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 545583116}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bac8191ae91af5243ba0efb2353037f4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NPCAnimatorBridge
-  animator: {fileID: 545583119}
-  agent: {fileID: 343640370}
-  visualRootToLock: {fileID: 0}
-  speedParameter: Speed
-  speedDampTime: 0.1
-  normalizeByAgentSpeed: 1
-  speedMultiplier: 1
-  minSpeedValue: 0
-  maxSpeedValue: 1.25
-  movementDeadZone: 0.03
-  useDesiredVelocityIfAvailable: 1
-  forceDisableRootMotion: 1
-  lockVisualRootLocalTransform: 1
-  debugWarnings: 1
---- !u!95 &545583119 stripped
-Animator:
-  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-  m_PrefabInstance: {fileID: 769989068}
-  m_PrefabAsset: {fileID: 0}
---- !u!64 &545583120
-MeshCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 545583116}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 5
-  m_Convex: 0
-  m_CookingOptions: 30
-  m_Mesh: {fileID: 1555178867830214548, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
---- !u!114 &545583121
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 545583116}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 324a469f57fd1044bb56e0f1d152b6ac, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::JobAssigner
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &548124603
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8339,8 +7852,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &551205376
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8959,8 +8472,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &622522962
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -9054,6 +8567,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 893022650}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 893022654}
     - targetCorrespondingSourceObject: {fileID: 145251503630187960, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1630616905}
@@ -9355,8 +8871,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &665510413
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -9446,8 +8962,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &667389385 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2485524419688010013, guid: 549ec97f4eb7ebd488005d5727d2a800, type: 3}
@@ -10079,8 +9595,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &696406991 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6597783995754914524, guid: 12037ab95494f6c4e8f53cdbdb3beb82, type: 3}
@@ -10103,8 +9619,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &707030417
 GameObject:
   m_ObjectHideFlags: 0
@@ -10276,8 +9792,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &714166769
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -10533,8 +10049,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &719880124 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1785748991163630896, guid: 449b66b87a35b2b4481d1f8bf3981d36, type: 3}
@@ -10552,8 +10068,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &721271412 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3470328610474130563, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -10875,8 +10391,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &747366194 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1406127571881582474, guid: 449b66b87a35b2b4481d1f8bf3981d36, type: 3}
@@ -10894,8 +10410,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &747369209
 GameObject:
   m_ObjectHideFlags: 0
@@ -11132,111 +10648,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
---- !u!1001 &769989068
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 343640366}
-    m_Modifications:
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalScale.x
-      value: 1.3
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalScale.y
-      value: 1.3
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalScale.z
-      value: 1.3
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_ConstrainProportionsScale
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 919132149155446097, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_Name
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 5866666021909216657, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_Controller
-      value: 
-      objectReference: {fileID: 9100000, guid: 2695b0a545723664a92de75d55633fe9, type: 2}
-    - target: {fileID: 5866666021909216657, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      propertyPath: m_ApplyRootMotion
-      value: 0
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects:
-    - {fileID: 65702495048144492, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-    m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 545583118}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 545583120}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 545583121}
-    - targetCorrespondingSourceObject: {fileID: 145251503630187960, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 189844667}
-    - targetCorrespondingSourceObject: {fileID: 145251503630187960, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 189844666}
-    - targetCorrespondingSourceObject: {fileID: 145251503630187960, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 189844665}
-    - targetCorrespondingSourceObject: {fileID: 145251503630187960, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 189844668}
-  m_SourcePrefab: {fileID: 100100000, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
+  minScale: 3
+  maxScale: 6
 --- !u!1 &778156809
 GameObject:
   m_ObjectHideFlags: 0
@@ -11469,8 +10882,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &785562364 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
@@ -11489,8 +10902,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WoodcutterWorkerBrain
   workerAssignment: {fileID: 785562370}
+  decisionBrain: {fileID: 785562373}
   animator: {fileID: 893022649}
   axeInHandObject: {fileID: 1823585463}
+  obeyDecisionBrain: 1
+  releaseTargetsWhenNotWorking: 1
   useAnimator: 1
   isMovingParameter: IsMoving
   isChoppingParameter: IsChopping
@@ -11510,11 +10926,12 @@ MonoBehaviour:
   facePickupWhileCollecting: 1
   currentState: 0
   carriedWood: 0
-  currentArea: {fileID: 1851910363}
+  currentArea: {fileID: 0}
   currentTree: {fileID: 0}
   currentPickup: {fileID: 0}
   currentStorage: {fileID: 0}
   currentTreeSnapPosition: {x: 0, y: 0, z: 0}
+  pausedByDecision: 0
 --- !u!114 &785562367
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11591,7 +11008,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14bf8479d865e3248878f20fd2e2299a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WorkerAssignment
-  assignedField: {fileID: 2067819614}
+  assignedField: {fileID: 0}
 --- !u!114 &785562371
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11616,16 +11033,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 644fe78759a902a4b865878ae44b3447, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NPCNeeds
-  hunger: 100
+  timeSystem: {fileID: 0}
+  profile: {fileID: 0}
+  autoFindTimeSystem: 1
+  applyProfileOnAwake: 1
+  hunger: 9
   energy: 100
   warmth: 100
   safety: 100
   social: 100
-  hungerDecay: 0
-  energyDecay: 0
-  warmthDecay: 0
-  safetyDecay: 0
-  socialDecay: 0
+  hungerDecay: 0.01
+  energyDecay: 0.01
+  warmthDecay: 0.01
+  safetyDecay: 0.01
+  socialDecay: 0.01
+  referenceHoursPerTick: 0.25
 --- !u!114 &785562373
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11645,9 +11067,11 @@ MonoBehaviour:
   navMeshMovement: {fileID: 785562368}
   autoAssignNearbySites: 1
   siteRefreshIntervalTicks: 20
+  forceRefreshSitesWhenCriticalNeeds: 1
   decisionIntervalTicks: 20
   evaluateOnFirstTick: 1
   minScoreAdvantageToSwitch: 8
+  allowImmediateInterruptForCriticalNeeds: 1
   nightStartHour: 23
   nightEndHour: 6
   workStartHour: 8
@@ -11811,8 +11235,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &788069735 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5642733442331374791, guid: 0d97c22110c1e934c9554d8f83d40e1f, type: 3}
@@ -11856,8 +11280,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &798775449
 GameObject:
   m_ObjectHideFlags: 0
@@ -12653,8 +12077,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &833903792
 GameObject:
   m_ObjectHideFlags: 0
@@ -12969,8 +12393,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &838798670 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3470328610474130563, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -12993,8 +12417,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &842252385 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4349106921346135426, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -13957,6 +13381,33 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
   m_PrefabInstance: {fileID: 622522962}
   m_PrefabAsset: {fileID: 0}
+--- !u!54 &893022654
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 893022648}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
 --- !u!1001 &893221721
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -14046,8 +13497,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &903708146
 GameObject:
   m_ObjectHideFlags: 0
@@ -14407,8 +13858,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &922243575
 GameObject:
   m_ObjectHideFlags: 0
@@ -14983,8 +14434,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &952235066
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -15204,8 +14655,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &975484986 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2518098219854145955, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -15223,8 +14674,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &980114486 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3006650081995879193, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -15390,8 +14841,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &997280861 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: e96c3cc78a203e141a47d27d09aa0988, type: 3}
@@ -15518,8 +14969,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1006926692
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -16648,8 +16099,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1047291585
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -16829,8 +16280,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1062089544
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -16920,8 +16371,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1063946924 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2518098219854145955, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -16976,8 +16427,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1079069061
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -17212,8 +16663,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1101042225 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5826489390109227110, guid: 12037ab95494f6c4e8f53cdbdb3beb82, type: 3}
@@ -17231,8 +16682,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1111651994 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3967936388429983544, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -17250,8 +16701,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1112779933 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5826489390109227110, guid: 12037ab95494f6c4e8f53cdbdb3beb82, type: 3}
@@ -17269,8 +16720,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1114372106 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 4279200095441724985, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -17288,8 +16739,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1121665343
 GameObject:
   m_ObjectHideFlags: 0
@@ -17394,8 +16845,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1128434174 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1406127571881582474, guid: 449b66b87a35b2b4481d1f8bf3981d36, type: 3}
@@ -17413,8 +16864,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1132109673
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -17671,8 +17122,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1152905618 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 4279200095441724985, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -17812,8 +17263,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1164731969
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -18000,8 +17451,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1189378700 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3470328610474130563, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -18019,8 +17470,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1190339204 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6597783995754914524, guid: 12037ab95494f6c4e8f53cdbdb3beb82, type: 3}
@@ -18038,8 +17489,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1193647459 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -774485609497688880, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
@@ -18527,6 +17978,10 @@ PrefabInstance:
       value: Gamecontroller
       objectReference: {fileID: 0}
     - target: {fileID: 8555840518643687054, guid: 926e66797f83ea044943baabe886efba, type: 3}
+      propertyPath: Essen
+      value: 100
+      objectReference: {fileID: 0}
+    - target: {fileID: 8555840518643687054, guid: 926e66797f83ea044943baabe886efba, type: 3}
       propertyPath: uiBindings.Array.size
       value: 7
       objectReference: {fileID: 0}
@@ -18798,8 +18253,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1236202184 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4349106921346135426, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -18970,7 +18425,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
   minScale: 3
-  maxScale: 5
+  maxScale: 6
 --- !u!1001 &1255492107
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -19060,8 +18515,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1269423239
 GameObject:
   m_ObjectHideFlags: 0
@@ -19499,8 +18954,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1292940355
 GameObject:
   m_ObjectHideFlags: 0
@@ -19608,8 +19063,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1298829836 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 8954908015999258537, guid: c1f790fc6e17f8343bcca7b1b19c5646, type: 3}
@@ -19866,8 +19321,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1315953130
 GameObject:
   m_ObjectHideFlags: 0
@@ -20497,8 +19952,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1337975270 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2969433353282931623, guid: 549ec97f4eb7ebd488005d5727d2a800, type: 3}
@@ -20598,8 +20053,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1348170780 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3006650081995879193, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -20622,8 +20077,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1353127156 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3967936388429983544, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -20641,8 +20096,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1353276379 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3006650081995879193, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -20660,8 +20115,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1354483883
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -20964,8 +20419,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1377510023 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3006650081995879193, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -20983,8 +20438,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1377885263 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 4279200095441724985, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -21002,8 +20457,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1380606335
 GameObject:
   m_ObjectHideFlags: 0
@@ -21093,8 +20548,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1382661696 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7887850034377334003, guid: c593e378ad553d046b8d07e4be51298f, type: 3}
@@ -21194,8 +20649,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1400318885 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1308579340899204161, guid: a5050891109f6b644aab0232391c13e2, type: 3}
@@ -21213,8 +20668,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1401883505
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -21241,15 +20696,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 1512.6
+      value: 1615
       objectReference: {fileID: 0}
     - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 44.8
+      value: 25
       objectReference: {fileID: 0}
     - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 1359.38
+      value: 1303
       objectReference: {fileID: 0}
     - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
       propertyPath: m_LocalRotation.w
@@ -21549,8 +21004,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1418163811
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -21640,8 +21095,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1429783104
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -21915,8 +21370,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1442560559
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -22194,8 +21649,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1452161367 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3470328610474130563, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -22213,8 +21668,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1452980858
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -22570,8 +22025,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1469527679
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -22666,8 +22121,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1475498347 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 400000, guid: ad1f5855a33f0694886cbd301d99cc40, type: 3}
@@ -22762,8 +22217,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1479973844 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5826489390109227110, guid: 12037ab95494f6c4e8f53cdbdb3beb82, type: 3}
@@ -22781,8 +22236,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1484352728
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -23188,8 +22643,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1513716449
 GameObject:
   m_ObjectHideFlags: 0
@@ -23574,8 +23029,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1531294491 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1829254568849336059, guid: a5050891109f6b644aab0232391c13e2, type: 3}
@@ -23593,8 +23048,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1533704824 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5936556251810510518, guid: 97ce7aa75e0018c4a930327022fca4e3, type: 3}
@@ -24294,8 +23749,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1592524385 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3470328610474130563, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -24313,8 +23768,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1593329152
 GameObject:
   m_ObjectHideFlags: 0
@@ -24499,8 +23954,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1611911530
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -24694,8 +24149,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1624162114
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -24946,8 +24401,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1630616900 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 145251503630187960, guid: 961e3bf8a551d4742b63bcf894f35669, type: 3}
@@ -25069,8 +24524,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1634186179
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -25306,8 +24761,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1640419844
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -25448,8 +24903,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1652824498 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4349106921346135426, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -25472,8 +24927,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1676425471
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -25563,8 +25018,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1680714032
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -25659,8 +25114,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1688144834
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -25921,8 +25376,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1698141911
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -26102,8 +25557,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1704051787
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -26193,8 +25648,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1710859614
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -26356,8 +25811,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1714021901 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3470328610474130563, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -26375,8 +25830,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1716992824
 GameObject:
   m_ObjectHideFlags: 0
@@ -26456,8 +25911,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1724687230 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 6424722253844999180, guid: 97ce7aa75e0018c4a930327022fca4e3, type: 3}
@@ -26475,8 +25930,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1726658271
 GameObject:
   m_ObjectHideFlags: 0
@@ -26872,8 +26327,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1737198329
 GameObject:
   m_ObjectHideFlags: 0
@@ -27081,8 +26536,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1748841926 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6597783995754914524, guid: 12037ab95494f6c4e8f53cdbdb3beb82, type: 3}
@@ -27100,8 +26555,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1761502390
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -27191,8 +26646,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1773636986
 GameObject:
   m_ObjectHideFlags: 0
@@ -27319,7 +26774,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
-  m_Color: {r: 0, g: 0, b: 0, a: 0.46666667}
+  m_Color: {r: 0, g: 0, b: 0, a: 0}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -27407,8 +26862,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1792943523
 GameObject:
   m_ObjectHideFlags: 0
@@ -27617,8 +27072,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1806758374
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -27780,8 +27235,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1812103229 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3967936388429983544, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -27799,8 +27254,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1812719764 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 4279200095441724985, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -27818,8 +27273,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1813141057
 GameObject:
   m_ObjectHideFlags: 0
@@ -28048,8 +27503,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1823585463 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 650a15bbffe44c64186974a970b50d23, type: 3}
@@ -28149,8 +27604,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1842189973
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -28250,8 +27705,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1851910360
 GameObject:
   m_ObjectHideFlags: 0
@@ -28319,8 +27774,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1855119157
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -28504,8 +27959,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1861307504 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3967936388429983544, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -28523,8 +27978,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1862376734 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3470328610474130563, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -28542,8 +27997,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1862638681 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1829254568849336059, guid: a5050891109f6b644aab0232391c13e2, type: 3}
@@ -28561,8 +28016,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1865917305
 GameObject:
   m_ObjectHideFlags: 0
@@ -28985,8 +28440,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1885786699 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3006650081995879193, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -29004,8 +28459,54 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
+--- !u!1 &1886726136
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1886726138}
+  - component: {fileID: 1886726137}
+  m_Layer: 0
+  m_Name: FPSDisplay
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1886726137
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1886726136}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 912390e14af6fc341bc362ba7d994a10, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FPSDisplay
+  fontSize: 24
+  position: {x: 10, y: 10}
+--- !u!4 &1886726138
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1886726136}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 1629.8389, y: 27.77262, z: 1292.0962}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1889283460
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -29190,8 +28691,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1897013763 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2969433353282931623, guid: 549ec97f4eb7ebd488005d5727d2a800, type: 3}
@@ -29209,8 +28710,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1901136736 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5826489390109227110, guid: 12037ab95494f6c4e8f53cdbdb3beb82, type: 3}
@@ -29228,8 +28729,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1905292963
 GameObject:
   m_ObjectHideFlags: 0
@@ -29369,10 +28870,10 @@ MonoBehaviour:
   bedStandPoint: {fileID: 1547187817}
   capacity: 1
   teleportIntoBedDelayTicks: 1
-  energyRestorePerTickInBed: 1
-  warmthRestorePerTickInBed: 1
-  safetyRestorePerTickInBed: 1
-  hungerDeltaPerTickInBed: -0.5
+  energyRestorePerTickInBed: 0.05
+  warmthRestorePerTickInBed: 0.05
+  safetyRestorePerTickInBed: 0.05
+  hungerDeltaPerTickInBed: -0.01
 --- !u!1 &1911593400
 GameObject:
   m_ObjectHideFlags: 0
@@ -29832,8 +29333,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1960016770 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3006650081995879193, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -30407,8 +29908,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &1974250611 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1308579340899204161, guid: a5050891109f6b644aab0232391c13e2, type: 3}
@@ -30426,8 +29927,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1974658588
 GameObject:
   m_ObjectHideFlags: 0
@@ -30566,8 +30067,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1979323371 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2518098219854145955, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -30585,8 +30086,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1982599508
 GameObject:
   m_ObjectHideFlags: 0
@@ -30694,8 +30195,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &1992254410
 GameObject:
   m_ObjectHideFlags: 0
@@ -30762,8 +30263,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &1994940646
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -30853,8 +30354,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &2003840054
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -31016,8 +30517,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &2011220169
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -31382,8 +30883,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &2018880534
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -31492,8 +30993,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2023901152
 GameObject:
   m_ObjectHideFlags: 0
@@ -31601,8 +31102,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2029347621
 GameObject:
   m_ObjectHideFlags: 0
@@ -31756,8 +31257,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2033637434 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2518098219854145955, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -31775,8 +31276,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &2033738949
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -31865,8 +31366,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &2035679457
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -31956,8 +31457,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2039568387 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 4279200095441724985, guid: 55971f3d9ffdaec4fa22bfa13646b3c5, type: 3}
@@ -31975,8 +31476,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2059058171
 GameObject:
   m_ObjectHideFlags: 0
@@ -32084,8 +31585,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &2061052990
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -32288,8 +31789,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &2067949193 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1785748991163630896, guid: 449b66b87a35b2b4481d1f8bf3981d36, type: 3}
@@ -32307,8 +31808,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2070534294 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3967936388429983544, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -32326,8 +31827,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &2073015158 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1308579340899204161, guid: a5050891109f6b644aab0232391c13e2, type: 3}
@@ -32345,8 +31846,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2073275798
 GameObject:
   m_ObjectHideFlags: 0
@@ -32590,8 +32091,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &2076351739 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1785748991163630896, guid: 449b66b87a35b2b4481d1f8bf3981d36, type: 3}
@@ -32609,8 +32110,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2077533703
 GameObject:
   m_ObjectHideFlags: 0
@@ -32685,8 +32186,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2084109461
 GameObject:
   m_ObjectHideFlags: 0
@@ -32794,8 +32295,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &2087151238
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -33578,8 +33079,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1001 &2124246977
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -33849,8 +33350,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!4 &2132828224 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2485524419688010013, guid: 549ec97f4eb7ebd488005d5727d2a800, type: 3}
@@ -33868,8 +33369,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2135330201
 GameObject:
   m_ObjectHideFlags: 0
@@ -34004,8 +33505,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2138663251 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2518098219854145955, guid: e01db1dab2bf8944b88e5adc81ad9abd, type: 3}
@@ -34023,8 +33524,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5e87c2fb670b9241a409a9a1ab57f4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
-  minScale: 2
-  maxScale: 5
+  minScale: 3
+  maxScale: 6
 --- !u!1 &2141904652 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 4184982760437039899, guid: 1046cd2bbd2aff04f8aef5f5dc5aecd6, type: 3}
@@ -34047,124 +33548,11 @@ MonoBehaviour:
   snapOnStart: 1
   keepFollowingCenter: 0
   debugLogs: 0
---- !u!1001 &1022054829262802799
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 0}
-    m_Modifications:
-    - target: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_Name
-      value: NPC
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalScale.x
-      value: 0.66
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalScale.y
-      value: 0.66
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalScale.z
-      value: 0.66
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 1647.98
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 28.56
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 1301.536
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      propertyPath: m_ConstrainProportionsScale
-      value: 1
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects:
-    - targetCorrespondingSourceObject: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 545583117}
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640365}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640364}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640363}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640361}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640367}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640370}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640369}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640371}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640372}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640373}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640375}
-    - targetCorrespondingSourceObject: {fileID: 1136281921173927935, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 343640374}
-  m_SourcePrefab: {fileID: 100100000, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 404743203}
-  - {fileID: 1022054829262802799}
   - {fileID: 1401883505}
   - {fileID: 1459770331}
   - {fileID: 1205754598}
@@ -34173,3 +33561,4 @@ SceneRoots:
   - {fileID: 215969006}
   - {fileID: 420955924}
   - {fileID: 1285180347}
+  - {fileID: 1886726138}
