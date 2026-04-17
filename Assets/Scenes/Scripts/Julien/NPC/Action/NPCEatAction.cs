@@ -6,26 +6,27 @@ public class NPCEatAction : NPCAction
     {
         None,
         MovingToStandPoint,
-        Eating,
-        StandingBeforeLeave
+        WaitingSeated,
+        Finished
     }
 
-    private const float EatUntilHungerValue = 95f;
     private const float EatStartThreshold = 75f;
+    private const float EatStopThreshold = 95f;
+    private const float ActiveActionScore = 10000f;
 
     public override NPCActionType ActionType => NPCActionType.Eat;
-    public override int MinDurationTicks => 2;
-    public override float ContinueBonus => 30f;
-
-    private int lastMealTick = int.MinValue;
-    private int standStageStartTick = int.MinValue;
+    public override int MinDurationTicks => 1;
+    public override float ContinueBonus => 1000f;
 
     private EatStage stage = EatStage.None;
     private NPCActionAnimationBridge bridge;
 
     private Transform assignedStandPoint;
     private Transform assignedSeatPoint;
+
     private bool poseStarted;
+    private bool seatReleased;
+    private float waitEndTime = -1f;
 
     private NPCActionAnimationBridge GetBridge(NPCDecisionBrain brain)
     {
@@ -35,64 +36,70 @@ public class NPCEatAction : NPCAction
         return bridge;
     }
 
+    private static FoodSiteEatSettings GetSettings(FoodSite foodSite)
+    {
+        return foodSite != null ? foodSite.EatSettings : null;
+    }
+
     public override bool CanRun(NPCDecisionBrain brain)
     {
-        return base.CanRun(brain)
-               && brain.CurrentFoodSite != null
-               && brain.CurrentFoodSite.Capacity > 0
-               && brain.Needs.hunger < EatUntilHungerValue;
+        if (!base.CanRun(brain))
+            return false;
+
+        if (stage == EatStage.MovingToStandPoint || stage == EatStage.WaitingSeated)
+            return true;
+
+        FoodSite foodSite = brain.CurrentFoodSite;
+        if (foodSite == null || foodSite.Capacity <= 0)
+            return false;
+
+        return brain.Needs.hunger < EatStopThreshold;
     }
 
     public override float CalculateUtility(NPCDecisionBrain brain, float timeOfDay)
     {
+        if (stage == EatStage.MovingToStandPoint || stage == EatStage.WaitingSeated)
+            return ActiveActionScore;
+
         FoodSite foodSite = brain.CurrentFoodSite;
         if (foodSite == null || foodSite.Capacity <= 0)
             return 0f;
 
         float hunger = brain.Needs.hunger;
 
-        if (hunger >= EatUntilHungerValue)
+        if (brain.CurrentActionType != NPCActionType.Eat && hunger >= EatStartThreshold)
             return 0f;
 
-        if (hunger > EatStartThreshold && brain.CurrentActionType != NPCActionType.Eat)
+        if (hunger >= EatStopThreshold)
             return 0f;
 
-        float hungerUrgency = NeedUrgency(hunger);
-        float score = hungerUrgency * 100f;
+        float score = NeedUrgency(hunger) * 100f;
 
         if ((timeOfDay >= 11f && timeOfDay <= 14f) || (timeOfDay >= 18f && timeOfDay <= 21f))
             score += 10f;
-
-        if (brain.CurrentActionType == NPCActionType.Eat && hunger < EatUntilHungerValue)
-            score += 40f;
-
-        if (foodSite.RequiresStoredFood && !foodSite.HasFoodAvailable())
-            score *= 0.2f;
 
         return score;
     }
 
     public override void OnEnter(NPCDecisionBrain brain)
     {
-        FoodSite foodSite = brain.CurrentFoodSite;
-
         stage = EatStage.None;
-        lastMealTick = int.MinValue;
-        standStageStartTick = int.MinValue;
-        poseStarted = false;
-
         assignedStandPoint = null;
         assignedSeatPoint = null;
+        poseStarted = false;
+        seatReleased = false;
+        waitEndTime = -1f;
 
         GetBridge(brain)?.ClearPose();
 
+        FoodSite foodSite = brain.CurrentFoodSite;
         if (foodSite == null)
         {
             brain.SetCurrentTarget(brain.FoodPoint);
             return;
         }
 
-        if (!foodSite.EnsureSeatAssignment(brain.gameObject))
+        if (!foodSite.TryReserve(brain.gameObject))
         {
             brain.SetCurrentTarget(brain.FoodPoint);
             return;
@@ -102,7 +109,6 @@ public class NPCEatAction : NPCAction
         assignedSeatPoint = foodSite.GetAssignedSeatPoint(brain.gameObject);
 
         Transform moveTarget = assignedStandPoint != null ? assignedStandPoint : brain.FoodPoint;
-
         brain.SetCurrentTarget(moveTarget);
         stage = EatStage.MovingToStandPoint;
     }
@@ -112,6 +118,8 @@ public class NPCEatAction : NPCAction
         FoodSite foodSite = brain.CurrentFoodSite;
         if (foodSite == null)
             return;
+
+        FoodSiteEatSettings settings = GetSettings(foodSite);
 
         if (assignedStandPoint == null)
             assignedStandPoint = foodSite.GetAssignedStandPoint(brain.gameObject);
@@ -132,79 +140,61 @@ public class NPCEatAction : NPCAction
                         if (brain.CurrentTarget != moveTarget)
                             brain.SetCurrentTarget(moveTarget);
 
-                        if (poseStarted)
-                        {
-                            GetBridge(brain)?.EndPose(ActionType);
-                            poseStarted = false;
-                        }
-
                         return;
                     }
-
-                    if (assignedSeatPoint == null)
-                        assignedSeatPoint = moveTarget;
 
                     brain.SetCurrentTarget(null);
-                    GetBridge(brain)?.BeginPose(ActionType, assignedSeatPoint);
+
+                    Transform poseTarget = assignedSeatPoint != null ? assignedSeatPoint : moveTarget;
+
+                    if (assignedSeatPoint != null)
+                        GetBridge(brain)?.TeleportToAnchor(assignedSeatPoint);
+
+                    GetBridge(brain)?.BeginPose(ActionType, poseTarget);
                     poseStarted = true;
-                    stage = EatStage.Eating;
-                    return;
-                }
 
-            case EatStage.Eating:
-                {
-                    if (brain.Needs.hunger >= EatUntilHungerValue)
+                    bool canStartEating = true;
+
+                    if (settings == null || settings.consumeMealOnEatStart)
                     {
-                        GetBridge(brain)?.EndPose(ActionType);
-                        poseStarted = false;
-
-                        if (assignedStandPoint != null)
-                            GetBridge(brain)?.TeleportToAnchor(assignedStandPoint);
-
-                        standStageStartTick = tickIndex;
-                        stage = EatStage.StandingBeforeLeave;
-                        return;
-                    }
-
-                    if (tickIndex == lastMealTick)
-                        return;
-
-                    lastMealTick = tickIndex;
-
-                    bool consumedStoredFood;
-                    bool success = foodSite.TryConsumeMeal(out consumedStoredFood);
-
-                    if (success)
-                    {
-                        if (consumedStoredFood || !foodSite.RequiresStoredFood)
+                        if (foodSite.RequiresStoredFood)
                         {
-                            brain.Needs.ModifyNeed(NPCNeedType.Hunger, foodSite.HungerRestorePerMeal);
-                            brain.Needs.ModifyNeed(NPCNeedType.Energy, foodSite.EnergyRestorePerMeal);
-                            brain.Needs.ModifyNeed(NPCNeedType.Safety, foodSite.SafetyRestorePerMeal);
-
-                            if (brain.Needs.hunger > 100f)
-                                brain.Needs.hunger = 100f;
+                            bool consumedStoredFood;
+                            bool consumeOk = foodSite.TryConsumeMeal(out consumedStoredFood);
+                            canStartEating = consumeOk && consumedStoredFood;
                         }
                     }
-                    else
-                    {
-                        brain.Needs.ModifyNeed(NPCNeedType.Hunger, foodSite.FallbackHungerRestore);
-                        brain.Needs.ModifyNeed(NPCNeedType.Safety, -1f);
-                    }
 
-                    return;
-                }
-
-            case EatStage.StandingBeforeLeave:
-                {
-                    int delayTicks = foodSite.StandBeforeLeavingDelayTicks;
-                    if (tickIndex - standStageStartTick < delayTicks)
+                    if (settings != null && settings.requireSuccessfulMealConsumption && !canStartEating)
                     {
-                        brain.SetCurrentTarget(null);
+                        ForceStandUp(brain, foodSite);
+                        stage = EatStage.Finished;
                         return;
                     }
 
-                    stage = EatStage.None;
+                    ApplyEatResult(brain, settings);
+
+                    float waitSeconds = settings != null ? settings.waitSecondsAfterEating : 30f;
+                    waitEndTime = Time.time + Mathf.Max(0f, waitSeconds);
+                    stage = EatStage.WaitingSeated;
+                    return;
+                }
+
+            case EatStage.WaitingSeated:
+                {
+                    brain.SetCurrentTarget(null);
+
+                    if (Time.time < waitEndTime)
+                        return;
+
+                    ForceStandUp(brain, foodSite);
+                    stage = EatStage.Finished;
+                    return;
+                }
+
+            case EatStage.Finished:
+                {
+                    brain.SetCurrentTarget(null);
                     return;
                 }
         }
@@ -212,13 +202,60 @@ public class NPCEatAction : NPCAction
 
     public override void OnExit(NPCDecisionBrain brain)
     {
-        if (poseStarted)
-            GetBridge(brain)?.EndPose(ActionType);
+        FoodSite foodSite = brain.CurrentFoodSite;
+        ForceStandUp(brain, foodSite);
 
-        poseStarted = false;
         stage = EatStage.None;
         assignedStandPoint = null;
         assignedSeatPoint = null;
-        standStageStartTick = int.MinValue;
+        poseStarted = false;
+        seatReleased = false;
+        waitEndTime = -1f;
+    }
+
+    private void ApplyEatResult(NPCDecisionBrain brain, FoodSiteEatSettings settings)
+    {
+        if (brain == null || brain.Needs == null)
+            return;
+
+        if (settings == null)
+        {
+            brain.Needs.hunger = 100f;
+            return;
+        }
+
+        if (settings.setHungerToFullOnEat)
+            brain.Needs.hunger = 100f;
+        else
+            brain.Needs.hunger = Mathf.Clamp(settings.hungerValueOnEat, 0f, 100f);
+
+        if (settings.setEnergyOnEat)
+            brain.Needs.energy = Mathf.Clamp(settings.energyValueOnEat, 0f, 100f);
+    }
+
+    private void ForceStandUp(NPCDecisionBrain brain, FoodSite foodSite)
+    {
+        if (brain == null)
+            return;
+
+        if (poseStarted)
+        {
+            GetBridge(brain)?.ClearPose();
+
+            if (assignedStandPoint != null)
+                GetBridge(brain)?.TeleportToAnchor(assignedStandPoint);
+
+            poseStarted = false;
+        }
+        else
+        {
+            GetBridge(brain)?.EndPose(ActionType);
+        }
+
+        if (!seatReleased && foodSite != null)
+        {
+            foodSite.Release(brain.gameObject);
+            seatReleased = true;
+        }
     }
 }

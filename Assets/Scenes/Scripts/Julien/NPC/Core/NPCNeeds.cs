@@ -1,4 +1,3 @@
-
 using UnityEngine;
 
 public enum NPCNeedType
@@ -13,52 +12,138 @@ public enum NPCNeedType
 [DisallowMultipleComponent]
 public class NPCNeeds : MonoBehaviour
 {
-    [Range(0,100)] public float hunger = 100;
-    [Range(0,100)] public float energy = 100;
-    [Range(0,100)] public float warmth = 100;
-    [Range(0,100)] public float safety = 100;
-    [Range(0,100)] public float social = 100;
+    [Header("References")]
+    [SerializeField] private NPCTimeSystem timeSystem;
+    [SerializeField] private NPCNeedsProfileSO profile;
+    [SerializeField] private bool autoFindTimeSystem = true;
+    [SerializeField] private bool applyProfileOnAwake = true;
 
+    [Header("Current Needs")]
+    [Range(0f, 100f)] public float hunger = 100f;
+    [Range(0f, 100f)] public float energy = 100f;
+    [Range(0f, 100f)] public float warmth = 100f;
+    [Range(0f, 100f)] public float safety = 100f;
+    [Range(0f, 100f)] public float social = 100f;
+
+    [Header("Decay Values")]
     public float hungerDecay = 0.75f;
     public float energyDecay = 0.45f;
-    public float warmthDecay = 0.2f;
+    public float warmthDecay = 0.20f;
     public float safetyDecay = 0.05f;
     public float socialDecay = 0.15f;
 
-    public void TickNeeds(bool danger,bool cold)
-    {
-        hunger = Mathf.Clamp(hunger - hungerDecay,0,100);
-        energy = Mathf.Clamp(energy - energyDecay,0,100);
-        warmth = Mathf.Clamp(warmth - (cold?warmthDecay*2:warmthDecay),0,100);
-        social = Mathf.Clamp(social - socialDecay,0,100);
+    [Header("Tick Scaling")]
+    [SerializeField, Min(0.01f)] private float referenceHoursPerTick = 0.25f;
 
-        float decay = danger ? safetyDecay*8 : safetyDecay;
-        safety = Mathf.Clamp(safety - decay,0,100);
+    public NPCTimeSystem TimeSystem => timeSystem;
+    public NPCNeedsProfileSO Profile => profile;
+
+    private void Awake()
+    {
+        ResolveTimeSystem();
+
+        if (applyProfileOnAwake && profile != null)
+            ApplyProfile(profile);
     }
 
-    public void ModifyNeed(NPCNeedType type,float delta)
+    private void OnValidate()
     {
-        switch(type)
+        referenceHoursPerTick = Mathf.Max(0.01f, referenceHoursPerTick);
+    }
+
+    public void ApplyProfile(NPCNeedsProfileSO newProfile)
+    {
+        if (newProfile == null)
+            return;
+
+        profile = newProfile;
+        hungerDecay = Mathf.Max(0f, newProfile.hungerDecay);
+        energyDecay = Mathf.Max(0f, newProfile.energyDecay);
+        warmthDecay = Mathf.Max(0f, newProfile.warmthDecay);
+        safetyDecay = Mathf.Max(0f, newProfile.safetyDecay);
+        socialDecay = Mathf.Max(0f, newProfile.socialDecay);
+    }
+
+    public void SetTimeSystem(NPCTimeSystem newTimeSystem)
+    {
+        timeSystem = newTimeSystem;
+    }
+
+    public void TickNeeds(bool danger, bool cold)
+    {
+        float scale = GetTickScale();
+
+        hunger = ClampNeed(hunger - hungerDecay * scale);
+        energy = ClampNeed(energy - energyDecay * scale);
+        warmth = ClampNeed(warmth - (cold ? warmthDecay * 2f : warmthDecay) * scale);
+        social = ClampNeed(social - socialDecay * scale);
+        safety = ClampNeed(safety - (danger ? safetyDecay * 8f : safetyDecay) * scale);
+    }
+
+    public void ModifyNeed(NPCNeedType type, float delta)
+    {
+        switch (type)
         {
-            case NPCNeedType.Hunger: hunger = Mathf.Clamp(hunger+delta,0,100); break;
-            case NPCNeedType.Energy: energy = Mathf.Clamp(energy+delta,0,100); break;
-            case NPCNeedType.Warmth: warmth = Mathf.Clamp(warmth+delta,0,100); break;
-            case NPCNeedType.Safety: safety = Mathf.Clamp(safety+delta,0,100); break;
-            case NPCNeedType.Social: social = Mathf.Clamp(social+delta,0,100); break;
+            case NPCNeedType.Hunger:
+                hunger = ClampNeed(hunger + delta);
+                break;
+            case NPCNeedType.Energy:
+                energy = ClampNeed(energy + delta);
+                break;
+            case NPCNeedType.Warmth:
+                warmth = ClampNeed(warmth + delta);
+                break;
+            case NPCNeedType.Safety:
+                safety = ClampNeed(safety + delta);
+                break;
+            case NPCNeedType.Social:
+                social = ClampNeed(social + delta);
+                break;
+        }
+    }
+
+    public void ModifyNeedPerTick(NPCNeedType type, float deltaPerReferenceTick)
+    {
+        ModifyNeed(type, deltaPerReferenceTick * GetTickScale());
+    }
+
+    public float GetNeedValue(NPCNeedType type)
+    {
+        switch (type)
+        {
+            case NPCNeedType.Hunger: return hunger;
+            case NPCNeedType.Energy: return energy;
+            case NPCNeedType.Warmth: return warmth;
+            case NPCNeedType.Safety: return safety;
+            case NPCNeedType.Social: return social;
+            default: return 0f;
         }
     }
 
     public bool IsCritical(NPCNeedType type)
     {
-        float v=0;
-        switch(type)
-        {
-            case NPCNeedType.Hunger:v=hunger;break;
-            case NPCNeedType.Energy:v=energy;break;
-            case NPCNeedType.Warmth:v=warmth;break;
-            case NPCNeedType.Safety:v=safety;break;
-            case NPCNeedType.Social:v=social;break;
-        }
-        return v<=20;
+        return GetNeedValue(type) <= 20f;
+    }
+
+    public float GetTickScale()
+    {
+        ResolveTimeSystem();
+
+        float hoursPerTick = referenceHoursPerTick;
+        if (timeSystem != null)
+            hoursPerTick = Mathf.Max(0.01f, timeSystem.HoursPerTick);
+
+        return hoursPerTick / Mathf.Max(0.01f, referenceHoursPerTick);
+    }
+
+    private void ResolveTimeSystem()
+    {
+        if (timeSystem == null && autoFindTimeSystem)
+            timeSystem = NPCTimeSystem.Instance;
+    }
+
+    private static float ClampNeed(float value)
+    {
+        return Mathf.Clamp(value, 0f, 100f);
     }
 }

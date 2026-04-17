@@ -62,51 +62,12 @@ public sealed class WallCladdingRuntime : MonoBehaviour
         for (int i = root.childCount - 1; i >= 0; i--)
         {
             GameObject child = root.GetChild(i).gameObject;
-
-            // Runtime stones create meshes with new Mesh(); release them explicitly before destroying GOs.
-            MeshFilter[] mfs = child.GetComponentsInChildren<MeshFilter>(true);
-            for (int j = 0; j < mfs.Length; j++)
-            {
-                MeshFilter mfChild = mfs[j];
-                if (mfChild == null || mfChild.sharedMesh == null)
-                    continue;
-
-                Mesh ownedMesh = mfChild.sharedMesh;
-                mfChild.sharedMesh = null;
-                DestroyObjectSafe(ownedMesh);
-            }
-
-            // Combined mode allocates cloned materials; free them on merged holder destruction.
-            if (child.name == "MergedWallCladding")
-            {
-                MeshRenderer mr = child.GetComponent<MeshRenderer>();
-                if (mr != null)
-                {
-                    Material[] mats = mr.sharedMaterials;
-                    mr.sharedMaterials = new Material[0];
-                    for (int j = 0; j < mats.Length; j++)
-                        DestroyObjectSafe(mats[j]);
-                }
-            }
-
-            DestroyObjectSafe(child);
+            if (Application.isPlaying) Object.Destroy(child);
+            else Object.DestroyImmediate(child);
         }
 
         MeshFilter mf = root.GetComponent<MeshFilter>();
         if (mf != null && mf.sharedMesh != null)
-        {
-            Mesh ownedMesh = mf.sharedMesh;
-            mf.sharedMesh = null;
-            DestroyObjectSafe(ownedMesh);
-        }
-    }
-
-    static void DestroyObjectSafe(Object obj)
-    {
-        if (obj == null)
-            return;
-
-        if (Application.isPlaying) Object.Destroy(obj);
-        else Object.DestroyImmediate(obj);
+            mf.sharedMesh.Clear();
     }
 }

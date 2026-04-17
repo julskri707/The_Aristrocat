@@ -3,7 +3,7 @@ using UnityEngine;
 public class NPCPanicAction : NPCAction
 {
     public override NPCActionType ActionType => NPCActionType.Panic;
-    public override int MinDurationTicks => 4;
+    public override int MinDurationTicks => 2;
     public override float ContinueBonus => 25f;
 
     public override bool CanRun(NPCDecisionBrain brain)
@@ -25,18 +25,11 @@ public class NPCPanicAction : NPCAction
     public override void OnEnter(NPCDecisionBrain brain)
     {
         if (TownCenterSite.Instance != null && TownCenterSite.Instance.safePoint != null)
-        {
             brain.SetCurrentTarget(TownCenterSite.Instance.safePoint);
-        }
         else if (brain.BedPoint != null)
-        {
             brain.SetCurrentTarget(brain.BedPoint);
-        }
         else
-        {
             brain.SetCurrentTarget(null);
-            Debug.LogWarning($"[NPCPanicAction] No safePoint or BedPoint found for {brain.name}.", brain);
-        }
     }
 
     public override void OnTick(NPCDecisionBrain brain, int tickIndex, float timeOfDay)
@@ -44,7 +37,7 @@ public class NPCPanicAction : NPCAction
         if (!brain.IsAtCurrentTarget())
             return;
 
-        brain.Needs.ModifyNeed(NPCNeedType.Safety, 3f);
-        brain.Needs.ModifyNeed(NPCNeedType.Energy, -0.2f);
+        brain.Needs.ModifyNeedPerTick(NPCNeedType.Safety, 3f);
+        brain.Needs.ModifyNeedPerTick(NPCNeedType.Energy, -0.2f);
     }
 }

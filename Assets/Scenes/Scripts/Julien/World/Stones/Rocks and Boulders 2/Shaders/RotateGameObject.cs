@@ -15,7 +15,7 @@ public class RotateGameObject : MonoBehaviour {
 	// Update is called once per frame
 	void FixedUpdate () {
 		if (local) {
-			transform.Rotate(Vector3.up, Time.fixedDeltaTime * rot_speed_x, Space.Self);
+			transform.RotateAroundLocal(transform.up, Time.fixedDeltaTime*rot_speed_x);
 		} else {
 			transform.Rotate(Time.fixedDeltaTime*new Vector3(rot_speed_x,rot_speed_y,rot_speed_z), Space.World);
 		}

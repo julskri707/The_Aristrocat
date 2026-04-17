@@ -19,22 +19,12 @@ public class FoodSite : MonoBehaviour
     [SerializeField] private ResourceManager resourceManager;
     [SerializeField, Min(1)] private int maxSeats = 10;
 
-    [Header("Eat Exit")]
-    [SerializeField, Min(0)] private int standBeforeLeavingDelayTicks = 1;
-
     [Header("Food Logic")]
     [SerializeField, Min(1)] private int mealFoodCost = 1;
     [SerializeField] private bool requiresStoredFood = true;
 
     [Tooltip("Muss exakt zum Namen in deinem ResourceManager passen, z. B. Essen / Food / Nahrung")]
     [SerializeField] private string resourceKeyName = "Essen";
-
-    [SerializeField, Range(0f, 100f)] private float fallbackHungerRestore = 4f;
-
-    [Header("Need Restore Per Meal")]
-    [SerializeField, Range(0f, 100f)] private float hungerRestorePerMeal = 18f;
-    [SerializeField, Range(0f, 100f)] private float energyRestorePerMeal = 2f;
-    [SerializeField, Range(0f, 100f)] private float safetyRestorePerMeal = 0.5f;
 
     [Header("Debug")]
     [SerializeField] private bool debugLogs = false;
@@ -46,9 +36,21 @@ public class FoodSite : MonoBehaviour
     private readonly HashSet<int> reservedNpcIds = new HashSet<int>();
 
     private bool layoutDirty = true;
+    private FoodSiteEatSettings cachedEatSettings;
 
     public Transform ServicePoint => servicePoint != null ? servicePoint : transform;
     public ResourceManager ResourceManager => resourceManager;
+
+    public FoodSiteEatSettings EatSettings
+    {
+        get
+        {
+            if (cachedEatSettings == null)
+                cachedEatSettings = GetComponent<FoodSiteEatSettings>();
+            return cachedEatSettings;
+        }
+    }
+
     public int Capacity
     {
         get
@@ -59,25 +61,26 @@ public class FoodSite : MonoBehaviour
     }
 
     public int ReservedCount => reservedNpcIds.Count;
-    public int StandBeforeLeavingDelayTicks => Mathf.Max(0, standBeforeLeavingDelayTicks);
-
     public int MealFoodCost => Mathf.Max(1, mealFoodCost);
     public bool RequiresStoredFood => requiresStoredFood;
     public string ResourceKeyName => resourceKeyName;
-    public float FallbackHungerRestore => fallbackHungerRestore;
 
-    public float HungerRestorePerMeal => hungerRestorePerMeal;
-    public float EnergyRestorePerMeal => energyRestorePerMeal;
-    public float SafetyRestorePerMeal => safetyRestorePerMeal;
+    public int StandBeforeLeavingDelayTicks => 0;
+    public float FallbackHungerRestore => 0f;
+    public float HungerRestorePerMeal => 0f;
+    public float EnergyRestorePerMeal => 0f;
+    public float SafetyRestorePerMeal => 0f;
 
     private void OnEnable()
     {
+        cachedEatSettings = GetComponent<FoodSiteEatSettings>();
         RegisterToRegistry();
         layoutDirty = true;
     }
 
     private void Start()
     {
+        cachedEatSettings = GetComponent<FoodSiteEatSettings>();
         RegisterToRegistry();
         layoutDirty = true;
         EnsureSeatLayout();
@@ -96,16 +99,12 @@ public class FoodSite : MonoBehaviour
     private void OnValidate()
     {
         maxSeats = Mathf.Max(1, maxSeats);
-        standBeforeLeavingDelayTicks = Mathf.Max(0, standBeforeLeavingDelayTicks);
         mealFoodCost = Mathf.Max(1, mealFoodCost);
-        fallbackHungerRestore = Mathf.Clamp(fallbackHungerRestore, 0f, 100f);
-        hungerRestorePerMeal = Mathf.Clamp(hungerRestorePerMeal, 0f, 100f);
-        energyRestorePerMeal = Mathf.Clamp(energyRestorePerMeal, 0f, 100f);
-        safetyRestorePerMeal = Mathf.Clamp(safetyRestorePerMeal, 0f, 100f);
 
         if (string.IsNullOrWhiteSpace(resourceKeyName))
             resourceKeyName = "Essen";
 
+        cachedEatSettings = GetComponent<FoodSiteEatSettings>();
         layoutDirty = true;
     }
 

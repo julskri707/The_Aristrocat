@@ -38,7 +38,8 @@ public sealed partial class WallCladdingGenerator
             float cornerAngleDeg = Vector3.Angle(-prev.tangent, next.tangent);
             if (cornerAngleDeg > 140f)
                 continue;
-            // Keep only one dedicated D-bollard on acute triangle corners (< 35°).
+            bool useConnectorForAcuteCorner = cornerAngleDeg < 35f;
+            // Keep only one dedicated D-bollard on acute triangle corners.
             bool useBollardForVeryAcuteCorner = cornerAngleDeg < 35f;
 
             Vector3 inwardA = -prev.tangent.normalized;
@@ -93,28 +94,68 @@ public sealed partial class WallCladdingGenerator
 
                 float baseLength = RandomRange(rng, settings.minLength, settings.maxLength);
                 bool useA = (rowIndex & 1) == 0;
-                float altScale = useA ? settings.alternateLongScale : settings.alternateShortScale;
+                float altScale = useConnectorForAcuteCorner
+                    ? 1f
+                    : (useA ? settings.alternateLongScale : settings.alternateShortScale);
                 float length = baseLength * altScale * 1.08f * RandomRange(rng, 1f - settings.lengthJitter, 1f + settings.lengthJitter);
                 length = Mathf.Clamp(length, settings.minLength * 0.85f, settings.maxLength * 1.35f);
 
+                float revealAtCorner = Mathf.Clamp(
+                    Mathf.Max(wall.thickness * 0.10f, settings.extraOutsideDepth * 0.55f),
+                    0.02f,
+                    Mathf.Max(0.02f, length * 0.20f));
+
+                float fullDepth = Mathf.Max(wall.thickness + settings.extraOutsideDepth * 2.0f + 0.04f, wall.thickness + 0.01f);
                 float centerY = rowBottom + rowHeight * 0.5f;
-
-                bool isReflexCorner = TryGetClosedLoopPathIsCCW(out bool triPathCcw) &&
-                    WallObject.IsReflexCornerXZ(prev.tangent, next.tangent, triPathCcw);
-
-                // Same corner-quoin path as GenerateClosedLoopCornerQuoins (RectangleEndWalls.cs) — triangle copy had drifted
-                // (fullDepth scale + bisector/back-side centering), which skewed stones to one side.
+                if (useConnectorForAcuteCorner)
                 {
-                    float fullDepthRect = Mathf.Max(wall.thickness + settings.extraOutsideDepth * 2.0f + 0.04f, wall.thickness + 0.01f);
-                    fullDepthRect *= Mathf.Max(1f, settings.cornerLDepthMul) * 1.20f;
+                    Vector3 center = cornerPoint;
+                    float inwardPush = Mathf.Max(0f, length * 0.34f - settings.edgeInset - revealAtCorner * 0.45f);
+                    center += inwardBisector * inwardPush;
+                    Quaternion rot = Quaternion.LookRotation(outward, Vector3.up);
+                    center += Vector3.up * centerY;
 
+                    WallStoneModuleDefinition module = PickEndQuoinModule(profile, rng);
+                    Mesh mesh = BuildTerminalHalfRoundStoneMesh(
+                        module,
+                        length,
+                        rowHeight,
+                        Mathf.Max(profile.stone.surfaceProtrusion * 1.08f, 0.01f),
+                        Mathf.Max(fullDepth, profile.stone.minStoneDepth),
+                        profile.stone.facePlaneJitter,
+                        profile.stone.uvMetersPerUnit,
+                        rng,
+                        true);
+                    if (mesh != null && mesh.vertexCount > 0)
+                    {
+                        GameObject go = new GameObject($"TriangleEndQuoin_{i:00}_{rowIndex:00}");
+                        go.transform.SetParent(root, false);
+                        go.transform.localPosition = transform.InverseTransformPoint(center);
+                        go.transform.localRotation = Quaternion.LookRotation(
+                            transform.InverseTransformDirection(rot * Vector3.forward),
+                            transform.InverseTransformDirection(rot * Vector3.up));
+                        go.transform.localScale = Vector3.one;
+
+                        MeshFilter mf = go.AddComponent<MeshFilter>();
+                        MeshRenderer mr = go.AddComponent<MeshRenderer>();
+                        mf.sharedMesh = mesh;
+                        mr.sharedMaterial = stoneMaterial;
+                        if (EffectiveDebugColorizeTriangleBollardFaces())
+                            ApplyDebugFaceColors(mesh, mr, stoneMaterial);
+                        ApplyPerStoneMaterialVariation(profile, mr, rng, true);
+                        stoneIndex++;
+                    }
+                }
+                else
+                {
+                    // Rectangle-style stacked corner logic for triangle corners >= 35°.
                     float cornerWidth = Mathf.Clamp(
-                        Mathf.Max(length * 0.78f, fullDepthRect * 1.10f),
+                        Mathf.Max(length * 0.78f, fullDepth * 1.10f),
                         settings.minLength * 0.90f,
                         settings.maxLength * 1.60f);
 
-                    Vector3 quoinOutward = useA ? outwardA : outwardB;
-                    Quaternion rot = Quaternion.LookRotation(quoinOutward, Vector3.up);
+                    Vector3 outwardDir = useA ? outwardA : outwardB;
+                    Quaternion rot = Quaternion.LookRotation(outwardDir, Vector3.up);
                     ComputeCornerLateralExtension(profile, settings, cornerWidth, useA, rng, out bool widenRightSide, out float sideExtra);
 
                     float sideOffset = Mathf.Max(0f, wall.thickness * 0.5f - profile.general.sideInset);
@@ -150,10 +191,7 @@ public sealed partial class WallCladdingGenerator
                     if (alignExteriorCornerColumn)
                         center += cornerBisector * (cornerExposeNudge - backSideBias);
                     else
-                    {
-                        center += cornerBisector * cornerExposeNudge;
-                        center -= quoinOutward * backSideBias;
-                    }
+                        center -= outwardDir * backSideBias;
 
                     float sideExtrusionT = EvaluateCornerExtrusionStrength(EffectiveCornerSideExtensionMultiplier());
                     float sideWallPop = Mathf.Clamp(
@@ -165,8 +203,6 @@ public sealed partial class WallCladdingGenerator
                         float signedSideWallPop = ResolveCornerSignedSideOffset(useA, sideWallPop, EffectiveCornerSideExtensionMultiplier());
                         center += (rot * Vector3.right) * signedSideWallPop;
                     }
-
-                    ApplyCornerQuoinUserOffsets(ref center, rot, settings, isReflexCorner, useA);
 
                     WallStoneModuleDefinition module = PickEndQuoinModule(profile, rng);
                     float anchorShiftX = anchorX - baseAnchorX;
@@ -183,11 +219,11 @@ public sealed partial class WallCladdingGenerator
                         module,
                         cornerWidth,
                         rowHeight,
-                        fullDepthRect,
+                        fullDepth,
                         widenRightSideForMesh,
                         sideExtra,
                         profile.stone.facePlaneJitter,
-                        GetEffectiveUvMetersPerUnit(profile),
+                        profile.stone.uvMetersPerUnit,
                         rng);
                     if (mesh != null && mesh.vertexCount > 0)
                     {
@@ -203,14 +239,9 @@ public sealed partial class WallCladdingGenerator
                         MeshRenderer mr = go.AddComponent<MeshRenderer>();
                         mf.sharedMesh = mesh;
                         mr.sharedMaterial = stoneMaterial;
-                        if (forceDoubleSidedStoneMaterials && stoneMaterial != null)
-                            ApplyMaterialDoubleSided(stoneMaterial);
                         if (EffectiveDebugColorizeTriangleBollardFaces())
                             ApplyDebugFaceColors(mesh, mr, stoneMaterial);
                         ApplyPerStoneMaterialVariation(profile, mr, rng, true);
-                        AttachQuoinRuntimeLodIfEnabled(go, mf, mesh, GetEffectiveUvMetersPerUnit(profile));
-                        if (combineGeneratedStonesPerSide && profile != null && mf.sharedMesh != null)
-                            ApplyPerStoneTintAsVertexColors(mf.sharedMesh, profile, rng, true);
                         stoneIndex++;
                     }
                 }
@@ -305,58 +336,26 @@ public sealed partial class WallCladdingGenerator
             inwardAlongWallA,
             inwardAlongWallB,
             inwardBisector);
-        // Pure angle-based physical offset:
-        // small corner angle => farther from wall, large angle => closer to wall.
-        float angleOut01 = Mathf.Clamp01(Mathf.InverseLerp(35f, 5f, cornerAngleDeg));
-        float angleResponse = Mathf.Pow(angleOut01, triangleBollardAngleOffsetResponse);
-        float shellForwardMeters = Mathf.Lerp(
-            Mathf.Min(triangleBollardAngleOffsetMin, triangleBollardAngleOffsetMax),
-            Mathf.Max(triangleBollardAngleOffsetMin, triangleBollardAngleOffsetMax),
-            angleResponse);
-        Vector3 physicalOffsetWorld = outDir * shellForwardMeters;
-
-        float minWallParallelLeg = Mathf.Max(0f, triangleBollardMinWallParallelLeg);
-        float maxWallParallelLeg = Mathf.Max(minWallParallelLeg, triangleBollardMaxWallParallelLeg);
-        const float baselineWallParallelLeg = 0.20f;
-
-        float footprintShiftMag = Mathf.Lerp(0.10f, 0.85f, angleResponse);
-        footprintShiftMag = Mathf.Max(0.06f, footprintShiftMag);
+        float surf = Mathf.Max(0.02f, profile.stone.surfaceProtrusion);
+        float footprintShiftMag = 0.40f + thWall * 0.48f + surf * 1.6f;
         Vector3 footprintShiftWorldH = outDir * footprintShiftMag;
         footprintShiftWorldH.y = 0f;
 
-        // Extra gap between stacked stones to avoid clipping at the acute peak.
-        const float bollardExtraRowGap = 0.022f;
+        // Extra gap between stacked stones (on top of profile verticalSpacing) — a few mm of mortar.
+        const float bollardExtraRowGap = 0.007f;
 
         float rowBottom = yMin;
         int rowIndex = 0;
-        // Run until we reach the wall top — do not stop at (yMax - 0.08f): that left a gap and often the
-        // top stone never got isLastRow, so the forced ceiling height never applied.
-        while (rowBottom < yMax - 1e-4f && rowIndex < maxRowsPerSide && stoneIndex < maxGeneratedStonesPerSide)
+        while (rowBottom < yMax - 0.08f && rowIndex < maxRowsPerSide && stoneIndex < maxGeneratedStonesPerSide)
         {
             float rowHeight = settings.targetHeight * RandomRange(rng, 1f - settings.rowHeightJitter, 1f + settings.rowHeightJitter);
             rowHeight = Mathf.Clamp(
                 rowHeight,
                 profile.stone.minStoneHeight * 1.12f,
                 Mathf.Max(profile.stone.minStoneHeight * 1.22f, profile.stone.maxStoneHeight * 1.72f));
-            // Advance after this row (same formula as rowBottom += at end of iteration).
-            bool isLastRow = (rowBottom + rowHeight + settings.verticalSpacing + bollardExtraRowGap) >= yMax - 1e-4f;
+            bool isLastRow = (rowBottom + rowHeight + settings.verticalSpacing) >= yMax;
             float topOvershoot = isLastRow ? Mathf.Max(wall.thickness * 0.18f, profile.stone.surfaceProtrusion * 1.45f, 0.04f) : 0f;
             rowHeight = Mathf.Min(rowHeight, yMax - rowBottom + topOvershoot);
-            // Sliver left (< min stone height): still place one cap block whose mesh height is forced to the ceiling.
-            if (rowHeight < 0.08f)
-            {
-                if (rowBottom >= yMax - 1e-4f)
-                    break;
-                isLastRow = true;
-                const float topCoverOverWallSliver = 0.03f;
-                float targetTopYSliver = yMax + topCoverOverWallSliver;
-                float prevTopY = rowBottom - settings.verticalSpacing - bollardExtraRowGap;
-                const float minGapBelowSliver = 0.005f;
-                float minBottomYSliver = Mathf.Max(rowBottom, prevTopY + minGapBelowSliver);
-                rowHeight = Mathf.Max(0.08f, targetTopYSliver - minBottomYSliver);
-            }
-            // Final check after clamp / sliver fix (covers edge cases).
-            isLastRow = isLastRow || (rowBottom + rowHeight + settings.verticalSpacing + bollardExtraRowGap >= yMax - 1e-4f);
             if (rowHeight < 0.08f)
                 break;
 
@@ -372,8 +371,8 @@ public sealed partial class WallCladdingGenerator
             float baseOuter = armRef + Mathf.Max(armRef * 0.32f, 0.06f);
             const float outerScaleMin = 0.62f;
             const float outerScaleMax = 1.38f;
-            // Smallest scaled outer must stay past innerLen with at least 20 cm wall-parallel leg (Q-P).
-            float innerLenMaxGeom = baseOuter * outerScaleMin - baselineWallParallelLeg;
+            // Smallest scaled outer must stay past innerLen (same relation as old single-armLength model).
+            float innerLenMaxGeom = baseOuter * outerScaleMin - 0.03f;
             float legAlongWall = Mathf.Max(armRef * 0.12f, 0.04f);
             float innerMin = armRef * 0.55f;
             float innerMax = Mathf.Min(armRef * 0.88f, innerLenMaxGeom);
@@ -381,65 +380,13 @@ public sealed partial class WallCladdingGenerator
             if (innerMax > innerMin + 1e-4f)
                 innerLen = Mathf.Clamp(innerLen, innerMin, innerMax);
             else
-                innerLen = Mathf.Clamp(innerLen, 0.02f, Mathf.Max(0.02f, innerLenMaxGeom - 0.01f));
+                innerLen = Mathf.Clamp(innerLen, 0.02f, Mathf.Max(0.02f, innerLenMaxGeom - 0.02f));
 
-            float wallParallelScale = RandomRange(rng, 0.62f, 1.38f);
+            float wallParallelScale = RandomRange(rng, outerScaleMin, outerScaleMax);
             float outerArmLength = baseOuter * wallParallelScale;
             float outerCap = (settings.maxLength * 2.85f) + Mathf.Max(settings.maxLength * 2.85f * 0.32f, 0.06f);
-            outerArmLength = Mathf.Clamp(outerArmLength, innerLen + minWallParallelLeg, outerCap * outerScaleMax);
-            const float columnDiameterBoost = 1.50f;
-            innerLen *= columnDiameterBoost;
-            // Keep column diameter more regular on very small angles (avoid over-thinning near the apex).
-            float smallAngle01 = Mathf.Clamp01(Mathf.InverseLerp(
-                triangleBollardColumnCompStartAngleDeg,
-                triangleBollardColumnCompEndAngleDeg,
-                cornerAngleDeg));
-            float smallAngleColumnScale = Mathf.Lerp(1f, triangleBollardColumnSmallAngleScale, smallAngle01);
-            innerLen *= smallAngleColumnScale;
-            outerArmLength = Mathf.Max(outerArmLength, innerLen + minWallParallelLeg);
-            outerArmLength = Mathf.Min(outerArmLength, innerLen + maxWallParallelLeg);
-            if (cornerAngleDeg < 30f)
-            {
-                // Acute corners: force stronger per-row variance on lateral-face length,
-                // so blocks don't look like uniform stacked slices.
-                float legMin = minWallParallelLeg;
-                float legMax = maxWallParallelLeg;
-                float t = RandomRange(rng, 0f, 1f);
-                float leg;
-                if (t < 0.34f)
-                    leg = RandomRange(rng, legMin, Mathf.Lerp(legMin, legMax, 0.30f));
-                else if (t < 0.68f)
-                    leg = RandomRange(rng, Mathf.Lerp(legMin, legMax, 0.30f), Mathf.Lerp(legMin, legMax, 0.70f));
-                else
-                    leg = RandomRange(rng, Mathf.Lerp(legMin, legMax, 0.70f), legMax);
-                outerArmLength = innerLen + leg;
-            }
-            float meshHeight = rowHeight;
+            outerArmLength = Mathf.Clamp(outerArmLength, innerLen + 0.02f, outerCap * outerScaleMax);
 
-            Vector3 centerForRow = center;
-            Vector3 footprintShiftForRow = footprintShiftWorldH;
-            if (isLastRow)
-            {
-                // Cap stone: always fills from a legal bottom to the ceiling line (forced — not "only if there is room").
-                const float topCoverOverWall = 0.03f;
-                const float minGapToStoneBelow = 0.005f; // 0.5 cm above previous stone's top
-                const float minCapMeshHeight = 0.08f;
-                float targetTopY = yMax + topCoverOverWall;
-                // Bottom of this stone cannot start above rowBottom; must stay below previous stone's top + gap.
-                float previousStoneTopY = rowBottom - settings.verticalSpacing - bollardExtraRowGap;
-                float minBottomY = Mathf.Max(rowBottom, previousStoneTopY + minGapToStoneBelow);
-                float bottomY = minBottomY;
-                // Exact height so the top face lands on the ceiling line (world Y).
-                meshHeight = targetTopY - bottomY;
-                if (meshHeight < minCapMeshHeight)
-                {
-                    bottomY = targetTopY - minCapMeshHeight;
-                    if (bottomY < minBottomY)
-                        bottomY = minBottomY;
-                    meshHeight = targetTopY - bottomY;
-                }
-                centerForRow.y = bottomY + meshHeight * 0.5f;
-            }
             Mesh mesh = BuildTriangleCornerHalfColumnTrapezoidMesh(
                 PickEndQuoinModule(profile, rng),
                 shellCorner,
@@ -448,13 +395,13 @@ public sealed partial class WallCladdingGenerator
                 inwardBisector,
                 outerArmLength,
                 innerLen,
-                meshHeight,
+                rowHeight,
                 cornerAngleDeg,
                 profile.stone.facePlaneJitter,
-                GetEffectiveUvMetersPerUnit(profile),
+                profile.stone.uvMetersPerUnit,
                 rng,
-                centerForRow,
-                footprintShiftForRow,
+                center,
+                footprintShiftWorldH,
                 root);
 
             if (mesh == null || mesh.vertexCount == 0)
@@ -464,9 +411,11 @@ public sealed partial class WallCladdingGenerator
                 continue;
             }
 
+            EnsureMeshDoubleSided(mesh);
+
             GameObject go = new GameObject($"TriangleCornerBollard_{stoneIndex:000}_r{rowIndex:00}");
             go.transform.SetParent(root, false);
-            go.transform.localPosition = root.InverseTransformVector(physicalOffsetWorld);
+            go.transform.localPosition = Vector3.zero;
             go.transform.localEulerAngles = Vector3.zero;
             go.transform.localScale = Vector3.one;
 
@@ -474,24 +423,19 @@ public sealed partial class WallCladdingGenerator
             MeshRenderer mr = go.AddComponent<MeshRenderer>();
             mf.sharedMesh = mesh;
             mr.sharedMaterial = stoneMaterial;
-            if (forceDoubleSidedStoneMaterials && stoneMaterial != null)
-                ApplyMaterialDoubleSided(stoneMaterial);
-            // Always keep textured/material rendering for these stones.
-            ApplyPerStoneMaterialVariation(profile, mr, rng, true);
-            AttachQuoinRuntimeLodIfEnabled(go, mf, mesh, GetEffectiveUvMetersPerUnit(profile));
-            if (combineGeneratedStonesPerSide && profile != null && mf.sharedMesh != null)
-                ApplyPerStoneTintAsVertexColors(mf.sharedMesh, profile, rng, true);
+            if (EffectiveDebugColorizeTriangleBollardFaces())
+                ApplyDebugFaceColors(mesh, mr, stoneMaterial);
+            else
+                ApplyPerStoneMaterialVariation(profile, mr, rng, true);
             stoneIndex++;
 
             rowBottom += rowHeight + settings.verticalSpacing + bollardExtraRowGap;
             rowIndex++;
-            if (isLastRow)
-                break;
         }
     }
 
     /// <summary>
-    /// Chamfers top/bottom caps by moving each vertex slightly toward the ring centroid.
+    /// Chamfers top/bottom caps by moving each vertex slightly toward the ring centroid (horizontal taper / beveled read).
     /// </summary>
     private static void BevelExtrudedPolygonCaps(Vector3[] bottomRing, Vector3[] topRing, float height)
     {
@@ -557,36 +501,10 @@ public sealed partial class WallCladdingGenerator
         else
             bisectorH.Normalize();
 
-        // Clamp the followed angle between the two lateral-face directions:
-        // below the threshold, faces stop following and stay at the minimum angle.
-        float lateralMinAngleDeg = Mathf.Max(0.1f, triangleBollardLateralFollowMinAngleDeg);
-        float currentLateralAngle = Vector3.Angle(u1, u2);
-        if (currentLateralAngle < lateralMinAngleDeg)
-        {
-            float half = lateralMinAngleDeg * 0.5f;
-            Quaternion qPos = Quaternion.AngleAxis(half, Vector3.up);
-            Quaternion qNeg = Quaternion.AngleAxis(-half, Vector3.up);
-            Vector3 c1 = (qPos * bisectorH).normalized;
-            Vector3 c2 = (qNeg * bisectorH).normalized;
-            // Keep side assignment stable relative to original u1/u2.
-            if (Vector3.Dot(c1, u1) + Vector3.Dot(c2, u2) >= Vector3.Dot(c2, u1) + Vector3.Dot(c1, u2))
-            {
-                u1 = c1;
-                u2 = c2;
-            }
-            else
-            {
-                u1 = c2;
-                u2 = c1;
-            }
-            bisectorH = (u1 + u2).normalized;
-        }
-
         Vector3 cornerOffsetH = Vector3.ProjectOnPlane(cornerPointWorld - worldCenter, Vector3.up);
 
-        float minWallParallelLeg = Mathf.Max(0f, triangleBollardMinWallParallelLeg);
-        outerArmLength = Mathf.Max(outerArmLength, innerLen + minWallParallelLeg);
-        innerLen = Mathf.Clamp(innerLen, 0.02f, outerArmLength - minWallParallelLeg);
+        outerArmLength = Mathf.Max(outerArmLength, innerLen + 0.02f);
+        innerLen = Mathf.Clamp(innerLen, 0.02f, outerArmLength - 0.02f);
 
         // Near corner: chord P0–P1 (arc / column). Far along walls: straight parallel Q0–Q1 (back face).
         Vector3 p0 = cornerOffsetH + u1 * innerLen;
@@ -594,23 +512,6 @@ public sealed partial class WallCladdingGenerator
 
         Vector3 q0 = cornerOffsetH + u1 * outerArmLength;
         Vector3 q1 = cornerOffsetH + u2 * outerArmLength;
-        // Separate both wall-parallel side faces without changing their individual Q-P lengths:
-        // shift side A and side B in opposite directions by the same rigid offset.
-        Vector3 spreadAxis = Vector3.ProjectOnPlane(u1 - u2, Vector3.up);
-        if (spreadAxis.sqrMagnitude < 1e-10f)
-            spreadAxis = Vector3.Cross(Vector3.up, bisectorH);
-        if (spreadAxis.sqrMagnitude > 1e-10f)
-        {
-            spreadAxis.Normalize();
-            float lateralFaceSeparation = Mathf.Max(0.03f, innerLen * 0.08f);
-            if (cornerAngleDeg < 5f)
-                lateralFaceSeparation *= 2f;
-            Vector3 sep = spreadAxis * (lateralFaceSeparation * 0.5f);
-            p0 += sep;
-            q0 += sep;
-            p1 -= sep;
-            q1 -= sep;
-        }
         Vector3 chord = p1 - p0;
         float chordLen = chord.magnitude;
         if (chordLen < 1e-5f)
@@ -618,7 +519,8 @@ public sealed partial class WallCladdingGenerator
 
         Vector3 m = 0.5f * (p0 + p1);
         float radiusAlongChord = chordLen * 0.5f;
-        float radiusOutward = radiusAlongChord * 1.25f;
+        // True semicircle (smooth circular read); prominence comes from a long chord, not an ellipse.
+        float radiusOutward = radiusAlongChord;
         Vector3 vMtoP0 = (p0 - m).normalized;
         Vector3 perp = Vector3.Cross(Vector3.up, chord);
         if (perp.sqrMagnitude < 1e-12f)
@@ -628,7 +530,7 @@ public sealed partial class WallCladdingGenerator
         if (Vector3.Dot(perp, bisectorH) > 0f)
             perp = -perp;
 
-        int arcSegments = Mathf.Clamp(Mathf.RoundToInt(16f + cornerAngleDeg * 0.50f), 20, 40);
+        int arcSegments = Mathf.Clamp(Mathf.RoundToInt(14f + cornerAngleDeg * 0.45f), 18, 36);
         var plan = new List<Vector3>(arcSegments + 6);
         // Q0/Q1 vary per row when outerArmLength is randomized; arc from fixed P stays column-aligned.
         plan.Add(q0);
@@ -660,19 +562,78 @@ public sealed partial class WallCladdingGenerator
 
         BevelExtrudedPolygonCaps(front, back, height);
 
-        // Use the same 3D texture relief settings as the other generated stones.
         float relief = module != null ? module.frontRelief : 0.025f;
-        Mesh mesh = BuildExtrudedPolygonReliefMesh(
-            front,
-            back,
-            uvMetersPerUnit,
-            planeJitter,
-            relief,
-            rng,
-            includeBackCap: IncludeStoneBackCapInExtrusion());
+        Mesh mesh = BuildExtrudedPolygonReliefMesh(front, back, uvMetersPerUnit, planeJitter, relief, rng);
         if (mesh != null)
             mesh.name = "TriangleCornerHalfColumnTrapezoid";
         return mesh;
+    }
+
+    private static void EnsureMeshDoubleSided(Mesh mesh)
+    {
+        if (mesh == null)
+            return;
+
+        int[] tris = mesh.triangles;
+        if (tris == null || tris.Length < 3)
+            return;
+
+        Vector3[] verts = mesh.vertices;
+        if (verts == null || verts.Length == 0)
+            return;
+
+        Vector2[] uv = mesh.uv;
+        if (uv == null || uv.Length != verts.Length)
+            uv = new Vector2[verts.Length];
+
+        Vector3[] normals = mesh.normals;
+        if (normals == null || normals.Length != verts.Length)
+        {
+            mesh.RecalculateNormals();
+            normals = mesh.normals;
+        }
+
+        int vCount = verts.Length;
+        int tCount = tris.Length;
+
+        var dsVerts = new Vector3[vCount * 2];
+        var dsUv = new Vector2[vCount * 2];
+        var dsNormals = new Vector3[vCount * 2];
+
+        for (int i = 0; i < vCount; i++)
+        {
+            dsVerts[i] = verts[i];
+            dsUv[i] = uv[i];
+            dsNormals[i] = normals[i];
+
+            int bi = i + vCount;
+            dsVerts[bi] = verts[i];
+            dsUv[bi] = uv[i];
+            dsNormals[bi] = -normals[i];
+        }
+
+        var dsTris = new int[tCount * 2];
+        for (int i = 0; i < tCount; i++)
+            dsTris[i] = tris[i];
+
+        int w = tCount;
+        for (int i = 0; i < tCount; i += 3)
+        {
+            int a = tris[i] + vCount;
+            int b = tris[i + 1] + vCount;
+            int c = tris[i + 2] + vCount;
+            dsTris[w++] = c;
+            dsTris[w++] = b;
+            dsTris[w++] = a;
+        }
+
+        mesh.Clear();
+        mesh.vertices = dsVerts;
+        mesh.uv = dsUv;
+        mesh.normals = dsNormals;
+        mesh.triangles = dsTris;
+        mesh.RecalculateBounds();
+        mesh.RecalculateTangents();
     }
 
     private void ApplyDebugFaceColors(Mesh mesh, MeshRenderer renderer, Material baseMaterial)

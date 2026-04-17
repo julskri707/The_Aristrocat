@@ -40,14 +40,8 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
     [Tooltip("Below this dot threshold, corners use bevel fallback instead of long miters.")]
     [Range(0.05f, 0.95f)] public float sharpCornerThreshold = 0.35f;
 
-    [Tooltip("Coupe les pointes du centreline avant extrusion. Ignoré sur les boucles presque orthogonales (L, rectangle) pour garder des angles vifs.")]
+    [Tooltip("Cuts closed-loop corner tips on centerline before extrusion (meters).")]
     [Min(0f)] public float closedLoopCornerBevel = 0.035f;
-
-    [Header("Mesh optimization")]
-    [Tooltip("Closed loops only. If > 0 and the path has more vertices than this, the wall mesh is rebuilt from an evenly resampled loop (fewer triangles). Skipped for axis-aligned orthogonal rings (L, U, rectangles) so the extruded mesh matches the control polyline and cladding. Control points are unchanged.")]
-    [Range(0, 256)] public int maxClosedLoopMeshVertices = 56;
-    [Tooltip("Skip tangent generation on rebuild. Keep OFF if your wall material does not use normal maps.")]
-    public bool recalculateTangents = false;
 
     [Header("Debug")]
     public bool logWarnings = false;
@@ -60,7 +54,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
     private MeshCollider _mc;
     private Mesh _mesh;
     private WallCladdingGenerator _claddingGenerator;
-    private static float s_NextClosedLoopAreaWarningUnscaledTime = -999f;
 
     public IReadOnlyList<Vector3> Points => _points;
 
@@ -143,22 +136,9 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
 
         _mesh = new Mesh();
         _mesh.name = "WallMesh";
-        _mesh.MarkDynamic();
         _mf.sharedMesh = _mesh;
 
         ApplyMaterial();
-    }
-
-    private void OnDestroy()
-    {
-        if (_mesh != null)
-        {
-            if (Application.isPlaying)
-                Destroy(_mesh);
-            else
-                DestroyImmediate(_mesh);
-            _mesh = null;
-        }
     }
 
     // ---------------------------------------------
@@ -221,13 +201,8 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
 
         List<Vector3> points = BuildRenderablePoints(_points, closedLoop);
         bool isClosed = closedLoop && points.Count >= 3;
-        if (isClosed && closedLoopCornerBevel > 0.0001f && !IsClosedLoopOrthogonalAxisAlignedXZ(points))
+        if (isClosed && closedLoopCornerBevel > 0.0001f)
             points = ApplyClosedLoopCornerBevel(points, closedLoopCornerBevel);
-
-        if (isClosed && maxClosedLoopMeshVertices > 0 && points.Count > maxClosedLoopMeshVertices &&
-            !IsClosedLoopOrthogonalAxisAlignedXZ(points))
-            points = ResampleClosedLoopEvenly(points, maxClosedLoopMeshVertices);
-
         int count = points.Count;
         int segCount = isClosed ? count : count - 1;
         if (segCount < 1)
@@ -237,13 +212,18 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         }
 
         float outsideSign = 1f;
+        Vector3 loopCentroid = Vector3.zero;
+        if (isClosed)
+        {
+            for (int i = 0; i < count; i++)
+                loopCentroid += points[i];
+            loopCentroid /= Mathf.Max(1, count);
+        }
 
         float halfT = thickness * 0.5f;
         var segDir = new Vector3[segCount];
         var segRight = new Vector3[segCount];
         var segLen = new float[segCount];
-
-        bool loopIsCCW = isClosed && count >= 3 && ComputeIsCCW_XZ(points, count);
 
         for (int i = 0; i < segCount; i++)
         {
@@ -261,9 +241,11 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             Vector3 right = Vector3.Cross(Vector3.up, d).normalized;
             if (isClosed)
             {
-                // Extérieur du bâtiment = à droite du sens de parcours si la boucle est CCW (sinon inverse).
-                // L’ancien test au centroïde se trompait sur les L (angles rentrants) → mitres / pics.
-                segRight[i] = loopIsCCW ? right : -right;
+                // Choose the normal that truly points outward from loop centroid.
+                Vector3 mid = (points[i] + points[n]) * 0.5f;
+                Vector3 toOutsideR = (mid + right * 0.05f) - loopCentroid;
+                Vector3 toOutsideL = (mid - right * 0.05f) - loopCentroid;
+                segRight[i] = toOutsideR.sqrMagnitude >= toOutsideL.sqrMagnitude ? right : -right;
             }
             else
             {
@@ -304,24 +286,12 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
                 bool strictTriangleJoin = isClosed && count == 3;
                 float localMiterLimit = strictTriangleJoin ? Mathf.Max(miterLimit, 100f) : miterLimit;
 
-                Vector3 outsideOff;
-                Vector3 insideOff;
-                if (strictTriangleJoin)
-                {
-                    outsideOff = ComputeTriangleJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, 1f);
-                    insideOff = ComputeTriangleJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, -1f);
-                }
-                else if (isClosed && count >= 3 && IsReflexCornerXZ(segDir[prev], segDir[next], loopIsCCW))
-                {
-                    // Angle rentrant (L, U…) : le mitre extérieur diverge → pic ; biseau stable.
-                    outsideOff = ComputeBevelOffset(segRight[prev], segRight[next], halfT, 1f);
-                    insideOff = ComputeBevelOffset(segRight[prev], segRight[next], halfT, -1f);
-                }
-                else
-                {
-                    outsideOff = ComputeJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, 1f, localMiterLimit);
-                    insideOff = ComputeJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, -1f, localMiterLimit);
-                }
+                Vector3 outsideOff = strictTriangleJoin
+                    ? ComputeTriangleJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, 1f)
+                    : ComputeJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, 1f, localMiterLimit);
+                Vector3 insideOff = strictTriangleJoin
+                    ? ComputeTriangleJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, -1f)
+                    : ComputeJoinOffset(p, segDir[prev], segRight[prev], segDir[next], segRight[next], halfT, -1f, localMiterLimit);
 
                 outB[i] = p + outsideOff;
                 inB[i] = p + insideOff;
@@ -399,20 +369,16 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         _mesh.SetTriangles(tris, 0);
         _mesh.RecalculateNormals();
         _mesh.RecalculateBounds();
-        if (recalculateTangents)
-            _mesh.RecalculateTangents();
+        _mesh.RecalculateTangents();
 
         SyncCollider();
         ApplyMaterial();
 
-        if (logWarnings && isClosed && count >= 3 && !ControlPointHandleUI.IsDraggingAnyHandle)
+        if (logWarnings && isClosed && count >= 3)
         {
             float areaAbs = Mathf.Abs(ComputeSignedAreaXZ(points, count));
-            if (areaAbs < 0.001f && Time.unscaledTime >= s_NextClosedLoopAreaWarningUnscaledTime)
-            {
-                s_NextClosedLoopAreaWarningUnscaledTime = Time.unscaledTime + 1.25f;
+            if (areaAbs < 0.001f)
                 Debug.LogWarning("[WallObject] Closed loop area is near zero (loop might be degenerate/self-intersecting).");
-            }
         }
     }
 
@@ -421,13 +387,7 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         if (_mc == null) _mc = GetComponent<MeshCollider>();
         if (_mc == null) return;
 
-        // Unity logs an error if a MeshCollider uses a mesh with 0 vertices.
-        if (_mesh == null || _mesh.vertexCount == 0)
-        {
-            _mc.sharedMesh = null;
-            return;
-        }
-
+        _mc.sharedMesh = null;
         _mc.sharedMesh = _mesh;
     }
 
@@ -449,59 +409,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             area += (a.x * b.z - b.x * a.z);
         }
         return area;
-    }
-
-    static float Cross2XZ(Vector3 a, Vector3 b)
-    {
-        return a.x * b.z - a.z * b.x;
-    }
-
-    /// <summary>
-    /// Sommet rentrant d’un polygone simple (angle intérieur &gt; 180°) en XZ, selon le sens CCW/CW.
-    /// </summary>
-    /// <summary>
-    /// Coin rentrant en XZ (angle intérieur du polygone &gt; 180°, ex. ~270° sur contour orthogonal).
-    /// dirPrev / dirNext : directions des arêtes entrante et sortante (même convention que le maillage).
-    /// </summary>
-    public static bool IsReflexCornerXZ(Vector3 dirPrev, Vector3 dirNext, bool loopIsCCW)
-    {
-        const float eps = 1e-5f;
-        float t = Cross2XZ(dirPrev, dirNext);
-        if (Mathf.Abs(t) <= eps)
-            return false;
-        return loopIsCCW ? t < -eps : t > eps;
-    }
-
-    /// <summary>
-    /// Tous les côtés alignés axes (tolérance) : pas de chamfrein automatique sur le centreline.
-    /// Public pour aligner maillage / cladding (éviter un centreline rééchantillonné vs polyline d’édition).
-    /// </summary>
-    public static bool IsClosedLoopOrthogonalAxisAlignedXZ(List<Vector3> pts)
-    {
-        int n = pts.Count;
-        if (n < 3)
-            return false;
-
-        const float minLen = 1e-4f;
-        const float maxDiagFrac = 0.02f;
-
-        for (int i = 0; i < n; i++)
-        {
-            Vector3 d = pts[(i + 1) % n] - pts[i];
-            d.y = 0f;
-            float len = d.magnitude;
-            if (len < minLen)
-                continue;
-
-            float ax = Mathf.Abs(d.x);
-            float az = Mathf.Abs(d.z);
-            if (ax < minLen && az < minLen)
-                return false;
-            if (ax >= minLen && az >= minLen && az / Mathf.Max(ax, 1e-6f) > maxDiagFrac && ax / Mathf.Max(az, 1e-6f) > maxDiagFrac)
-                return false;
-        }
-
-        return true;
     }
 
     private static Vector3 GetDirPrev(List<Vector3> points, int i, int count, bool closed)
@@ -572,65 +479,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         }
 
         return Vector3.forward;
-    }
-
-    /// <summary>
-    /// Reduces vertex count on a closed polygon (XZ) while keeping roughly the same outline — lowers triangle count on circles / dense fits.
-    /// Ring must be one vertex per corner (no duplicate closing point). Also used by cladding to cap path complexity.
-    /// </summary>
-    public static List<Vector3> ResampleClosedLoopEvenly(List<Vector3> ring, int targetVerts)
-    {
-        if (ring == null || ring.Count < 3 || targetVerts < 8)
-            return ring;
-
-        targetVerts = Mathf.Clamp(targetVerts, 8, 256);
-        if (ring.Count <= targetVerts)
-            return ring;
-
-        int n = ring.Count;
-        var edgeLen = new float[n];
-        float total = 0f;
-        for (int i = 0; i < n; i++)
-        {
-            int j = (i + 1) % n;
-            float d = Vector3.Distance(ring[i], ring[j]);
-            edgeLen[i] = d;
-            total += d;
-        }
-
-        if (total < 0.000001f)
-            return ring;
-
-        var result = new List<Vector3>(targetVerts);
-        for (int k = 0; k < targetVerts; k++)
-        {
-            float distAlong = (k / (float)targetVerts) * total;
-            float acc = 0f;
-            for (int i = 0; i < n; i++)
-            {
-                float next = acc + edgeLen[i];
-                if (distAlong <= next + 0.000001f || i == n - 1)
-                {
-                    float segT = edgeLen[i] > 0.000001f ? Mathf.Clamp01((distAlong - acc) / edgeLen[i]) : 0f;
-                    int b = (i + 1) % n;
-                    result.Add(Vector3.Lerp(ring[i], ring[b], segT));
-                    break;
-                }
-
-                acc = next;
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Same XZ polyline cleaning as <see cref="RebuildMesh"/> (merge consecutive near-duplicate vertices, drop redundant closing point).
-    /// Cladding and any system that walks edges should use this so segment counts match the extruded wall mesh.
-    /// </summary>
-    public static List<Vector3> GetRenderablePolylineXZ(List<Vector3> source, bool closed)
-    {
-        return BuildRenderablePoints(source, closed);
     }
 
     private static List<Vector3> BuildRenderablePoints(List<Vector3> source, bool closed)

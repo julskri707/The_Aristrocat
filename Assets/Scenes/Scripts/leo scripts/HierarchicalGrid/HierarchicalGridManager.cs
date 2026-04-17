@@ -10,12 +10,6 @@ public class HierarchicalGridManager : MonoBehaviour
     public Camera focusCamera;
     public Transform focusTarget;
 
-    [Tooltip("Optional. Used only for hover highlight behavior if extended later.")]
-    public WallDrawInput drawInput;
-
-    [Tooltip("When true, mesh grid is not rendered (WallDrawInput draws the LineRenderer overlay instead).")]
-    public bool suppressMeshRendering;
-
     [Header("Runtime (ReadOnly)")]
     [SerializeField] Vector3 currentFocus;
     [SerializeField] int currentLeafCount;
@@ -48,9 +42,6 @@ public class HierarchicalGridManager : MonoBehaviour
 
         if (focusCamera == null)
             focusCamera = Camera.main;
-
-        if (drawInput == null)
-            drawInput = FindFirstObjectByType<WallDrawInput>();
     }
 
     void OnEnable()
@@ -65,12 +56,6 @@ public class HierarchicalGridManager : MonoBehaviour
     {
         if (settings == null || gridRenderer == null)
             return;
-
-        if (suppressMeshRendering)
-        {
-            gridRenderer.ClearAll();
-            return;
-        }
 
         Vector3 focus = ResolveFocusWorld();
         currentFocus = focus;
@@ -96,11 +81,7 @@ public class HierarchicalGridManager : MonoBehaviour
         bool shouldRender = !_hasRenderedOnce || didRebuild || hoverChanged || nodeCountChanged;
         if (shouldRender)
         {
-            HierarchicalGridNode hoverForRender = _hoverCell;
-            if (drawInput != null && !drawInput.enableGridSnap)
-                hoverForRender = null;
-
-            gridRenderer.Render(_renderNodes, hoverForRender, settings);
+            gridRenderer.Render(_renderNodes, _hoverCell, settings);
             _hasRenderedOnce = true;
             _lastRenderedNodeCount = _renderNodes.Count;
         }
@@ -135,21 +116,22 @@ public class HierarchicalGridManager : MonoBehaviour
         if (settings == null)
             return Vector3.zero;
 
-        Vector3 focus;
-        if (settings.focusMode == HierarchicalGridSettings.FocusMode.ManualPoint)
-            focus = settings.manualFocusPoint;
-        else if (settings.focusMode == HierarchicalGridSettings.FocusMode.TargetTransform && focusTarget != null)
-            focus = focusTarget.position;
-        else
+        switch (settings.focusMode)
         {
-            if (focusCamera == null)
-                focusCamera = Camera.main;
-            focus = focusCamera != null ? focusCamera.transform.position : settings.manualFocusPoint;
+            case HierarchicalGridSettings.FocusMode.TargetTransform:
+                if (focusTarget != null)
+                    return focusTarget.position;
+                break;
+            case HierarchicalGridSettings.FocusMode.ManualPoint:
+                return settings.manualFocusPoint;
         }
 
-        focus.x += settings.gridFocusOffsetXZ.x;
-        focus.z += settings.gridFocusOffsetXZ.y;
-        return focus;
+        if (focusCamera == null)
+            focusCamera = Camera.main;
+        if (focusCamera != null)
+            return focusCamera.transform.position;
+
+        return settings.manualFocusPoint;
     }
 
     bool EnsureRootCenter(Vector3 focusWorld)
@@ -159,7 +141,7 @@ public class HierarchicalGridManager : MonoBehaviour
 
         if (!_initialized)
         {
-            _rootCenter = ComputeRootCenterXZ(p, size);
+            _rootCenter = SnapToRootCenter(p, size);
             return true;
         }
 
@@ -168,27 +150,11 @@ public class HierarchicalGridManager : MonoBehaviour
 
         if (_root == null || !_root.ContainsXZ(p))
         {
-            _rootCenter = ComputeRootCenterXZ(p, size);
+            _rootCenter = SnapToRootCenter(p, size);
             return true;
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Root cell center: anchored on <see cref="HierarchicalGridSettings.gridWorldCenterXZ"/> so the grid
-    /// is symmetric around the map center (unlike Floor-based snap which offsets by half a cell at origin).
-    /// When <see cref="HierarchicalGridSettings.recenterRootOnFocus"/> is on, steps by root cell size from that anchor.
-    /// </summary>
-    Vector2 ComputeRootCenterXZ(Vector2 focusXZ, float size)
-    {
-        Vector2 c = settings.gridWorldCenterXZ;
-        if (!settings.recenterRootOnFocus)
-            return c;
-
-        return new Vector2(
-            c.x + Mathf.Round((focusXZ.x - c.x) / size) * size,
-            c.y + Mathf.Round((focusXZ.y - c.y) / size) * size);
     }
 
     bool ShouldRebuild(Vector3 focus, float focusHeight, bool recentered)
@@ -295,5 +261,11 @@ public class HierarchicalGridManager : MonoBehaviour
         return before != _hoverCell;
     }
 
+    static Vector2 SnapToRootCenter(Vector2 p, float size)
+    {
+        float x = Mathf.Floor(p.x / size) * size + size * 0.5f;
+        float z = Mathf.Floor(p.y / size) * size + size * 0.5f;
+        return new Vector2(x, z);
+    }
 }
 

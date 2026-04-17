@@ -72,8 +72,7 @@ public sealed class StoneCladdingSettings
 
     [Header("Shape")]
     [Range(0f, 0.12f)] public float facePlaneJitter = 0.015f;
-    [Tooltip("World meters per UV unit (lower = more tiling / finer surface detail from the same textures).")]
-    [Min(0.05f)] public float uvMetersPerUnit = 0.42f;
+    [Min(0.05f)] public float uvMetersPerUnit = 0.50f;
 
     [Header("Per Stone Visual Variation")]
     public bool enablePerStoneColorVariation = true;
@@ -82,12 +81,6 @@ public sealed class StoneCladdingSettings
     [Range(0f, 0.35f)] public float valueJitter = 0.12f;
     [Min(0f)] public float uvOffsetJitter = 0.35f;
     public Color baseTint = Color.white;
-
-    [Header("Quoins & end caps (visual)")]
-    [Tooltip("Si activé, les quoins de bout et d’angle partent de quoinBaseTint pour la variation (hue/sat/value). Sinon, même baseTint et même jitter que les pierres de texture.")]
-    public bool useSeparateTintForQuoins = false;
-    [Tooltip("Teinte de base pour ces pierres (gris distinct des pierres de champ). Même jitter que les autres si la variation couleur est activée.")]
-    public Color quoinBaseTint = new Color(0.78f, 0.78f, 0.82f, 1f);
 
     [Header("End Quoins")]
     public EndQuoinSettings endQuoins = new EndQuoinSettings();
@@ -112,21 +105,6 @@ public sealed class EndQuoinSettings
 
     [Tooltip("90° rectangle corners: extra multiplier on through-wall depth so the L-quoin reads on both wall faces.")]
     [Min(1f)] public float cornerLDepthMul = 1.14f;
-
-    [Tooltip("Coins saillants (angle extérieur ~90°) : décalage (m) le long de la normale extérieure du mur actif. Positif = plus de saillie. Ajouté à Z de cornerQuoinLocalOffsetMeters.")]
-    public float cornerQuoinOutwardOffsetMeters = 0f;
-
-    [Tooltip("Coins saillants uniquement : décalage local du quoin (m) — X = mesh right, Y = hauteur, Z = normale extérieure (saillie). N’affecte pas les angles internes rentrants.")]
-    public Vector3 cornerQuoinLocalOffsetMeters = Vector3.zero;
-
-    [Tooltip("Coins rentrants internes (~270° / reflex) : même convention que cornerQuoinOutwardOffsetMeters, appliqué seulement aux quoins d’angle internes.")]
-    public float reflexCornerQuoinOutwardOffsetMeters = 0f;
-
-    [Tooltip("Coins rentrants internes (~270° / reflex) : décalage local (m), même axes que cornerQuoinLocalOffsetMeters. N’affecte pas les coins saillants ni les autres pierres.")]
-    public Vector3 reflexCornerQuoinLocalOffsetMeters = Vector3.zero;
-
-    [Tooltip("Place the same L-corner quoins at every ~90° turn (e.g. grid / orthogonal paths), not only on closed 4-edge rectangles. Applies to closed polygons and open polylines.")]
-    public bool useGridRightAngleCornerQuoins = true;
 }
 
 [Serializable]
@@ -175,8 +153,7 @@ public sealed class WallCladdingProfile : ScriptableObject
         general.sideInset = Mathf.Max(0f, general.sideInset);
         stone.targetRowHeight = Mathf.Max(0.08f, stone.targetRowHeight);
         stone.rowHeightJitter = Mathf.Clamp(stone.rowHeightJitter, 0f, 0.30f);
-        // Zero spacing made the row packer advance cursor by 0 on "too narrow" placements → infinite loop.
-        stone.horizontalSpacing = Mathf.Max(0.0005f, stone.horizontalSpacing);
+        stone.horizontalSpacing = Mathf.Max(0f, stone.horizontalSpacing);
         stone.verticalSpacing = Mathf.Max(0f, stone.verticalSpacing);
         stone.staggerFraction = Mathf.Clamp(stone.staggerFraction, 0f, 0.6f);
 
@@ -219,6 +196,7 @@ public sealed class WallCladdingProfile : ScriptableObject
         stone.facePlaneJitter = Mathf.Clamp(stone.facePlaneJitter, 0f, 0.12f);
         stone.uvMetersPerUnit = Mathf.Max(0.05f, stone.uvMetersPerUnit);
 
+        stone.endQuoins.enabled = stone.endQuoins.enabled;
         stone.endQuoins.reserveWidth = Mathf.Max(0.12f, stone.endQuoins.reserveWidth);
         stone.endQuoins.targetHeight = Mathf.Max(0.12f, stone.endQuoins.targetHeight);
         stone.endQuoins.rowHeightJitter = Mathf.Clamp(stone.endQuoins.rowHeightJitter, 0f, 0.25f);
@@ -231,16 +209,6 @@ public sealed class WallCladdingProfile : ScriptableObject
         stone.endQuoins.edgeInset = Mathf.Max(0f, stone.endQuoins.edgeInset);
         stone.endQuoins.verticalSpacing = Mathf.Max(0f, stone.endQuoins.verticalSpacing);
         stone.endQuoins.cornerLDepthMul = Mathf.Max(1f, stone.endQuoins.cornerLDepthMul);
-        stone.endQuoins.cornerQuoinOutwardOffsetMeters = Mathf.Clamp(stone.endQuoins.cornerQuoinOutwardOffsetMeters, -100f, 100f);
-        stone.endQuoins.cornerQuoinLocalOffsetMeters = new Vector3(
-            Mathf.Clamp(stone.endQuoins.cornerQuoinLocalOffsetMeters.x, -100f, 100f),
-            Mathf.Clamp(stone.endQuoins.cornerQuoinLocalOffsetMeters.y, -100f, 100f),
-            Mathf.Clamp(stone.endQuoins.cornerQuoinLocalOffsetMeters.z, -100f, 100f));
-        stone.endQuoins.reflexCornerQuoinOutwardOffsetMeters = Mathf.Clamp(stone.endQuoins.reflexCornerQuoinOutwardOffsetMeters, -100f, 100f);
-        stone.endQuoins.reflexCornerQuoinLocalOffsetMeters = new Vector3(
-            Mathf.Clamp(stone.endQuoins.reflexCornerQuoinLocalOffsetMeters.x, -100f, 100f),
-            Mathf.Clamp(stone.endQuoins.reflexCornerQuoinLocalOffsetMeters.y, -100f, 100f),
-            Mathf.Clamp(stone.endQuoins.reflexCornerQuoinLocalOffsetMeters.z, -100f, 100f));
 
         stone.hueJitter = Mathf.Clamp(stone.hueJitter, 0f, 0.10f);
         stone.saturationJitter = Mathf.Clamp(stone.saturationJitter, 0f, 0.35f);

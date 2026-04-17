@@ -71,6 +71,20 @@ public class HierarchicalGridRenderer : MonoBehaviour
             lineWidth = Mathf.Max(0.0005f, lineWidth);
 
             AddCellOutlineXZ(b, cell, settings.gridPlaneY + settings.surfaceYOffset, lineWidth, color);
+
+            if (settings.showInternalSubGrid && cell.IsLeaf && settings.internalSubGridResolution >= 2)
+            {
+                Color subColor = color;
+                subColor.a *= settings.internalSubGridOpacity;
+                float subWidth = lineWidth * settings.internalSubGridThicknessFactor;
+                AddInternalSubGridXZ(
+                    b,
+                    cell,
+                    settings.gridPlaneY + settings.surfaceYOffset,
+                    settings.internalSubGridResolution,
+                    Mathf.Max(0.0004f, subWidth),
+                    subColor);
+            }
         }
 
         if (settings.highlightCellUnderMouse && hoverCell != null)
@@ -270,6 +284,40 @@ public class HierarchicalGridRenderer : MonoBehaviour
         b.AddLineQuad(c, d, width, color);
         b.AddLineQuad(d, e, width, color);
         b.AddLineQuad(e, a, width, color);
+    }
+
+    static void AddInternalSubGridXZ(
+        QuadMeshBuilder b,
+        HierarchicalGridNode node,
+        float y,
+        int resolution,
+        float width,
+        Color color)
+    {
+        if (resolution < 2)
+            return;
+
+        Vector2 min = node.Min;
+        float size = node.size;
+        float step = size / resolution;
+
+        for (int i = 1; i < resolution; i++)
+        {
+            float x = min.x + step * i;
+            float z = min.y + step * i;
+
+            b.AddLineQuad(
+                new Vector3(x, y, min.y),
+                new Vector3(x, y, min.y + size),
+                width,
+                color);
+
+            b.AddLineQuad(
+                new Vector3(min.x, y, z),
+                new Vector3(min.x + size, y, z),
+                width,
+                color);
+        }
     }
 
     sealed class QuadMeshBuilder

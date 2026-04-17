@@ -6,7 +6,7 @@ public class SelectionDebugHUD : MonoBehaviour
 
     void Awake()
     {
-        if (build == null) build = FindFirstObjectByType<WallBuildController>();
+        if (build == null) build = FindObjectOfType<WallBuildController>();
     }
 
     void OnGUI()

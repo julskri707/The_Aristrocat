@@ -120,10 +120,10 @@ public class NightSkyController : MonoBehaviour
     private void TryAutoFindTimeSource()
     {
         if (dayNightSystem == null)
-            dayNightSystem = FindFirstObjectByType<DayNightSystem>();
+            dayNightSystem = FindObjectOfType<DayNightSystem>();
 
         if (npcTimeSystem == null)
-            npcTimeSystem = NPCTimeSystem.Instance != null ? NPCTimeSystem.Instance : FindFirstObjectByType<NPCTimeSystem>();
+            npcTimeSystem = NPCTimeSystem.Instance != null ? NPCTimeSystem.Instance : FindObjectOfType<NPCTimeSystem>();
 
         if (followTransform == null && Camera.main != null)
             followTransform = Camera.main.transform;

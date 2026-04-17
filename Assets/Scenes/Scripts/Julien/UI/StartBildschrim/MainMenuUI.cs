@@ -8,6 +8,8 @@ public class MainMenuUI : MonoBehaviour
 {
     [Header("Scene Names")]
     [SerializeField] private string gameplaySceneName = "GameScene";
+    [SerializeField] private string introVideoSceneName = "IntroVideoScene";
+    [SerializeField] private bool useIntroVideoScene = true;
 
     [Header("Fade")]
     [SerializeField] private Image fadeImage;
@@ -106,6 +108,12 @@ public class MainMenuUI : MonoBehaviour
             return;
         }
 
+        if (useIntroVideoScene && string.IsNullOrWhiteSpace(introVideoSceneName))
+        {
+            Debug.LogError("MainMenuUI: introVideoSceneName ist leer.");
+            return;
+        }
+
         StartCoroutine(LoadGameRoutine());
     }
 
@@ -188,7 +196,6 @@ public class MainMenuUI : MonoBehaviour
         if (subtitlesToggle != null) subtitlesToggle.SetIsOnWithoutNotify(values.subtitles);
 
         isApplyingUI = false;
-
         RefreshValueLabels();
     }
 
@@ -244,10 +251,14 @@ public class MainMenuUI : MonoBehaviour
     private IEnumerator LoadGameRoutine()
     {
         isLoading = true;
-
         yield return StartCoroutine(FadeOut());
 
-        SceneManager.LoadScene(gameplaySceneName);
+        GameLaunchState.NextGameplaySceneName = gameplaySceneName;
+
+        if (useIntroVideoScene)
+            SceneManager.LoadScene(introVideoSceneName);
+        else
+            SceneManager.LoadScene(gameplaySceneName);
     }
 
     private IEnumerator FadeIn()

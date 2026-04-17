@@ -3,10 +3,11 @@ using UnityEngine;
 public class NPCWorkAction : NPCAction
 {
     public override NPCActionType ActionType => NPCActionType.Work;
-    public override int MinDurationTicks => 8;
-    public override float ContinueBonus => 16f;
+    public override int MinDurationTicks => 4;
+    public override float ContinueBonus => 12f;
 
     private NPCActionAnimationBridge bridge;
+    private bool poseStarted;
 
     private NPCActionAnimationBridge GetBridge(NPCDecisionBrain brain)
     {
@@ -28,27 +29,28 @@ public class NPCWorkAction : NPCAction
         if (!CanRun(brain))
             return 0f;
 
-        if (brain.Needs.hunger < 25f) return 0f;
-        if (brain.Needs.energy < 22f) return 0f;
-        if (brain.Needs.safety < 20f) return 0f;
+        if (brain.Needs.hunger < 35f) return 0f;
+        if (brain.Needs.energy < 30f) return 0f;
+        if (brain.Needs.safety < 25f) return 0f;
         if (brain.IsNightTime(timeOfDay)) return 0f;
 
-        float score = 8f;
+        float score = 5f;
 
         if (brain.IsWorkTime(timeOfDay))
-            score += 35f;
+            score += 30f;
         else if (brain.IsEveningTime(timeOfDay))
-            score += 6f;
+            score += 4f;
 
-        score += Remap01(brain.Needs.energy, 30f, 100f) * 12f;
-        score += Remap01(brain.Needs.hunger, 30f, 100f) * 8f;
-        score += Remap01(brain.Needs.safety, 30f, 100f) * 8f;
+        score += Remap01(brain.Needs.energy, 35f, 100f) * 10f;
+        score += Remap01(brain.Needs.hunger, 35f, 100f) * 6f;
+        score += Remap01(brain.Needs.safety, 30f, 100f) * 6f;
 
         return score;
     }
 
     public override void OnEnter(NPCDecisionBrain brain)
     {
+        poseStarted = false;
         GetBridge(brain)?.ClearPose();
         brain.SetCurrentTarget(brain.WorkPoint);
     }
@@ -57,19 +59,26 @@ public class NPCWorkAction : NPCAction
     {
         if (!brain.IsAtCurrentTarget())
         {
-            GetBridge(brain)?.EndPose(ActionType);
+            if (brain.CurrentTarget != brain.WorkPoint)
+                brain.SetCurrentTarget(brain.WorkPoint);
             return;
         }
 
-        GetBridge(brain)?.BeginPose(ActionType, brain.WorkPoint);
+        NPCActionAnimationBridge actionBridge = GetBridge(brain);
+        if (!poseStarted && actionBridge != null)
+        {
+            actionBridge.BeginPose(ActionType, brain.WorkPoint);
+            poseStarted = true;
+        }
 
-        brain.Needs.ModifyNeed(NPCNeedType.Energy, -0.6f);
-        brain.Needs.ModifyNeed(NPCNeedType.Social, -0.1f);
-        brain.Needs.ModifyNeed(NPCNeedType.Hunger, -0.25f);
+        brain.Needs.ModifyNeedPerTick(NPCNeedType.Energy, -0.6f);
+        brain.Needs.ModifyNeedPerTick(NPCNeedType.Social, -0.1f);
+        brain.Needs.ModifyNeedPerTick(NPCNeedType.Hunger, -0.25f);
     }
 
     public override void OnExit(NPCDecisionBrain brain)
     {
         GetBridge(brain)?.EndPose(ActionType);
+        poseStarted = false;
     }
 }

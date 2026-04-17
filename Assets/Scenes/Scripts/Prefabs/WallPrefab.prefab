@@ -138,9 +138,6 @@ MonoBehaviour:
   uvMetersPerU: 0.5
   miterLimit: 3
   sharpCornerThreshold: 0.35
-  closedLoopCornerBevel: 0.035
-  maxClosedLoopMeshVertices: 0
-  recalculateTangents: 0
   logWarnings: 0
   drawGizmos: 0
 --- !u!114 &8640142375998368458
@@ -162,65 +159,7 @@ MonoBehaviour:
   applyFallbackWallMaterial: 1
   clearWhenProfileMissing: 0
   logDebug: 1
-  deferFirstCladdingRebuildInPlayMode: 1
-  deferFirstRebuildExtraFrames: 2
-  deferFirstRebuildExtraSeconds: 0.08
-  minRebuildInterval: 0.18
-  geometryHashPollInterval: 0.12
-  rebuildAfterDragDelay: 0.08
-  globalRebuildBudgetPerFrame: 2
-  uploadGeneratedStoneMeshesToGpu: 1
-  combineGeneratedStonesPerSide: 1
-  enableCameraStoneOptimization: 1
-  cullOffscreenStones: 0
-  stoneMaxGenerationDistance: 120
-  useFarLodMesh: 1
-  stoneFarLodDistance: 8
-  enableDynamicRenderDistance: 1
-  renderDistance: 140
-  renderDistanceHysteresis: 10
-  horizonStartDistance: 10
-  horizonDecimationStep: 3
-  renderDistanceUseFrustum: 1
-  renderDistanceUpdateInterval: 0.2
-  useDistanceLodInsteadOfDisabling: 1
-  lodFullDetailDistance: 6
-  lodLowDetailBeyondDistance: 11
-  hideWallSideFacingAwayFromCamera: 1
-  hardMaxStoneRenderDistance: 0
-  keepFullStoneGeometryBothSides: 1
-  fullDetailOmitBackCap: 0
-  lowDetailStoneFrontFaceOnly: 0
-  forceDoubleSidedStoneMaterials: 1
-  stoneMeshTriangleRetention: 0.3
-  maxGeneratedStonesPerSide: 7000
-  maxRowsPerSide: 220
-  maxStonesPerRow: 320
-  maxTailGapFillStonesPerRow: 48
-  connectorRightShift: 0.1
-  cornerSideExtensionMultiplier: 0
-  cornerFaceReferenceShift: 0.03
-  alignExteriorCornerColumn: 1
-  alignCornerLateralStack: 1
-  invertOtherWallCornerColumn: 1
-  growOppositeVoidLateralFace: 0
-  cornerStackColumnOffset: -0.18
-  randomizeSingleCornerLateralFace: 1
-  cornerSingleFaceExtraMin: 0.02
-  cornerSingleFaceExtraMax: 0.6
-  cornerSingleFaceExtraHardCap: 0.85
-  cornerQuoinExtraLocalMeters: {x: 0, y: 0, z: 0}
-  cornerQuoinExtraWorldMeters: {x: 0, y: 0, z: 0}
-  reflexCornerQuoinFreeLocalMeters: {x: 0, y: 0, z: 0}
-  reflexCornerQuoinFreeWorldMeters: {x: 0, y: 0, z: 0}
-  triangleBollardMinWallParallelLeg: 0.45
-  triangleBollardMaxWallParallelLeg: 0.85
-  triangleBollardColumnCompStartAngleDeg: 25
-  triangleBollardColumnCompEndAngleDeg: 5
-  triangleBollardColumnSmallAngleScale: 2.1
-  triangleBollardLateralClampMinAngleDeg: 8
-  triangleBollardLateralFollowMinAngleDeg: 8
-  debugColorizeTriangleBollardFaces: 0
+  connectorRightShift: 10
 --- !u!114 &-7829102596514257101
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -15,11 +15,13 @@ public class NPCDecisionBrain : MonoBehaviour
     [Header("Auto Site Assignment")]
     [SerializeField] private bool autoAssignNearbySites = true;
     [SerializeField, Min(1)] private int siteRefreshIntervalTicks = 20;
+    [SerializeField] private bool forceRefreshSitesWhenCriticalNeeds = true;
 
     [Header("Decision")]
-    [SerializeField, Min(1)] private int decisionIntervalTicks = 2;
+    [SerializeField, Min(1)] private int decisionIntervalTicks = 1;
     [SerializeField] private bool evaluateOnFirstTick = true;
     [SerializeField, Min(0f)] private float minScoreAdvantageToSwitch = 8f;
+    [SerializeField] private bool allowImmediateInterruptForCriticalNeeds = true;
 
     [Header("Sleep Schedule")]
     [SerializeField] private float nightStartHour = 22f;
@@ -96,6 +98,7 @@ public class NPCDecisionBrain : MonoBehaviour
     {
         ForceRefreshSites();
         UpdateWorkTargetFromAssignment();
+        RepairRuntimeTargetsFromSites();
     }
 
     private void OnEnable()
@@ -138,13 +141,15 @@ public class NPCDecisionBrain : MonoBehaviour
         if (needs == null)
             return;
 
+        bool criticalNeed = HasCriticalNeed();
         bool needSiteRefresh =
             autoAssignNearbySites &&
-            (lastSiteRefreshTick == int.MinValue ||
-             tickIndex - lastSiteRefreshTick >= siteRefreshIntervalTicks ||
-             homeSite == null ||
-             foodSite == null ||
-             leisureSite == null);
+            (
+                lastSiteRefreshTick == int.MinValue ||
+                tickIndex - lastSiteRefreshTick >= siteRefreshIntervalTicks ||
+                HasMissingEssentialTargets() ||
+                (forceRefreshSitesWhenCriticalNeeds && criticalNeed)
+            );
 
         if (needSiteRefresh)
         {
@@ -152,14 +157,12 @@ public class NPCDecisionBrain : MonoBehaviour
             lastSiteRefreshTick = tickIndex;
         }
 
+        RepairRuntimeTargetsFromSites();
         UpdateWorkTargetFromAssignment();
         needs.TickNeeds(dangerActive, coldActive);
 
-        if (currentActionType == NPCActionType.Sleep && IsNightSleepLocked(tickIndex) && !IsEmergencyState())
-        {
-            currentAction?.OnTick(this, tickIndex, timeOfDay);
-            return;
-        }
+        if (currentAction != null && !currentAction.CanRun(this))
+            ClearCurrentAction();
 
         bool shouldEvaluate = false;
 
@@ -172,7 +175,10 @@ public class NPCDecisionBrain : MonoBehaviour
         if (!shouldEvaluate && currentAction == null)
             shouldEvaluate = true;
 
-        if (!shouldEvaluate && HasCriticalNeed())
+        if (!shouldEvaluate && currentActionType == NPCActionType.Idle)
+            shouldEvaluate = true;
+
+        if (!shouldEvaluate && criticalNeed)
             shouldEvaluate = true;
 
         if (shouldEvaluate)
@@ -194,6 +200,7 @@ public class NPCDecisionBrain : MonoBehaviour
             return;
 
         RefreshPreferredSites();
+        RepairRuntimeTargetsFromSites();
     }
 
     private void RefreshPreferredSites()
@@ -206,32 +213,49 @@ public class NPCDecisionBrain : MonoBehaviour
             return;
         }
 
-        if (homeSite == null || !homeSite.IsReservedBy(gameObject))
+        if ((homeSite == null || !homeSite.IsReservedBy(gameObject)) &&
+            registry.TryClaimNearestHomeSite(transform.position, gameObject, out HomeSite nearestHome))
         {
-            if (registry.TryClaimNearestHomeSite(transform.position, gameObject, out HomeSite nearestHome))
-            {
-                homeSite = nearestHome;
-                bedPoint = nearestHome.BedPoint;
-            }
+            homeSite = nearestHome;
         }
 
-        if (foodSite == null || !foodSite.IsReservedBy(gameObject))
+        if ((foodSite == null || !foodSite.IsReservedBy(gameObject)) &&
+            registry.TryClaimNearestFoodSite(transform.position, gameObject, out FoodSite nearestFood))
         {
-            if (registry.TryClaimNearestFoodSite(transform.position, gameObject, out FoodSite nearestFood))
-            {
-                foodSite = nearestFood;
-                foodPoint = nearestFood.ServicePoint;
-            }
+            foodSite = nearestFood;
         }
 
-        if (leisureSite == null || !leisureSite.IsReservedBy(gameObject))
+        if ((leisureSite == null || !leisureSite.IsReservedBy(gameObject)) &&
+            registry.TryClaimNearestLeisureSite(transform.position, gameObject, out LeisureSite nearestLeisure))
         {
-            if (registry.TryClaimNearestLeisureSite(transform.position, gameObject, out LeisureSite nearestLeisure))
-            {
-                leisureSite = nearestLeisure;
-                socialPoint = nearestLeisure.InteractionPoint;
-            }
+            leisureSite = nearestLeisure;
         }
+    }
+
+    private void RepairRuntimeTargetsFromSites()
+    {
+        if (homeSite != null && bedPoint == null)
+            bedPoint = homeSite.BedPoint;
+
+        if (foodSite != null && foodPoint == null)
+            foodPoint = foodSite.ServicePoint;
+
+        if (leisureSite != null && socialPoint == null)
+            socialPoint = leisureSite.InteractionPoint;
+    }
+
+    private bool HasMissingEssentialTargets()
+    {
+        if (homeSite != null && bedPoint == null)
+            return true;
+
+        if (foodSite != null && foodPoint == null)
+            return true;
+
+        if (leisureSite != null && socialPoint == null)
+            return true;
+
+        return homeSite == null || foodSite == null || leisureSite == null;
     }
 
     private void UpdateWorkTargetFromAssignment()
@@ -258,15 +282,14 @@ public class NPCDecisionBrain : MonoBehaviour
     {
         NPCAction bestAction = null;
         float bestScore = float.MinValue;
-
-        NPCAction currentScoredAction = null;
         float currentScore = float.MinValue;
 
         NPCAction secondAction = null;
         float secondScore = float.MinValue;
-
         NPCAction thirdAction = null;
         float thirdScore = float.MinValue;
+
+        bool currentActionStillValid = currentAction != null && currentAction.CanRun(this);
 
         for (int i = 0; i < actions.Count; i++)
         {
@@ -277,11 +300,8 @@ public class NPCDecisionBrain : MonoBehaviour
             float score = Mathf.Max(0f, action.CalculateUtility(this, timeOfDay));
 
             if (action == currentAction)
-                score += action.ContinueBonus;
-
-            if (action == currentAction)
             {
-                currentScoredAction = action;
+                score += action.ContinueBonus;
                 currentScore = score;
             }
 
@@ -289,10 +309,8 @@ public class NPCDecisionBrain : MonoBehaviour
             {
                 thirdAction = secondAction;
                 thirdScore = secondScore;
-
                 secondAction = bestAction;
                 secondScore = bestScore;
-
                 bestAction = action;
                 bestScore = score;
             }
@@ -300,7 +318,6 @@ public class NPCDecisionBrain : MonoBehaviour
             {
                 thirdAction = secondAction;
                 thirdScore = secondScore;
-
                 secondAction = action;
                 secondScore = score;
             }
@@ -322,25 +339,27 @@ public class NPCDecisionBrain : MonoBehaviour
         }
 
         if (bestAction == null)
+        {
+            if (!currentActionStillValid)
+                SwitchToIdle(tickIndex);
             return;
+        }
 
-        if (currentAction != null && bestAction != currentAction)
+        if (currentAction != null && bestAction != currentAction && currentActionStillValid)
         {
             bool emergencyInterrupt = bestAction.ActionType == NPCActionType.Panic && IsEmergencyState();
+            bool criticalInterrupt = allowImmediateInterruptForCriticalNeeds && HasCriticalNeed() && currentActionType == NPCActionType.Work;
             bool minDurationReached = tickIndex - currentActionStartTick >= currentAction.MinDurationTicks;
             bool enoughScoreGain = bestScore >= currentScore + minScoreAdvantageToSwitch;
 
-            if (!emergencyInterrupt)
+            if (!emergencyInterrupt && !criticalInterrupt)
             {
                 if (!minDurationReached || !enoughScoreGain)
-                {
                     bestAction = currentAction;
-                    bestScore = currentScore;
-                }
             }
         }
 
-        if (currentAction == bestAction)
+        if (bestAction == currentAction)
             return;
 
         currentAction?.OnExit(this);
@@ -353,11 +372,38 @@ public class NPCDecisionBrain : MonoBehaviour
         currentActionStartTick = tickIndex;
 
         if (currentActionType == NPCActionType.Sleep && IsNightTime(timeOfDay))
-        {
             StartNightSleepBlock(tickIndex);
-        }
 
         currentAction.OnEnter(this);
+    }
+
+    private void SwitchToIdle(int tickIndex)
+    {
+        currentAction?.OnExit(this);
+        currentAction = GetIdleAction();
+        currentActionType = currentAction != null ? currentAction.ActionType : NPCActionType.Idle;
+        currentActionStartTick = tickIndex;
+        forcedSleepUntilTick = int.MinValue;
+        currentAction?.OnEnter(this);
+    }
+
+    private NPCAction GetIdleAction()
+    {
+        for (int i = 0; i < actions.Count; i++)
+        {
+            if (actions[i] is IdleAction idle)
+                return idle;
+        }
+
+        return null;
+    }
+
+    private void ClearCurrentAction()
+    {
+        currentAction?.OnExit(this);
+        currentAction = null;
+        currentActionType = NPCActionType.None;
+        currentActionStartTick = int.MinValue;
     }
 
     private bool HasCriticalNeed()
@@ -463,7 +509,7 @@ public class IdleAction : NPCAction
 {
     public override NPCActionType ActionType => NPCActionType.Idle;
     public override int MinDurationTicks => 1;
-    public override float ContinueBonus => 1f;
+    public override float ContinueBonus => 0f;
 
     public override float CalculateUtility(NPCDecisionBrain brain, float timeOfDay)
     {

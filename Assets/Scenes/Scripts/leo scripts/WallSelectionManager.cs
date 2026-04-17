@@ -8,7 +8,6 @@ public class WallSelectionManager : MonoBehaviour
     public ControlPointOverlayManager overlay;
     public WallBuildController buildController;
     public WallContextMenuUI contextMenu;
-    public LotBuildMenuUI lotMenu;
     public WallUndoManager undoManager;
 
     [Header("Raycast")]
@@ -40,7 +39,6 @@ public class WallSelectionManager : MonoBehaviour
 
         if (undoManager == null)
             undoManager = FindFirstObjectByType<WallUndoManager>();
-
     }
 
     void Update()
@@ -62,20 +60,11 @@ public class WallSelectionManager : MonoBehaviour
             if (contextMenu != null && contextMenu.IsOpen)
                 contextMenu.Close();
 
-            if (lotMenu != null && lotMenu.IsOpen)
-                lotMenu.Close();
-
             return;
         }
 
-        if (closeContextMenuOnEmptyLeftClick)
-        {
-            if (contextMenu != null && contextMenu.IsOpen)
-                contextMenu.Close();
-
-            if (lotMenu != null && lotMenu.IsOpen)
-                lotMenu.Close();
-        }
+        if (closeContextMenuOnEmptyLeftClick && contextMenu != null && contextMenu.IsOpen)
+            contextMenu.Close();
 
         if (clearSelectionOnEmptyLeftClick && buildController != null)
             buildController.ForceSelectWall(null);
@@ -113,7 +102,7 @@ public class WallSelectionManager : MonoBehaviour
             return false;
         }
 
-        SelectWallInternal(wall, providerBehaviour, hit.point);
+        SelectWallInternal(wall, providerBehaviour);
         return true;
     }
 
@@ -124,9 +113,6 @@ public class WallSelectionManager : MonoBehaviour
 
         if (contextMenu == null)
             return false;
-
-        if (lotMenu == null)
-            lotMenu = FindFirstObjectByType<LotBuildMenuUI>(FindObjectsInactive.Include);
 
         WallObject wall = null;
         MonoBehaviour providerBehaviour = preferredProviderBehaviour;
@@ -144,9 +130,6 @@ public class WallSelectionManager : MonoBehaviour
                     return false;
 
                 SelectWallInternal(wall, providerBehaviour);
-                if (lotMenu != null && lotMenu.IsOpen)
-                    lotMenu.Close();
-
                 contextMenu.OpenForWall(wall, screenPosition);
 
                 if (logDebug)
@@ -161,9 +144,6 @@ public class WallSelectionManager : MonoBehaviour
 
         if (wall == null)
             return false;
-
-        if (lotMenu != null && lotMenu.IsOpen)
-            lotMenu.Close();
 
         contextMenu.OpenForWall(wall, screenPosition);
 
@@ -229,7 +209,10 @@ public class WallSelectionManager : MonoBehaviour
         if (!inserted)
             return false;
 
-        SelectWallInternal(wall, editShape, worldPosition);
+        SelectWallInternal(wall, editShape);
+
+        if (overlay != null)
+            overlay.RebuildOverlay();
 
         if (contextMenu != null && contextMenu.IsOpen)
             contextMenu.RefreshCurrentWall();
@@ -240,13 +223,16 @@ public class WallSelectionManager : MonoBehaviour
         return true;
     }
 
-    void SelectWallInternal(WallObject wall, MonoBehaviour providerBehaviour, Vector3? envelopeClickHitWorld = null)
+    void SelectWallInternal(WallObject wall, MonoBehaviour providerBehaviour)
     {
         if (wall == null || providerBehaviour == null)
             return;
 
+        if (overlay != null)
+            overlay.SetTarget(providerBehaviour);
+
         if (buildController != null)
-            buildController.ForceSelectWall(wall, envelopeClickHitWorld);
+            buildController.ForceSelectWall(wall);
 
         if (logDebug)
             Debug.Log($"[WallSelectionManager] Selected {wall.name} with {providerBehaviour.GetType().Name}");
