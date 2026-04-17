@@ -124,6 +124,43 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         return list;
     }
 
+    /// <summary>
+    /// Vrai si chaque arête du contour fermé est alignée sur un axe X ou Z (pas de segment « en biais » significatif).
+    /// Utilisé pour distinguer preview orthogonal vs mesh courbe (cercle / ovale).
+    /// </summary>
+    public static bool IsClosedLoopOrthogonalAxisAlignedXZ(List<Vector3> pts)
+    {
+        if (pts == null)
+            return false;
+
+        int n = pts.Count;
+        if (n < 3)
+            return false;
+
+        const float minLen = 1e-4f;
+        const float maxDiagFrac = 0.02f;
+
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 d = pts[(i + 1) % n] - pts[i];
+            d.y = 0f;
+            float len = d.magnitude;
+            if (len < minLen)
+                continue;
+
+            float ax = Mathf.Abs(d.x);
+            float az = Mathf.Abs(d.z);
+            if (ax < minLen && az < minLen)
+                return false;
+            if (ax >= minLen && az >= minLen &&
+                az / Mathf.Max(ax, 1e-6f) > maxDiagFrac &&
+                ax / Mathf.Max(az, 1e-6f) > maxDiagFrac)
+                return false;
+        }
+
+        return true;
+    }
+
     // ---------------------------------------------
     // Unity lifecycle
     // ---------------------------------------------

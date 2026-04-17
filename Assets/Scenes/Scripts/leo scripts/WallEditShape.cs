@@ -465,7 +465,7 @@ public class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPoint
     /// </summary>
     public List<Vector3> GetOverlayPathWorld()
     {
-        if (!IsClosedLoopPath)
+        if (!_closedLoop)
             return GetPreviewPathWorld();
 
         List<Vector3> resolved = ResolveClosedLotDisplayRingWorld(wall, this);

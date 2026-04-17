@@ -62,6 +62,18 @@ public class NPCMovementController : MonoBehaviour
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
+        // FBX / rig : MeshColliders concaves sur les os enfant + Rigidbody dynamique à la racine → erreur PhysX
+        // (« Concave Mesh Colliders are not supported… »). La collision est portée par le CapsuleCollider racine.
+        if (!rb.isKinematic)
+        {
+            foreach (MeshCollider mc in GetComponentsInChildren<MeshCollider>(true))
+            {
+                if (mc.transform == transform)
+                    continue;
+                mc.enabled = false;
+            }
+        }
+
         progressReferencePosition = transform.position;
     }
 
