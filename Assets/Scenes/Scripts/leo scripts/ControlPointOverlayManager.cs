@@ -482,7 +482,8 @@ public class ControlPointOverlayManager : MonoBehaviour
         if (!_linksUsePreviewPath)
             return;
 
-        if (_pathProvider == null)
+        // GetOverlayPathForCurrentTarget() peut utiliser WallEditShape.GetOverlayPathWorld sans passer par IControlPointPathProvider.
+        if (_pathProvider == null && targetProviderBehaviour is not WallEditShape)
             return;
 
         List<Vector3> path = GetOverlayPathForCurrentTarget();

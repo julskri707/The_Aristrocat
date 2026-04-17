@@ -1752,7 +1752,8 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
                 return ring;
             }
 
-            if (sk == ShapeKind.Free && wall.Points.Count >= 12)
+            // Même avec peu de sommets (cap mesh / frame intermédiaire), le mur peut être courbe alors que le preview free est encore orthogonal.
+            if (sk == ShapeKind.Free && wall.Points.Count >= 6)
             {
                 List<Vector3> previewFree = editShape.GetPreviewPathWorld();
                 if (previewFree != null && previewFree.Count >= 4)
@@ -1781,10 +1782,12 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
         if (wall == null)
             return preview;
 
+        // Ne pas exiger 12+ sommets : maxClosedLoopMeshVertices ou une frame peut réduire le polygone sous 12
+        // tout en restant non orthogonal (ovale / arc). Sinon on retombait sur le quad AABB « carré parfait ».
         if (!wall.closedLoop ||
             editShape.shapeKind != ShapeKind.Rectangle ||
             wall.Points == null ||
-            wall.Points.Count < 12)
+            wall.Points.Count < 3)
             return preview;
 
         var wpRect = new List<Vector3>(wall.Points.Count);
@@ -1793,7 +1796,8 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
 
         bool useMesh =
             TryFitCircleLikeClosedPathXZForDisplay(wpRect, out _) ||
-            (wall.Points.Count >= 12 && !WallObject.IsClosedLoopOrthogonalAxisAlignedXZ(wpRect));
+            TryFitEllipseLikeClosedPathXZForDisplay(wpRect, out _) ||
+            (wall.Points.Count >= 4 && !WallObject.IsClosedLoopOrthogonalAxisAlignedXZ(wpRect));
 
         if (!useMesh)
             return preview;
@@ -1849,6 +1853,43 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
 
         radiusOut = radius;
         return true;
+    }
+
+    /// <summary>
+    /// Ovale / ellipse échantillonnée : le fit cercle strict échoue mais le contour n’est pas un polygone orthogonal
+    /// (sinon on retombe sur le quad preview Rectangle alors que le mesh reste courbe).
+    /// </summary>
+    static bool TryFitEllipseLikeClosedPathXZForDisplay(List<Vector3> path, out float aspectRatioOut)
+    {
+        aspectRatioOut = 1f;
+        if (path == null || path.Count < 8)
+            return false;
+
+        if (WallObject.IsClosedLoopOrthogonalAxisAlignedXZ(path))
+            return false;
+
+        int n = path.Count;
+        if (n >= 2 && Vector3.Distance(path[0], path[n - 1]) < 0.001f)
+            n--;
+
+        if (n < 8)
+            return false;
+
+        float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 p = path[i];
+            minX = Mathf.Min(minX, p.x);
+            maxX = Mathf.Max(maxX, p.x);
+            minZ = Mathf.Min(minZ, p.z);
+            maxZ = Mathf.Max(maxZ, p.z);
+        }
+
+        float dx = Mathf.Max(maxX - minX, 1e-4f);
+        float dz = Mathf.Max(maxZ - minZ, 1e-4f);
+        aspectRatioOut = Mathf.Max(dx / dz, dz / dx);
+        // Contours « plats » presque carrés : rester sur la logique mesh par non-orthogonal ci-dessus ; ici on cible les ovales nets.
+        return aspectRatioOut <= 8f && aspectRatioOut >= 1.04f;
     }
 
     /// <summary>
