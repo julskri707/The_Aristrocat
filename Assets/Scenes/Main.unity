@@ -14,11 +14,11 @@ OcclusionCullingSettings:
 RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
-  m_Fog: 0
-  m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
-  m_FogMode: 3
-  m_FogDensity: 0.01
-  m_LinearFogStart: 0
+  m_Fog: 1
+  m_FogColor: {r: 0.8658475, g: 0.9011875, b: 0.9442, a: 1}
+  m_FogMode: 2
+  m_FogDensity: 0.0011396711
+  m_LinearFogStart: 70
   m_LinearFogEnd: 300
   m_AmbientSkyColor: {r: 1, g: 0.5589826, b: 0.24530302, a: 1}
   m_AmbientEquatorColor: {r: 1, g: 0.59106964, b: 0.28529817, a: 1}
@@ -1157,7 +1157,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4176118337372712675, guid: 719028f9eda348142b30e48fdc21e49b, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4699222153056316720, guid: 719028f9eda348142b30e48fdc21e49b, type: 3}
       propertyPath: m_LocalPosition.x
@@ -1547,7 +1547,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &105259400
 RectTransform:
   m_ObjectHideFlags: 0
@@ -7683,7 +7683,7 @@ Transform:
   m_GameObject: {fileID: 535381281}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 84.8, y: -14.4, z: 106.8}
+  m_LocalPosition: {x: 82.92, y: -14.4, z: 105.94}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -12419,6 +12419,76 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RandomScaleSetter
   minScale: 3
   maxScale: 6
+--- !u!1 &842029137
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 842029139}
+  - component: {fileID: 842029138}
+  m_Layer: 0
+  m_Name: StylizedValleyFog
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &842029138
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 842029137}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 765b69e575e67984c91e0b9b0ccf68c6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StylizedValleyFog
+  applyContinuously: 1
+  applyOnEnable: 1
+  targetCamera: {fileID: 1126970736}
+  mainDirectionalLight: {fileID: 2061690796}
+  fogQuality: 1
+  fogColor: {r: 0.68, g: 0.77, b: 0.88, a: 1}
+  horizonFogColor: {r: 0.77, g: 0.82, b: 0.88, a: 1}
+  blendWithLightColor: 1
+  lightColorInfluence: 0.535
+  fogMode: 2
+  fogDensity: 0.001
+  linearStart: 300
+  linearEnd: 600
+  useHeightCompensation: 1
+  fogBaseHeight: 2
+  fogTopHeight: 40
+  lowCameraBoost: 0.55
+  boostNearWaterLevel: 1
+  waterLevel: 0
+  waterBoostRange: 14
+  waterBoost: 0.4
+  tintSkyboxExposure: 1
+  skyboxTintProperty: _Tint
+  skyboxExposureProperty: _Exposure
+  skyboxExposure: 0.95
+  skyboxTintStrength: 0.2
+--- !u!4 &842029139
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 842029137}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 1353.4126, y: 23.62159, z: 1174.275}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!4 &842252385 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4349106921346135426, guid: c5631de6cfb19c441a5b2c90a4b21d1e, type: 3}
@@ -20696,15 +20766,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 1615
+      value: 1648
       objectReference: {fileID: 0}
     - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 25
+      value: 28
       objectReference: {fileID: 0}
     - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 1303
+      value: 1301
       objectReference: {fileID: 0}
     - target: {fileID: 7068145134747625047, guid: 66f3ca8ef2e6bc14dac879aa3cc25f55, type: 3}
       propertyPath: m_LocalRotation.w
@@ -31330,9 +31400,17 @@ PrefabInstance:
       propertyPath: heightOffset
       value: 0.1
       objectReference: {fileID: 0}
+    - target: {fileID: 1053851416929442394, guid: 1046cd2bbd2aff04f8aef5f5dc5aecd6, type: 3}
+      propertyPath: 'fillMaterials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 0df3853543c978348aeb483ac9e540ac, type: 2}
     - target: {fileID: 1131231067425066048, guid: 1046cd2bbd2aff04f8aef5f5dc5aecd6, type: 3}
       propertyPath: m_Loop
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3613727290791169764, guid: 1046cd2bbd2aff04f8aef5f5dc5aecd6, type: 3}
+      propertyPath: heightMultiplier
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 8242433660243627890, guid: 1046cd2bbd2aff04f8aef5f5dc5aecd6, type: 3}
       propertyPath: m_Name
@@ -31693,6 +31771,11 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!108 &2061690796 stripped
+Light:
+  m_CorrespondingSourceObject: {fileID: 108023465936806224, guid: 7723395f79fbc334ebb397df34cc7488, type: 3}
+  m_PrefabInstance: {fileID: 1037015292}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &2067819613 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 0d97c22110c1e934c9554d8f83d40e1f, type: 3}
@@ -33562,3 +33645,4 @@ SceneRoots:
   - {fileID: 420955924}
   - {fileID: 1285180347}
   - {fileID: 1886726138}
+  - {fileID: 842029139}

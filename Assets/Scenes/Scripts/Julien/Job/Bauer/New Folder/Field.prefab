@@ -58,22 +58,36 @@ MonoBehaviour:
   selectionBoxTrigger: {fileID: 8381634378152383271}
   meshCollider: {fileID: 7863468039531651827}
   fillMaterials:
-  - {fileID: 2100000, guid: 066f238573cbd9446b0ae6cc4c793d51, type: 2}
+  - {fileID: 2100000, guid: 0df3853543c978348aeb483ac9e540ac, type: 2}
   fallbackMaterial: {fileID: 0}
   selectedMaterialOverride: {fileID: 0}
-  heightOffset: 0.03
+  heightOffset: 0.07
   outlineExtraOffset: 0.01
   fillRenderQueue: 2451
-  uvScale: 1
-  uvOffset: {x: 0, y: 0}
+  uvScale: 0.1
+  uvOffset: {x: 0, y: 0.98}
   lockUVToWorld: 1
   tileWorldSize: 1
-  maxGridCells: 5000
+  maxGridCells: 500000
+  enableFurrowRelief: 1
+  furrowAcrossAxis: 0
+  furrowRepeatDistanceWorld: 1
+  furrowLengthSegments: 32
+  furrowSegmentsPerStrip: 5
+  furrowHeight: 0.3
+  furrowEdgeDip: 0.04
+  furrowPlateauHalfWidth: 0.47
+  furrowPlateauEdgeSoftness: 0.0098
+  furrowBoundaryBlendDistance: 3
+  furrowBoundaryBlendExponent: 3
+  furrowWriteBlendVertexColors: 1
+  furrowTextureEdgeBlendDistance: 0.45
+  furrowBlendGroovesToGround: 0
   subdivideEdges: 1
   maxEdgeLength: 0.5
   maxSubdivisionsPerEdge: 64
   smoothOutline: 1
-  outlineSmoothIterations: 2
+  outlineSmoothIterations: 3
   outlineMinSegmentLength: 0.05
   outlineCornerVerts: 6
   outlineCapVerts: 6
@@ -83,6 +97,11 @@ MonoBehaviour:
   conformRayHeight: 50
   terrainFollowStrength: 1
   maxSlopeAngle: 35
+  terrainForDetailClear: {fileID: 0}
+  autoFindTerrainForDetailClear: 1
+  clearPaintDetailsInFieldPolygon: 1
+  terrainDetailClearPadding: 10
+  clearTerrainDetailsOnlyInEditor: 1
   highlightTintStrength: 0.25
   emissionBoost: 1.2
   highlightTargetColor: {r: 1, g: 0.92, b: 0.45, a: 1}
