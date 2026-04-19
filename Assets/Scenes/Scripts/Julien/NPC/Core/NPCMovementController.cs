@@ -4,6 +4,7 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(CapsuleCollider))]
 [DisallowMultipleComponent]
+[DefaultExecutionOrder(-200)]
 public class NPCMovementController : MonoBehaviour
 {
     [Header("Movement")]
@@ -62,17 +63,8 @@ public class NPCMovementController : MonoBehaviour
         rb.interpolation = RigidbodyInterpolation.Interpolate;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
-        // FBX / rig : MeshColliders concaves sur les os enfant + Rigidbody dynamique à la racine → erreur PhysX
-        // (« Concave Mesh Colliders are not supported… »). La collision est portée par le CapsuleCollider racine.
-        if (!rb.isKinematic)
-        {
-            foreach (MeshCollider mc in GetComponentsInChildren<MeshCollider>(true))
-            {
-                if (mc.transform == transform)
-                    continue;
-                mc.enabled = false;
-            }
-        }
+        // Même logique que NavMesh : Rigidbody peut être sur un enfant du FBX avec MeshCollider concave sur le même GO.
+        NpcPhysicsMeshColliderSanitizer.DisableMeshCollidersUnderDynamicRigidbodies(transform);
 
         progressReferencePosition = transform.position;
     }

@@ -68,6 +68,8 @@ MonoBehaviour:
     valueJitter: 0.2
     uvOffsetJitter: 0.35
     baseTint: {r: 1, g: 1, b: 1, a: 1}
+    useSeparateTintForQuoins: 0
+    quoinBaseTint: {r: 0.78, g: 0.78, b: 0.82, a: 1}
     endQuoins:
       enabled: 1
       reserveWidth: 0.34
@@ -81,6 +83,12 @@ MonoBehaviour:
       alternateLongScale: 1.18
       edgeInset: 0
       verticalSpacing: 0.01
+      cornerLDepthMul: 1.14
+      cornerQuoinOutwardOffsetMeters: 0
+      cornerQuoinLocalOffsetMeters: {x: 0, y: 0, z: 0}
+      reflexCornerQuoinOutwardOffsetMeters: 0
+      reflexCornerQuoinLocalOffsetMeters: {x: -0.3, y: 0, z: 0.1}
+      useGridRightAngleCornerQuoins: 1
   stoneLargeModules:
   - {fileID: 11400000, guid: 8146a80bdc2ae7249b7ec141a1512006, type: 2}
   - {fileID: 11400000, guid: 047aa4e468205e440b59baf300f9985b, type: 2}

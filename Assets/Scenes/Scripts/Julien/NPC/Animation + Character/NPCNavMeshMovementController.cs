@@ -3,6 +3,7 @@ using UnityEngine.AI;
 
 [RequireComponent(typeof(NavMeshAgent))]
 [DisallowMultipleComponent]
+[DefaultExecutionOrder(-200)]
 public class NPCNavMeshMovementController : MonoBehaviour
 {
     [Header("References")]
@@ -49,6 +50,8 @@ public class NPCNavMeshMovementController : MonoBehaviour
         {
             Debug.LogWarning($"[NPCNavMeshMovementController] Missing NavMeshAgent on {name}.", this);
         }
+
+        NpcPhysicsMeshColliderSanitizer.DisableMeshCollidersUnderDynamicRigidbodies(transform);
     }
 
     public void SetTarget(Transform target)

@@ -93,7 +93,7 @@ MonoBehaviour:
   menuRoot: {fileID: 5851879466789537472}
   panelRoot: {fileID: 5140009601022140875}
   buttonContainer: {fileID: 3827714440123283185}
-  buttonPrefab: {fileID: 0}
+  buttonPrefab: {fileID: 3204926680423033523, guid: 682b9ae22ef684b4d9a3ea8fa7af8e2d, type: 3}
   backgroundCloseButton: {fileID: 2889534447221675841}
   closeButton: {fileID: 0}
   titleText: {fileID: 4598338475402638483}

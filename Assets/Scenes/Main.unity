@@ -17998,7 +17998,7 @@ PrefabInstance:
     - target: {fileID: 3547379822871738720, guid: 926e66797f83ea044943baabe886efba, type: 3}
       propertyPath: fieldPrefab
       value: 
-      objectReference: {fileID: 1053851416929442394, guid: 1046cd2bbd2aff04f8aef5f5dc5aecd6, type: 3}
+      objectReference: {fileID: 8734977829553312992, guid: 6a6792d36ff27ca43ae7c3f342a3e548, type: 3}
     - target: {fileID: 3547379822871738720, guid: 926e66797f83ea044943baabe886efba, type: 3}
       propertyPath: previewOutline
       value: 

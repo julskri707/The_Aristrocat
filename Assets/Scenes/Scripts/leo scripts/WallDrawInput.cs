@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -12,12 +13,16 @@ public class WallDrawInput : MonoBehaviour
         Rectangle,
         Square,
         Circle,
-        Triangle
+        Triangle,
+        /// <summary>Open circular arc (e.g. semi-circle) fitted by auto-open-arc.</summary>
+        OpenArc
     }
 
     [Header("References")]
     public Camera cam;
     public Collider groundCollider;
+    [Tooltip("Optionnel : aimantation des tracés sur les sommets des murs existants + fusion des lots au relâchement sur un coin.")]
+    public WallBuildController wallBuild;
 
     [Header("Drawing")]
     [Min(0.01f)] public float pointSpacing = 0.35f;
@@ -27,21 +32,30 @@ public class WallDrawInput : MonoBehaviour
     [Header("Line Preview")]
     [Min(0.001f)] public float lineWidth = 0.12f;
 
-    [Header("Grid")]
+    [Header("Snap — grille grise (HierarchicalGrid)")]
+    [Tooltip("Active l’aimantation (désactive tout le snap si off).")]
     public bool enableGridSnap = true;
-    [Min(0.05f)] public float gridSize = 1.0f;
+    [Tooltip("Aimante sur les cellules feuilles visibles : 9 points par carré (pas = côté feuille / 2).")]
+    public bool snapToHierarchicalVisualGrid = true;
+    [Tooltip("Si vide, premier HierarchicalGridManager dans la scène. Sans manager : pas de snap grille.")]
+    public HierarchicalGridManager hierarchicalGrid;
+    [Tooltip("Pendant le clic maintenu : pas d’aimantation ; au relâchement, projection sur la grille 9 points des feuilles.")]
+    public bool snapOnlyOnCommitWhileDrawing = true;
+    [Tooltip("Si vrai : ne coller aux coins des murs existants qu’au relâchement du tracé (EndDraw), pas à chaque pas pendant ContinueDraw — évite que le segment suive un mur voisin avant d’avoir lâché le clic.")]
+    public bool snapDrawToWallCornersOnlyOnCommit = true;
+    [Tooltip("Rectangles alignés axes : recaler les coins sur la grille 9 points (feuille sous chaque coin).")]
+    public bool alignAxisAlignedClosedShapesToMainGridCells = true;
+
+    [Header("Grille — overlay LineRenderer (mailles feuilles)")]
+    [Tooltip("Dessine les bords des cellules feuilles autour de la caméra. Masque le maillage hiérarchique pour éviter le double.")]
     public bool showGridInGame = false;
     public bool showGridGizmos = true;
     [Range(4, 200)] public int gridHalfExtent = 25;
-    [Range(3, 8)] public int gridHierarchyLevels = 5;
-    [Range(4f, 512f)] public float gridRootCellMultiplier = 64f;
-    [Range(0.6f, 8f)] public float gridZoomRevealFactor = 2.4f;
     [Range(24, 220)] public int gridMaxLinesPerAxis = 120;
     [Range(0.0005f, 0.20f)] public float gridLineWidth = 0.02f;
     [Range(0.02f, 1.0f)] public float gridInnerAlpha = 0.38f;
     [Range(0.01f, 0.8f)] public float gridOuterAlpha = 0.06f;
     [Range(-0.05f, 0.2f)] public float gridVisualYOffset = 0.01f;
-    public Vector3 gridOrigin = Vector3.zero;
 
     [Header("Auto Shapes")]
     public bool enableAutoShapes = true;
@@ -55,29 +69,56 @@ public class WallDrawInput : MonoBehaviour
 
     [Header("Straight Line")]
     [Range(0.005f, 0.2f)] public float straightLineToleranceMultiplier = 0.45f;
+    [Tooltip("Open strokes: if every point stays within (this × grid size) of the line from first to last point, collapse to that segment. Fixes grid-snapped diagonal staircases (zigzag) before straight-line fitting.")]
+    [Range(0.65f, 1.15f)] public float openStrokeChordDeviationGridMul = 0.9f;
+
+    [Header("Open Arc")]
+    public bool autoOpenArc = true;
+    [Tooltip("Segments for fitted open arcs. Fewer segments = lighter meshes.")]
+    [Range(24, 196)] public int openArcResolution = 40;
+    [Tooltip("Radial error vs grid: higher = easier to accept hand-drawn / grid-snapped arcs.")]
+    [Range(0.02f, 0.55f)] public float openArcFitTolerance = 0.26f;
+    [Tooltip("Minimum bulge (sagitta) vs grid for an arc to be considered curved.")]
+    [Range(0.08f, 0.75f)] public float openArcMinSagittaGridMul = 0.28f;
+    [Range(10f, 220f)] public float openArcMinSweepDeg = 18f;
+    [Range(60f, 350f)] public float openArcMaxSweepDeg = 300f;
+    [Tooltip("When both line and arc fit, prefer arc if arcErr <= lineErr × this.")]
+    [Range(1f, 2f)] public float openArcPreferOverLineMul = 1.32f;
 
     [Header("Circle")]
-    [Range(16, 128)] public int circleResolution = 48;
-    [Range(0.01f, 0.5f)] public float circleStrictnessMultiplier = 0.18f;
-    [Range(1.0f, 1.5f)] public float circleDetectionBoost = 1.10f;
+    [Tooltip("Vertices on the fitted circle path. Higher = smoother circle but more wall mesh triangles (~linear). Try 24–36 for balance.")]
+    [Range(16, 128)] public int circleResolution = 24;
+    [Tooltip("Higher = more tolerant radial deviation from a perfect circle (grid / hand-draw).")]
+    [Range(0.01f, 0.5f)] public float circleStrictnessMultiplier = 0.24f;
+    [Tooltip("Score multiplier for circle candidate vs other closed shapes.")]
+    [Range(1.0f, 1.5f)] public float circleDetectionBoost = 1.14f;
 
     [Header("Rectangle")]
-    [Range(2, 30)] public int rectPointsPerEdge = 10;
-    [Range(0.0f, 0.4f)] public float squareRatioTolerance = 0.12f;
+    [Tooltip("Samples per edge on fitted rectangle/square. Lower = fewer mesh segments (4× this vertices along the loop).")]
+    [Range(2, 30)] public int rectPointsPerEdge = 4;
+    [Tooltip("Max |w−h|/max(w,h) to classify as Square. Lower = fewer false squares.")]
+    [Range(0.0f, 0.4f)] public float squareRatioTolerance = 0.095f;
+    [Tooltip("When auto-fit classifies a Square, score is multiplied by this so Circle can win a bit more often.")]
+    [Range(0.88f, 1f)] public float squareClassificationScoreMul = 0.96f;
     [Range(0.20f, 0.80f)] public float minRectangleProbability = 0.40f;
     [Range(0.20f, 0.98f)] public float rectangleCornerBoost = 0.70f;
     [Range(0.0f, 1.0f)] public float rectangleRoundPenalty = 0.45f;
 
     [Header("Triangle")]
     [Range(0.5f, 8.0f)] public float triangleToleranceMultiplier = 4.4f;
-    [Range(4, 32)] public int roundedTriangleMaxCurvePoints = 12;
+    [Range(4, 32)] public int roundedTriangleMaxCurvePoints = 8;
     [Range(40f, 170f)] public float roundedTriangleMaxApexAngle = 142f;
     [Range(0.10f, 0.80f)] public float minTriangleProbability = 0.18f;
+    [Tooltip("When stroke is radially round, triangle score scales toward this factor (vs 1). Lower = less triangle vs circles.")]
+    [Range(0.55f, 1f)] public float triangleMinScoreWhenStrokeIsCircular = 0.72f;
 
     [Header("Shape Decision")]
     [Range(0.0f, 1.0f)] public float minClosedShapeConfidence = 0.22f;
     [Range(0.0f, 0.5f)] public float minClosedShapeLead = 0.05f;
-    [Range(0.10f, 0.80f)] public float minCircleProbability = 0.30f;
+    [Tooltip("Minimum score for Circle to be accepted as best closed shape (lower = easier).")]
+    [Range(0.10f, 0.80f)] public float minCircleProbability = 0.24f;
+    [Tooltip("Closed-loop resampling count for shape scoring. Higher = finer recognition.")]
+    [Range(24, 256)] public int closedShapeSampleCount = 96;
 
     [Header("Closed Shape Rejection")]
     [Range(1.0f, 2.5f)] public float maxPathToHullPerimeterRatio = 1.55f;
@@ -100,17 +141,32 @@ public class WallDrawInput : MonoBehaviour
     public DetectedShapeKind LastCommittedShape { get; private set; } = DetectedShapeKind.Free;
     public string LastCommittedShapeName { get; private set; } = "None";
 
+    /// <summary>Vrai si le dernier <see cref="EndDraw"/> a recalé le relâchement sur un sommet de mur voisin (fusion possible côté <see cref="WallBuildController"/>).</summary>
+    public bool LastCommitSnappedToWallCorner { get; private set; }
+
     public IReadOnlyList<Vector3> CurrentPoints => _points;
 
     private readonly List<Vector3> _points = new List<Vector3>();
     private bool _isDrawing;
     private LineRenderer _lr;
-    private Transform _gridVisualRoot;
-    private readonly List<LineRenderer> _gridLines = new List<LineRenderer>();
+
+    Coroutine _menuBeginDrawCoroutine;
+    bool _menuDeferredBeginDrawActive;
 
     private static Material s_SharedPreviewMaterial;
     private static Material s_SharedGridMaterial;
-    private bool _legacyGridForcedOff;
+
+    private Transform _gridVisualRoot;
+    private readonly List<LineRenderer> _gridLines = new List<LineRenderer>();
+    private bool _gridVisualStateDirty = true;
+    private bool _lastShowGridInGame;
+    private bool _gridHasActiveLines;
+    private Vector3 _lastGridVisualCamPos;
+    private float _lastGridVisualCamHeight;
+
+    HierarchicalGridManager _cachedHierarchicalGrid;
+    float _nextHierarchicalGridRescanTime;
+    bool _didHierarchicalGridSearch;
 
     struct ShapeCandidate
     {
@@ -150,9 +206,22 @@ public class WallDrawInput : MonoBehaviour
     {
         _lr = GetComponent<LineRenderer>();
         ApplyLineRendererSetup();
-        EvaluateLegacyGridCompatibility();
-        EnsureGridVisualObjects();
+        if (hierarchicalGrid == null)
+            hierarchicalGrid = FindFirstObjectByType<HierarchicalGridManager>();
+        if (wallBuild == null)
+            wallBuild = FindFirstObjectByType<WallBuildController>();
+        _cachedHierarchicalGrid = hierarchicalGrid;
+        SyncHierarchicalGridMeshSuppression();
         UpdateGridVisuals();
+    }
+
+    void OnEnable()
+    {
+        _cachedHierarchicalGrid = null;
+        _didHierarchicalGridSearch = false;
+        _nextHierarchicalGridRescanTime = 0f;
+        _gridVisualStateDirty = true;
+        _lastShowGridInGame = showGridInGame;
     }
 
     void OnValidate()
@@ -160,23 +229,23 @@ public class WallDrawInput : MonoBehaviour
         pointSpacing = Mathf.Max(0.01f, pointSpacing);
         snapCloseDistance = Mathf.Max(0.01f, snapCloseDistance);
         lineWidth = Mathf.Max(0.001f, lineWidth);
-        gridSize = Mathf.Max(0.05f, gridSize);
-        gridHalfExtent = Mathf.Clamp(gridHalfExtent, 4, 200);
-        gridHierarchyLevels = Mathf.Clamp(gridHierarchyLevels, 3, 8);
-        gridRootCellMultiplier = Mathf.Clamp(gridRootCellMultiplier, 4f, 512f);
-        gridZoomRevealFactor = Mathf.Clamp(gridZoomRevealFactor, 0.6f, 8f);
-        gridMaxLinesPerAxis = Mathf.Clamp(gridMaxLinesPerAxis, 24, 220);
-        gridLineWidth = Mathf.Clamp(gridLineWidth, 0.0005f, 0.20f);
-        gridInnerAlpha = Mathf.Clamp(gridInnerAlpha, 0.02f, 1f);
-        gridOuterAlpha = Mathf.Clamp(gridOuterAlpha, 0.01f, 0.8f);
-        gridVisualYOffset = Mathf.Clamp(gridVisualYOffset, -0.05f, 0.2f);
         tolerance = Mathf.Clamp(tolerance, 0.01f, 0.5f);
         straightLineToleranceMultiplier = Mathf.Clamp(straightLineToleranceMultiplier, 0.005f, 0.2f);
+        openStrokeChordDeviationGridMul = Mathf.Clamp(openStrokeChordDeviationGridMul, 0.65f, 1.15f);
+        openArcResolution = Mathf.Clamp(openArcResolution, 24, 196);
+        openArcFitTolerance = Mathf.Clamp(openArcFitTolerance, 0.02f, 0.55f);
+        openArcMinSagittaGridMul = Mathf.Clamp(openArcMinSagittaGridMul, 0.08f, 0.75f);
+        openArcMinSweepDeg = Mathf.Clamp(openArcMinSweepDeg, 10f, 220f);
+        openArcMaxSweepDeg = Mathf.Clamp(openArcMaxSweepDeg, 60f, 350f);
+        openArcPreferOverLineMul = Mathf.Clamp(openArcPreferOverLineMul, 1f, 2f);
+        if (openArcMaxSweepDeg < openArcMinSweepDeg + 1f)
+            openArcMaxSweepDeg = openArcMinSweepDeg + 1f;
         circleResolution = Mathf.Clamp(circleResolution, 16, 128);
         circleStrictnessMultiplier = Mathf.Clamp(circleStrictnessMultiplier, 0.01f, 0.5f);
         circleDetectionBoost = Mathf.Clamp(circleDetectionBoost, 1.0f, 1.5f);
         rectPointsPerEdge = Mathf.Clamp(rectPointsPerEdge, 2, 30);
         squareRatioTolerance = Mathf.Clamp(squareRatioTolerance, 0f, 0.4f);
+        squareClassificationScoreMul = Mathf.Clamp(squareClassificationScoreMul, 0.88f, 1f);
         minRectangleProbability = Mathf.Clamp(minRectangleProbability, 0.20f, 0.80f);
         rectangleCornerBoost = Mathf.Clamp(rectangleCornerBoost, 0.20f, 0.98f);
         rectangleRoundPenalty = Mathf.Clamp01(rectangleRoundPenalty);
@@ -184,10 +253,18 @@ public class WallDrawInput : MonoBehaviour
         roundedTriangleMaxCurvePoints = Mathf.Clamp(roundedTriangleMaxCurvePoints, 4, 32);
         roundedTriangleMaxApexAngle = Mathf.Clamp(roundedTriangleMaxApexAngle, 40f, 170f);
         minTriangleProbability = Mathf.Clamp(minTriangleProbability, 0.10f, 0.80f);
+        triangleMinScoreWhenStrokeIsCircular = Mathf.Clamp(triangleMinScoreWhenStrokeIsCircular, 0.55f, 1f);
         minClosedShapeConfidence = Mathf.Clamp01(minClosedShapeConfidence);
         minClosedShapeLead = Mathf.Clamp(minClosedShapeLead, 0f, 0.5f);
         minCircleProbability = Mathf.Clamp(minCircleProbability, 0.10f, 0.80f);
+        closedShapeSampleCount = Mathf.Clamp(closedShapeSampleCount, 24, 256);
         maxPathToHullPerimeterRatio = Mathf.Clamp(maxPathToHullPerimeterRatio, 1f, 2.5f);
+        gridHalfExtent = Mathf.Clamp(gridHalfExtent, 4, 200);
+        gridMaxLinesPerAxis = Mathf.Clamp(gridMaxLinesPerAxis, 24, 220);
+        gridLineWidth = Mathf.Clamp(gridLineWidth, 0.0005f, 0.20f);
+        gridInnerAlpha = Mathf.Clamp(gridInnerAlpha, 0.02f, 1f);
+        gridOuterAlpha = Mathf.Clamp(gridOuterAlpha, 0.01f, 0.8f);
+        gridVisualYOffset = Mathf.Clamp(gridVisualYOffset, -0.05f, 0.2f);
 
         if (_lr == null)
             _lr = GetComponent<LineRenderer>();
@@ -195,9 +272,10 @@ public class WallDrawInput : MonoBehaviour
         if (_lr != null)
             ApplyLineRendererSetup();
 
-        EvaluateLegacyGridCompatibility();
+        SyncHierarchicalGridMeshSuppression();
+        _gridVisualStateDirty = true;
 
-        // Avoid creating/updating runtime grid visuals during OnValidate.
+        // Avoid creating/updating runtime visuals during OnValidate.
         // Unity warns when Transform/AddComponent messages are triggered here,
         // and it can spam hundreds of operations.
     }
@@ -207,10 +285,17 @@ public class WallDrawInput : MonoBehaviour
         if (cam == null)
             return;
 
-        EvaluateLegacyGridCompatibility();
+        SyncHierarchicalGridMeshSuppression();
+
+        if (showGridInGame != _lastShowGridInGame)
+        {
+            _gridVisualStateDirty = true;
+            _lastShowGridInGame = showGridInGame;
+        }
+
         UpdateGridVisuals();
 
-        if (Input.GetMouseButtonDown(0))
+        if (Input.GetMouseButtonDown(0) && !_menuDeferredBeginDrawActive)
             BeginDraw();
 
         if (_isDrawing && Input.GetMouseButton(0))
@@ -220,30 +305,135 @@ public class WallDrawInput : MonoBehaviour
             EndDraw();
     }
 
+    /// <summary>
+    /// Après le menu du pivot maison (« Ajouter un mur ») : attend la fin du clic UI puis démarre un tracé au sol.
+    /// </summary>
+    public void BeginWallStrokeAfterMenuChoice()
+    {
+        if (!isActiveAndEnabled)
+            return;
+
+        if (_menuBeginDrawCoroutine != null)
+        {
+            StopCoroutine(_menuBeginDrawCoroutine);
+            _menuBeginDrawCoroutine = null;
+        }
+
+        _menuBeginDrawCoroutine = StartCoroutine(CoBeginWallStrokeAfterMenuChoice());
+    }
+
+    IEnumerator CoBeginWallStrokeAfterMenuChoice()
+    {
+        _menuDeferredBeginDrawActive = true;
+        try
+        {
+            while (Input.GetMouseButton(0) || Input.GetMouseButton(1))
+                yield return null;
+            yield return null;
+
+            int guard = 0;
+            while (UnityEngine.EventSystems.EventSystem.current != null &&
+                   UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject() &&
+                   guard++ < 600)
+                yield return null;
+
+            BeginDraw();
+        }
+        finally
+        {
+            _menuDeferredBeginDrawActive = false;
+            _menuBeginDrawCoroutine = null;
+        }
+    }
+
     void OnDisable()
     {
+        if (_menuBeginDrawCoroutine != null)
+        {
+            StopCoroutine(_menuBeginDrawCoroutine);
+            _menuBeginDrawCoroutine = null;
+        }
+
+        _menuDeferredBeginDrawActive = false;
+
         for (int i = 0; i < _gridLines.Count; i++)
         {
             if (_gridLines[i] != null)
                 _gridLines[i].enabled = false;
         }
+
+        _gridHasActiveLines = false;
+
+        HierarchicalGridManager h = ResolveHierarchicalGrid();
+        if (h != null)
+            h.suppressMeshRendering = false;
     }
 
-    void EvaluateLegacyGridCompatibility()
+    void OnDrawGizmos()
     {
-        bool shouldForceOff = FindFirstObjectByType<HierarchicalGridManager>() != null;
-        if (shouldForceOff == _legacyGridForcedOff)
+        if (!showGridGizmos || showGridInGame)
             return;
 
-        _legacyGridForcedOff = shouldForceOff;
+        Camera gridCam = cam != null ? cam : Camera.main;
+        if (gridCam == null)
+            return;
 
-        if (_legacyGridForcedOff)
+        HierarchicalGridManager mgr = ResolveHierarchicalGrid();
+        if (mgr == null || mgr.settings == null)
+            return;
+
+        IReadOnlyList<HierarchicalGridNode> leaves = mgr.LeafNodes;
+        if (leaves == null || leaves.Count == 0)
+            return;
+
+        float baseY = (flattenYToZero ? 0f : mgr.settings.gridPlaneY) + gridVisualYOffset;
+        Vector3 camPos = gridCam.transform.position;
+        float ext = Mathf.Max(0.25f, mgr.settings.minCellSize) * Mathf.Clamp(gridHalfExtent, 4, 200);
+        float minX = camPos.x - ext;
+        float maxX = camPos.x + ext;
+        float minZ = camPos.z - ext;
+        float maxZ = camPos.z + ext;
+
+        Gizmos.color = new Color(0.55f, 0.55f, 0.55f, Mathf.Clamp01(gridOuterAlpha + 0.28f));
+
+        int lineBudget = Mathf.Min(gridMaxLinesPerAxis * 8, 640);
+        int drawn = 0;
+
+        for (int i = 0; i < leaves.Count && drawn < lineBudget; i++)
         {
-            for (int i = 0; i < _gridLines.Count; i++)
-            {
-                if (_gridLines[i] != null)
-                    _gridLines[i].enabled = false;
-            }
+            HierarchicalGridNode leaf = leaves[i];
+            if (leaf == null)
+                continue;
+
+            Vector2 mn = leaf.Min;
+            Vector2 mx = leaf.Max;
+            if (mx.x < minX || mn.x > maxX || mx.y < minZ || mn.y > maxZ)
+                continue;
+
+            float x0 = mn.x, x1 = mx.x, z0 = mn.y, z1 = mx.y;
+            Vector3 a0 = new Vector3(x0, baseY, z0);
+            Vector3 a1 = new Vector3(x1, baseY, z0);
+            Vector3 a2 = new Vector3(x1, baseY, z1);
+            Vector3 a3 = new Vector3(x0, baseY, z1);
+            Gizmos.DrawLine(a0, a1);
+            Gizmos.DrawLine(a1, a2);
+            Gizmos.DrawLine(a2, a3);
+            Gizmos.DrawLine(a3, a0);
+            drawn += 4;
+        }
+    }
+
+    void SyncHierarchicalGridMeshSuppression()
+    {
+        HierarchicalGridManager h = ResolveHierarchicalGrid();
+        if (h == null)
+            return;
+
+        bool wantSuppress = showGridInGame;
+        if (h.suppressMeshRendering != wantSuppress)
+        {
+            h.suppressMeshRendering = wantSuppress;
+            _gridVisualStateDirty = true;
         }
     }
 
@@ -314,7 +504,7 @@ public class WallDrawInput : MonoBehaviour
             }
         }
 
-        int wanted = CountHierarchicalGridLineCount();
+        int wanted = Mathf.Max(512, gridMaxLinesPerAxis * 8 + 128);
         Material mat = GetOrCreateSharedGridMaterial();
 
         while (_gridLines.Count < wanted)
@@ -336,15 +526,19 @@ public class WallDrawInput : MonoBehaviour
 
     void UpdateGridVisuals()
     {
-        EnsureGridVisualObjects();
-
-        if (_legacyGridForcedOff || !showGridInGame || !enableGridSnap || _gridLines.Count == 0)
+        if (!showGridInGame)
         {
-            for (int i = 0; i < _gridLines.Count; i++)
+            if (_gridHasActiveLines)
             {
-                if (_gridLines[i] != null && _gridLines[i].enabled)
-                    _gridLines[i].enabled = false;
+                for (int i = 0; i < _gridLines.Count; i++)
+                {
+                    if (_gridLines[i] != null && _gridLines[i].enabled)
+                        _gridLines[i].enabled = false;
+                }
+
+                _gridHasActiveLines = false;
             }
+
             return;
         }
 
@@ -352,56 +546,64 @@ public class WallDrawInput : MonoBehaviour
         if (gridCam == null)
             return;
 
-        float fineStep = Mathf.Max(0.05f, gridSize);
-        int levels = Mathf.Clamp(gridHierarchyLevels, 3, 8);
-        float rootStep = ComputeRootGridStep(fineStep);
-        float coverage = rootStep * Mathf.Clamp(gridHalfExtent, 4, 200);
-        float baseY = (flattenYToZero ? 0f : gridOrigin.y) + gridVisualYOffset;
-        float cx = gridCam.transform.position.x;
-        float cz = gridCam.transform.position.z;
-        float camHeight = Mathf.Abs(gridCam.transform.position.y - baseY);
-        float widthBase = Mathf.Clamp(gridLineWidth, 0.0005f, 0.20f);
-        float minX = cx - coverage;
-        float maxX = cx + coverage;
-        float minZ = cz - coverage;
-        float maxZ = cz + coverage;
-        int lineCursor = 0;
+        HierarchicalGridManager mgr = ResolveHierarchicalGrid();
+        if (mgr == null || mgr.settings == null)
+            return;
 
-        for (int level = 0; level < levels; level++)
+        IReadOnlyList<HierarchicalGridNode> leaves = mgr.LeafNodes;
+        if (leaves == null || leaves.Count == 0)
+            return;
+
+        float baseY = (flattenYToZero ? 0f : mgr.settings.gridPlaneY) + gridVisualYOffset;
+        Vector3 camPos = gridCam.transform.position;
+        float camHeight = Mathf.Abs(camPos.y - baseY);
+
+        if (!_gridVisualStateDirty)
         {
-            float levelStep = ComputeLevelStep(rootStep, level);
-            float visibility = ComputeLevelVisibility(camHeight, levelStep, level);
-            if (visibility <= 0.001f)
+            Vector2 deltaXZ = new Vector2(camPos.x - _lastGridVisualCamPos.x, camPos.z - _lastGridVisualCamPos.z);
+            float heightDelta = Mathf.Abs(camHeight - _lastGridVisualCamHeight);
+            if (deltaXZ.sqrMagnitude < 0.0004f && heightDelta < 0.02f)
+                return;
+        }
+
+        EnsureGridVisualObjects();
+        if (_gridLines.Count == 0)
+            return;
+
+        float ext = Mathf.Max(0.25f, mgr.settings.minCellSize) * Mathf.Clamp(gridHalfExtent, 4, 200);
+        float cx = camPos.x;
+        float cz = camPos.z;
+        float minX = cx - ext;
+        float maxX = cx + ext;
+        float minZ = cz - ext;
+        float maxZ = cz + ext;
+
+        float width = Mathf.Clamp(gridLineWidth, 0.0005f, 0.20f);
+        var col = new Color(0.55f, 0.55f, 0.55f, Mathf.Clamp01(Mathf.Max(gridInnerAlpha, 0.35f)));
+
+        int lineCursor = 0;
+        int maxLines = Mathf.Min(_gridLines.Count, gridMaxLinesPerAxis * 8);
+
+        for (int i = 0; i < leaves.Count && lineCursor < maxLines - 4; i++)
+        {
+            HierarchicalGridNode leaf = leaves[i];
+            if (leaf == null)
                 continue;
 
-            float t = levels <= 1 ? 0f : level / (float)(levels - 1);
-            float alpha = Mathf.Lerp(gridInnerAlpha, gridOuterAlpha, t) * visibility;
-            float gray = Mathf.Lerp(0.62f, 0.83f, t);
-            float width = widthBase * Mathf.Lerp(1.9f, 0.6f, t);
-            Color color = new Color(gray, gray, gray, alpha);
+            Vector2 mn = leaf.Min;
+            Vector2 mx = leaf.Max;
+            if (mx.x < minX || mn.x > maxX || mx.y < minZ || mn.y > maxZ)
+                continue;
 
-            int xStartIndex = Mathf.FloorToInt((minX - gridOrigin.x) / levelStep);
-            int xEndIndex = Mathf.CeilToInt((maxX - gridOrigin.x) / levelStep);
-            int zStartIndex = Mathf.FloorToInt((minZ - gridOrigin.z) / levelStep);
-            int zEndIndex = Mathf.CeilToInt((maxZ - gridOrigin.z) / levelStep);
+            float x0 = mn.x;
+            float x1 = mx.x;
+            float z0 = mn.y;
+            float z1 = mx.y;
 
-            int xSampleStep = ComputeIndexSampleStep(xStartIndex, xEndIndex);
-            int zSampleStep = ComputeIndexSampleStep(zStartIndex, zEndIndex);
-
-            int firstX = AlignIndexToStride(xStartIndex, xSampleStep);
-            int firstZ = AlignIndexToStride(zStartIndex, zSampleStep);
-
-            for (int i = firstX; i <= xEndIndex; i += xSampleStep)
-            {
-                float x = gridOrigin.x + i * levelStep;
-                EmitGridLine(ref lineCursor, new Vector3(x, baseY, minZ), new Vector3(x, baseY, maxZ), width, color);
-            }
-
-            for (int i = firstZ; i <= zEndIndex; i += zSampleStep)
-            {
-                float z = gridOrigin.z + i * levelStep;
-                EmitGridLine(ref lineCursor, new Vector3(minX, baseY, z), new Vector3(maxX, baseY, z), width, color);
-            }
+            EmitGridLine(ref lineCursor, new Vector3(x0, baseY, z0), new Vector3(x1, baseY, z0), width, col);
+            EmitGridLine(ref lineCursor, new Vector3(x1, baseY, z0), new Vector3(x1, baseY, z1), width, col);
+            EmitGridLine(ref lineCursor, new Vector3(x1, baseY, z1), new Vector3(x0, baseY, z1), width, col);
+            EmitGridLine(ref lineCursor, new Vector3(x0, baseY, z1), new Vector3(x0, baseY, z0), width, col);
         }
 
         for (int i = lineCursor; i < _gridLines.Count; i++)
@@ -409,94 +611,15 @@ public class WallDrawInput : MonoBehaviour
             if (_gridLines[i] != null)
                 _gridLines[i].enabled = false;
         }
+
+        _gridHasActiveLines = lineCursor > 0;
+
+        _lastGridVisualCamPos = camPos;
+        _lastGridVisualCamHeight = camHeight;
+        _gridVisualStateDirty = false;
     }
 
-    int CountHierarchicalGridLineCount()
-    {
-        float fineStep = Mathf.Max(0.05f, gridSize);
-        int levels = Mathf.Clamp(gridHierarchyLevels, 3, 8);
-        float rootStep = ComputeRootGridStep(fineStep);
-        float coverage = rootStep * Mathf.Clamp(gridHalfExtent, 4, 200);
-        int total = 0;
-
-        for (int level = 0; level < levels; level++)
-        {
-            float levelStep = ComputeLevelStep(rootStep, level);
-
-            int xStart = Mathf.FloorToInt((-coverage) / levelStep);
-            int xEnd = Mathf.CeilToInt((coverage) / levelStep);
-            int zStart = xStart;
-            int zEnd = xEnd;
-
-            int xSampleStep = ComputeIndexSampleStep(xStart, xEnd);
-            int zSampleStep = ComputeIndexSampleStep(zStart, zEnd);
-
-            int xFirst = AlignIndexToStride(xStart, xSampleStep);
-            int zFirst = AlignIndexToStride(zStart, zSampleStep);
-
-            int xCount = Mathf.Max(0, ((xEnd - xFirst) / xSampleStep) + 1);
-            int zCount = Mathf.Max(0, ((zEnd - zFirst) / zSampleStep) + 1);
-            total += xCount + zCount;
-        }
-
-        return Mathf.Max(1, total);
-    }
-
-    float ComputeRootGridStep(float fineStep)
-    {
-        return fineStep * Mathf.Max(4f, gridRootCellMultiplier);
-    }
-
-    float ComputeLevelStep(float rootStep, int level)
-    {
-        if (level <= 0)
-            return rootStep;
-
-        if (level == 1)
-            return rootStep * 0.5f;
-
-        float divisor = 2f * Mathf.Pow(4f, level - 1);
-        return rootStep / Mathf.Max(1f, divisor);
-    }
-
-    float ComputeLevelVisibility(float cameraHeight, float levelStep, int level)
-    {
-        if (level == 0)
-            return 1f;
-
-        float reveal = Mathf.Max(0.6f, gridZoomRevealFactor);
-        float appearStart = levelStep * reveal * 2.4f;
-        float appearEnd = levelStep * reveal * 0.85f;
-        if (appearStart <= appearEnd + 0.0001f)
-            return cameraHeight <= appearEnd ? 1f : 0f;
-
-        float t = Mathf.InverseLerp(appearStart, appearEnd, cameraHeight);
-        return 1f - Mathf.Clamp01(t);
-    }
-
-    int ComputeIndexSampleStep(int startIndex, int endIndex)
-    {
-        int count = Mathf.Max(1, endIndex - startIndex + 1);
-        int maxLines = Mathf.Clamp(gridMaxLinesPerAxis, 24, 220);
-        if (count <= maxLines)
-            return 1;
-
-        return Mathf.Max(1, Mathf.CeilToInt(count / (float)maxLines));
-    }
-
-    static int AlignIndexToStride(int value, int stride)
-    {
-        int remainder = value % stride;
-        if (remainder == 0)
-            return value;
-
-        if (value >= 0)
-            return value + (stride - remainder);
-
-        return value - remainder;
-    }
-
-    void EmitGridLine(ref int lineCursor, Vector3 a, Vector3 b, float width, Color color)
+    void EmitGridLine(ref int lineCursor, Vector3 a, Vector3 b, float w, Color color)
     {
         if (lineCursor >= _gridLines.Count)
             return;
@@ -508,8 +631,8 @@ public class WallDrawInput : MonoBehaviour
         lr.enabled = true;
         lr.loop = false;
         lr.positionCount = 2;
-        lr.startWidth = width;
-        lr.endWidth = width;
+        lr.startWidth = w;
+        lr.endWidth = w;
         lr.startColor = color;
         lr.endColor = color;
         lr.SetPosition(0, a);
@@ -522,6 +645,7 @@ public class WallDrawInput : MonoBehaviour
         ResetLiveScores();
         LastCommittedShape = DetectedShapeKind.Free;
         LastCommittedShapeName = "None";
+        LastCommitSnappedToWallCorner = false;
 
         if (_lr != null)
             _lr.positionCount = 0;
@@ -546,8 +670,13 @@ public class WallDrawInput : MonoBehaviour
 
         p = PostProcessPoint(p);
 
+        if (wallBuild != null && wallBuild.snapDrawToExistingWallCorners &&
+            !snapDrawToWallCornersOnlyOnCommit)
+            wallBuild.TrySnapWorldPointToExistingWallCorners(ref p);
+
+        float spacing = GetActiveCapturePointSpacing();
         float dist = Vector3.Distance(_points[_points.Count - 1], p);
-        if (dist >= pointSpacing)
+        if (dist >= spacing)
         {
             _points.Add(p);
             RefreshLine();
@@ -557,11 +686,33 @@ public class WallDrawInput : MonoBehaviour
     void EndDraw()
     {
         _isDrawing = false;
+        LastCommitSnappedToWallCorner = false;
 
         if (_points.Count < 2)
             return;
 
+        // Dernier échantillon = position au relâchement (sinon le tracé s’arrête au dernier pas fixe).
+        if (_points.Count >= 1 && TryGetMouseWorldPoint(out Vector3 releaseP))
+        {
+            releaseP = PostProcessPointForCommitLattice(releaseP);
+            if (wallBuild != null && wallBuild.snapDrawToExistingWallCorners)
+            {
+                if (wallBuild.TrySnapWorldPointToExistingWallCorners(ref releaseP))
+                    LastCommitSnappedToWallCorner = true;
+            }
+
+            float spacing = GetActiveCapturePointSpacing();
+            float d = Vector3.Distance(_points[_points.Count - 1], releaseP);
+            if (LastCommitSnappedToWallCorner)
+                _points[_points.Count - 1] = releaseP;
+            else if (d <= spacing * 0.75f)
+                _points[_points.Count - 1] = releaseP;
+            else if (d > 0.0005f)
+                _points.Add(releaseP);
+        }
+
         string committedShapeName = "Free";
+        bool didGridRectangle = false;
 
         bool closed = false;
 
@@ -575,28 +726,32 @@ public class WallDrawInput : MonoBehaviour
             }
         }
 
-        if (enableGridSnap && closed && TryBuildGridRectangleFromPoints(_points, out List<Vector3> gridFitted, out string gridShapeName))
+        // Manhattan staircase on diagonals: collapse to chord when nearly collinear so straight-line fit works.
+        if (!closed && _points.Count >= 3)
+            TryCollapseOpenStrokeToChordIfNearlyCollinear(_points);
+
+        if (enableGridSnap && snapToHierarchicalVisualGrid && closed &&
+            TryBuildGridRectangleFromPoints(_points, out List<Vector3> gridFitted, out string gridShapeName))
         {
             _points.Clear();
             _points.AddRange(gridFitted);
             RefreshLine();
             committedShapeName = gridShapeName;
+            didGridRectangle = true;
 
             if (logDetectedShape)
                 Debug.Log($"GridShape ✅ : {gridShapeName}");
         }
         else if (enableAutoShapes)
         {
-            if (enableGridSnap && closed && useGridShapeDetectionOnlyWhenGridSnap)
-            {
-                committedShapeName = "Free";
-            }
-            else
-            {
-            bool canTryClosedShapes = (!requireClosedLoop || closed);
-            bool canTryLine = autoStraightLine && !closed;
+            bool canTryClosedShapes = !closed ? false : (!requireClosedLoop || closed);
+            bool canTryOpenShapes = !closed && (autoStraightLine || autoOpenArc);
+            bool shouldTryAutoFit = canTryClosedShapes || canTryOpenShapes;
 
-            if (canTryClosedShapes || canTryLine)
+            if (closed && useGridShapeDetectionOnlyWhenGridSnap && !enableGridSnap)
+                shouldTryAutoFit = false;
+
+            if (shouldTryAutoFit)
             {
                 if (TryAutoFitShape(_points, closed, out List<Vector3> fitted, out string shapeName))
                 {
@@ -610,11 +765,16 @@ public class WallDrawInput : MonoBehaviour
                 }
                 else
                 {
-                    committedShapeName = closed ? "Free" : "Free";
+                    committedShapeName = "Free";
                 }
             }
-            }
         }
+
+        if (!didGridRectangle && enableGridSnap && snapToHierarchicalVisualGrid)
+            ProjectPathToHierarchicalInPlace(_points, closed);
+
+        if (wallBuild != null && wallBuild.snapDrawToExistingWallCorners)
+            wallBuild.SnapPathVerticesToExistingWallCornersInPlace(_points);
 
         RefreshLine();
 
@@ -628,7 +788,41 @@ public class WallDrawInput : MonoBehaviour
 
     bool TryGetMouseWorldPoint(out Vector3 worldPoint)
     {
-        Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+        return TryGetWorldPointFromScreen(Input.mousePosition, out worldPoint);
+    }
+
+    /// <summary>
+    /// Point monde sous le centre de l’écran (ou autre viewport 0–1) : même logique que le dessin à la souris.
+    /// Utilisé par l’UI « Wall draw » pour placer des formes préréglées.
+    /// </summary>
+    public bool TryGetWorldPointFromViewport(float viewportX01, float viewportY01, out Vector3 worldPoint)
+    {
+        if (cam == null)
+            cam = Camera.main;
+        if (cam == null)
+        {
+            worldPoint = default;
+            return false;
+        }
+
+        Vector3 sp = cam.ViewportToScreenPoint(new Vector3(
+            Mathf.Clamp01(viewportX01),
+            Mathf.Clamp01(viewportY01),
+            0f));
+        return TryGetWorldPointFromScreen(sp, out worldPoint);
+    }
+
+    bool TryGetWorldPointFromScreen(Vector3 screenPosition, out Vector3 worldPoint)
+    {
+        if (cam == null)
+            cam = Camera.main;
+        if (cam == null)
+        {
+            worldPoint = default;
+            return false;
+        }
+
+        Ray ray = cam.ScreenPointToRay(screenPosition);
 
         if (groundCollider != null && groundCollider.Raycast(ray, out RaycastHit hit, 10000f))
         {
@@ -651,123 +845,444 @@ public class WallDrawInput : MonoBehaviour
         if (flattenYToZero)
             p.y = 0f;
 
-        if (enableGridSnap)
-            p = SnapPointToGrid(p);
+        if (!enableGridSnap || !snapToHierarchicalVisualGrid)
+            return p;
 
-        return p;
+        if (_isDrawing && snapOnlyOnCommitWhileDrawing)
+            return p;
+
+        return SnapWorldToUniformMainLattice(p);
     }
 
-    Vector3 SnapPointToGrid(Vector3 p)
+    /// <summary>Grille + Y : utilisé au relâchement pour coller le dernier point au même espace que le commit final.</summary>
+    Vector3 PostProcessPointForCommitLattice(Vector3 p)
     {
-        float step = Mathf.Max(0.05f, gridSize);
-        float x = SnapAxis(p.x, gridOrigin.x, step);
-        float z = SnapAxis(p.z, gridOrigin.z, step);
-        return new Vector3(x, p.y, z);
+        if (flattenYToZero)
+            p.y = 0f;
+
+        if (!enableGridSnap || !snapToHierarchicalVisualGrid)
+            return p;
+
+        return SnapWorldToUniformMainLattice(p);
     }
 
-    static float SnapAxis(float value, float origin, float step)
+    float GetActiveCapturePointSpacing()
     {
-        return origin + Mathf.Round((value - origin) / step) * step;
+        return Mathf.Max(0.01f, pointSpacing);
     }
 
-    bool TryBuildGridRectangleFromPoints(List<Vector3> points, out List<Vector3> fitted, out string shapeName)
+    HierarchicalGridManager ResolveHierarchicalGrid()
     {
-        fitted = null;
-        shapeName = "Free";
+        if (hierarchicalGrid != null)
+            return hierarchicalGrid;
+
+        if (_cachedHierarchicalGrid == null && !_didHierarchicalGridSearch)
+        {
+            _cachedHierarchicalGrid = FindFirstObjectByType<HierarchicalGridManager>();
+            _didHierarchicalGridSearch = true;
+        }
+
+        if (_cachedHierarchicalGrid == null && Time.unscaledTime >= _nextHierarchicalGridRescanTime)
+        {
+            _nextHierarchicalGridRescanTime = Time.unscaledTime + 1.5f;
+            _cachedHierarchicalGrid = FindFirstObjectByType<HierarchicalGridManager>();
+        }
+
+        return _cachedHierarchicalGrid;
+    }
+
+    /// <summary>
+    /// Pour la fusion de lots : pas et origine de la grille hiérarchique (feuilles), si disponibles.
+    /// </summary>
+    public bool TryGetHierarchicalCellStepAndOrigin(out float cellStep, out Vector2 originXZ)
+    {
+        cellStep = 1f;
+        originXZ = Vector2.zero;
+        HierarchicalGridManager mgr = ResolveHierarchicalGrid();
+        if (mgr == null || mgr.settings == null)
+            return false;
+        // WallOrthoMergeUtility fonctionne sur une grille discrète *uniforme* (un seul step + une seule origine).
+        // Dans une grille hiérarchique, les leaf cells peuvent être plus grosses que minCellSize (LOD / budget leaf),
+        // ce qui ferait retomber le merge sur l'ancien lattice uniforme.
+        // On ne fournit donc step/origin qu'en cas de grille leaf-uniforme.
+        float minCell = Mathf.Max(0.01f, mgr.settings.minCellSize);
+        float eps = Mathf.Max(0.0001f, minCell * 0.01f);
+
+        IReadOnlyList<HierarchicalGridNode> leaves = mgr.LeafNodes;
+        if (leaves == null || leaves.Count == 0)
+            return false;
+
+        for (int i = 0; i < leaves.Count; i++)
+        {
+            HierarchicalGridNode n = leaves[i];
+            if (n == null)
+                continue;
+            if (Mathf.Abs(n.size - minCell) > eps)
+                return false;
+        }
+
+        cellStep = minCell;
+        originXZ = mgr.settings.gridWorldCenterXZ;
+        return true;
+    }
+
+    /// <summary>
+    /// Même référentiel que la grille grise : centre de la cellule feuille sous le point (XZ).
+    /// Utilisable pour le dessin, les handles, et <see cref="SnapCommittedPathToMainGridInPlace"/>.
+    /// </summary>
+    public Vector3 SnapWorldToHierarchicalLeafCenter(Vector3 world)
+    {
+        HierarchicalGridManager mgr = ResolveHierarchicalGrid();
+        if (mgr == null || mgr.settings == null)
+            return world;
+
+        float yOut = flattenYToZero ? 0f : world.y;
+        float gy = mgr.settings.gridPlaneY;
+        Vector3 test = new Vector3(world.x, gy, world.z);
+
+        if (mgr.TryGetCellAtWorld(test, out HierarchicalGridNode cell))
+        {
+            Vector3 c = mgr.GetCellCenterWorld(cell);
+            return new Vector3(c.x, yOut, c.z);
+        }
+
+        IReadOnlyList<HierarchicalGridNode> leaves = mgr.LeafNodes;
+        if (leaves == null || leaves.Count == 0)
+            return world;
+
+        Vector2 p2 = new Vector2(world.x, world.z);
+        float best = float.MaxValue;
+        HierarchicalGridNode bestNode = null;
+        for (int i = 0; i < leaves.Count; i++)
+        {
+            HierarchicalGridNode n = leaves[i];
+            if (n == null)
+                continue;
+            float d = (n.center - p2).sqrMagnitude;
+            if (d < best)
+            {
+                best = d;
+                bestNode = n;
+            }
+        }
+
+        if (bestNode != null)
+        {
+            Vector3 c = mgr.GetCellCenterWorld(bestNode);
+            return new Vector3(c.x, yOut, c.z);
+        }
+
+        return world;
+    }
+
+    bool TryResolveLeafForWorldSnap(HierarchicalGridManager mgr, Vector3 world, out HierarchicalGridNode leaf)
+    {
+        leaf = null;
+        if (mgr == null || mgr.settings == null)
+            return false;
+
+        float gy = mgr.settings.gridPlaneY;
+        Vector3 test = new Vector3(world.x, gy, world.z);
+
+        if (mgr.TryGetCellAtWorld(test, out leaf) && leaf != null)
+            return true;
+
+        IReadOnlyList<HierarchicalGridNode> leaves = mgr.LeafNodes;
+        if (leaves == null || leaves.Count == 0)
+            return false;
+
+        Vector2 p2 = new Vector2(world.x, world.z);
+        float best = float.MaxValue;
+        for (int i = 0; i < leaves.Count; i++)
+        {
+            HierarchicalGridNode n = leaves[i];
+            if (n == null)
+                continue;
+            float d = (n.center - p2).sqrMagnitude;
+            if (d < best)
+            {
+                best = d;
+                leaf = n;
+            }
+        }
+
+        return leaf != null;
+    }
+
+    /// <summary>
+    /// Grille 9 points (3×3) alignée sur le carré feuille sous le point — même géométrie que le contour affiché.
+    /// </summary>
+    public Vector3 SnapWorldToVisibleLeafNinePointLattice(Vector3 world)
+    {
+        HierarchicalGridManager mgr = ResolveHierarchicalGrid();
+        if (mgr == null || mgr.settings == null)
+            return world;
+
+        if (!TryResolveLeafForWorldSnap(mgr, world, out HierarchicalGridNode leaf) || leaf == null)
+            return world;
+
+        float half = leaf.size * 0.5f;
+        if (half < 1e-8f)
+            return world;
+
+        float yOut = flattenYToZero ? 0f : world.y;
+        Vector2 mn = leaf.Min;
+        float lx = world.x - mn.x;
+        float lz = world.z - mn.y;
+        int ix = Mathf.Clamp(Mathf.RoundToInt(lx / half), 0, 2);
+        int iz = Mathf.Clamp(Mathf.RoundToInt(lz / half), 0, 2);
+        float qx = mn.x + ix * half;
+        float qz = mn.y + iz * half;
+        return new Vector3(qx, yOut, qz);
+    }
+
+    /// <summary>
+    /// Coin de cellule feuille le plus proche (XZ).
+    /// </summary>
+    Vector3 SnapWorldToNearestLeafCorner(Vector3 world)
+    {
+        HierarchicalGridManager mgr = ResolveHierarchicalGrid();
+        if (mgr == null || mgr.settings == null)
+            return world;
+
+        if (!TryResolveLeafForWorldSnap(mgr, world, out HierarchicalGridNode cell) || cell == null)
+            return world;
+
+        Vector2 mn = cell.Min;
+        Vector2 mx = cell.Max;
+        Vector2 p = new Vector2(world.x, world.z);
+        Vector2 c0 = new Vector2(mn.x, mn.y);
+        Vector2 c1 = new Vector2(mx.x, mn.y);
+        Vector2 c2 = new Vector2(mx.x, mx.y);
+        Vector2 c3 = new Vector2(mn.x, mx.y);
+
+        Vector2 bestC = c0;
+        float bestD = float.MaxValue;
+        TryCorner(p, c0, ref bestC, ref bestD);
+        TryCorner(p, c1, ref bestC, ref bestD);
+        TryCorner(p, c2, ref bestC, ref bestD);
+        TryCorner(p, c3, ref bestC, ref bestD);
+
+        float yOut = flattenYToZero ? 0f : world.y;
+        return new Vector3(bestC.x, yOut, bestC.y);
+    }
+
+    static void TryCorner(Vector2 p, Vector2 cand, ref Vector2 bestC, ref float bestD)
+    {
+        float d = (cand - p).sqrMagnitude;
+        if (d < bestD)
+        {
+            bestD = d;
+            bestC = cand;
+        }
+    }
+
+    /// <summary>
+    /// Snap pour édition (handles) : 9 points par feuille visible (aligné sur le quadtree).
+    /// </summary>
+    public Vector3 SnapWorldPointForEditing(Vector3 world)
+    {
+        if (!enableGridSnap || !snapToHierarchicalVisualGrid)
+            return world;
+
+        return SnapWorldToUniformMainLattice(world);
+    }
+
+    /// <summary>
+    /// Pas et origine « carte » (<see cref="HierarchicalGridSettings.minCellSize"/>, <see cref="HierarchicalGridSettings.gridWorldCenterXZ"/>).
+    /// Faux si aucun <see cref="HierarchicalGridManager"/> (plus de fallback).
+    /// </summary>
+    public bool TryGetMainGridLatticeStepXZ(out float step, out Vector2 worldOriginXZ)
+    {
+        step = 0f;
+        worldOriginXZ = default;
+        HierarchicalGridManager mgr = ResolveHierarchicalGrid();
+        if (mgr == null || mgr.settings == null)
+            return false;
+
+        step = Mathf.Max(0.01f, mgr.settings.minCellSize);
+        worldOriginXZ = mgr.settings.gridWorldCenterXZ;
+        return true;
+    }
+
+    /// <summary>
+    /// Snap sur la grille 9 points de la feuille sous le point (même repère que la grille affichée).
+    /// </summary>
+    public Vector3 SnapWorldToUniformMainLattice(Vector3 world)
+    {
+        if (!enableGridSnap || !snapToHierarchicalVisualGrid)
+            return world;
+
+        return SnapWorldToVisibleLeafNinePointLattice(world);
+    }
+
+    void ProjectPathToHierarchicalInPlace(List<Vector3> points, bool closed)
+    {
+        if (points == null || points.Count == 0)
+            return;
+
+        int last = closed && points.Count > 1 &&
+                   Vector3.Distance(points[0], points[points.Count - 1]) < snapCloseDistance * 1.25f
+            ? points.Count - 1
+            : points.Count;
+
+        for (int i = 0; i < last; i++)
+            points[i] = SnapWorldToUniformMainLattice(points[i]);
+
+        if (closed && last == points.Count - 1 && points.Count > 1)
+            points[points.Count - 1] = points[0];
+    }
+
+    static float DistancePointToAxisAlignedRectPerimeter(Vector2 p, float minX, float maxX, float minZ, float maxZ)
+    {
+        if (p.x < minX || p.x > maxX || p.y < minZ || p.y > maxZ)
+        {
+            float cx = Mathf.Clamp(p.x, minX, maxX);
+            float cy = Mathf.Clamp(p.y, minZ, maxZ);
+            return Vector2.Distance(p, new Vector2(cx, cy));
+        }
+
+        float dx = Mathf.Min(p.x - minX, maxX - p.x);
+        float dy = Mathf.Min(p.y - minZ, maxZ - p.y);
+        return Mathf.Min(dx, dy);
+    }
+
+    bool TryBuildGridRectangleFromPoints(List<Vector3> points, out List<Vector3> gridFitted, out string gridShapeName)
+    {
+        gridFitted = null;
+        gridShapeName = "";
 
         if (points == null || points.Count < 4)
             return false;
 
-        List<Vector3> clean = BuildClosedUniquePath(points);
-        if (clean.Count < 4)
+        HierarchicalGridManager mgr = ResolveHierarchicalGrid();
+        if (mgr == null || mgr.settings == null)
             return false;
 
-        float minX = float.PositiveInfinity;
-        float maxX = float.NegativeInfinity;
-        float minZ = float.PositiveInfinity;
-        float maxZ = float.NegativeInfinity;
+        if (Vector3.Distance(points[0], points[points.Count - 1]) > snapCloseDistance * 1.5f)
+            return false;
 
-        for (int i = 0; i < clean.Count; i++)
+        float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+
+        for (int i = 0; i < points.Count; i++)
         {
-            Vector3 p = clean[i];
-            if (p.x < minX) minX = p.x;
-            if (p.x > maxX) maxX = p.x;
-            if (p.z < minZ) minZ = p.z;
-            if (p.z > maxZ) maxZ = p.z;
+            if (i > 0 && i == points.Count - 1 && Vector3.Distance(points[0], points[i]) < 0.0001f)
+                continue;
+
+            Vector3 p = points[i];
+            minX = Mathf.Min(minX, p.x);
+            maxX = Mathf.Max(maxX, p.x);
+            minZ = Mathf.Min(minZ, p.z);
+            maxZ = Mathf.Max(maxZ, p.z);
         }
 
-        float width = maxX - minX;
-        float depth = maxZ - minZ;
-        float step = Mathf.Max(0.05f, gridSize);
-        if (width < step || depth < step)
+        float w = maxX - minX;
+        float h = maxZ - minZ;
+        if (w < 0.02f || h < 0.02f)
             return false;
 
-        int nearLeft = 0;
-        int nearRight = 0;
-        int nearBottom = 0;
-        int nearTop = 0;
-        float borderTolerance = Mathf.Max(step * 0.40f, pointSpacing * 0.45f);
-        float avgDistance = 0f;
+        float minCell = Mathf.Max(0.01f, mgr.settings.minCellSize);
+        float tol = Mathf.Max(tolerance, minCell * 0.2f);
 
-        for (int i = 0; i < clean.Count; i++)
+        for (int i = 0; i < points.Count; i++)
         {
-            Vector3 p = clean[i];
-            float dLeft = Mathf.Abs(p.x - minX);
-            float dRight = Mathf.Abs(p.x - maxX);
-            float dBottom = Mathf.Abs(p.z - minZ);
-            float dTop = Mathf.Abs(p.z - maxZ);
-            float d = Mathf.Min(Mathf.Min(dLeft, dRight), Mathf.Min(dBottom, dTop));
-            avgDistance += d;
+            if (i > 0 && i == points.Count - 1 && Vector3.Distance(points[0], points[i]) < 0.0001f)
+                continue;
 
-            if (dLeft <= borderTolerance) nearLeft++;
-            if (dRight <= borderTolerance) nearRight++;
-            if (dBottom <= borderTolerance) nearBottom++;
-            if (dTop <= borderTolerance) nearTop++;
+            Vector2 p = new Vector2(points[i].x, points[i].z);
+            float d = DistancePointToAxisAlignedRectPerimeter(p, minX, maxX, minZ, maxZ);
+            if (d > tol)
+                return false;
         }
-
-        avgDistance /= clean.Count;
-        if (avgDistance > borderTolerance)
-            return false;
-
-        if (nearLeft == 0 || nearRight == 0 || nearBottom == 0 || nearTop == 0)
-            return false;
 
         float y = points[0].y;
-        fitted = new List<Vector3>(5)
+        if (alignAxisAlignedClosedShapesToMainGridCells)
         {
-            new Vector3(minX, y, maxZ),
-            new Vector3(minX, y, minZ),
-            new Vector3(maxX, y, minZ),
-            new Vector3(maxX, y, maxZ),
-            new Vector3(minX, y, maxZ)
+            Vector3 tl = new Vector3(minX, y, maxZ);
+            Vector3 tr = new Vector3(maxX, y, maxZ);
+            Vector3 br = new Vector3(maxX, y, minZ);
+            Vector3 bl = new Vector3(minX, y, minZ);
+
+            tl = SnapWorldToUniformMainLattice(tl);
+            tr = SnapWorldToUniformMainLattice(tr);
+            br = SnapWorldToUniformMainLattice(br);
+            bl = SnapWorldToUniformMainLattice(bl);
+
+            minX = Mathf.Min(tl.x, tr.x, br.x, bl.x);
+            maxX = Mathf.Max(tl.x, tr.x, br.x, bl.x);
+            minZ = Mathf.Min(tl.z, tr.z, br.z, bl.z);
+            maxZ = Mathf.Max(tl.z, tr.z, br.z, bl.z);
+
+            w = maxX - minX;
+            h = maxZ - minZ;
+        }
+
+        if (w < 0.02f || h < 0.02f)
+            return false;
+
+        bool forceSquare = Mathf.Abs(w - h) / Mathf.Max(w, h) <= squareRatioTolerance;
+
+        RectFit fit = new RectFit
+        {
+            center = new Vector2((minX + maxX) * 0.5f, (minZ + maxZ) * 0.5f),
+            axisX = Vector2.right,
+            axisY = new Vector2(0f, 1f),
+            minX = -(maxX - minX) * 0.5f,
+            maxX = (maxX - minX) * 0.5f,
+            minY = -(maxZ - minZ) * 0.5f,
+            maxY = (maxZ - minZ) * 0.5f
         };
 
-        EnsureCounterClockwiseXZ(fitted);
-        float ratio = Mathf.Abs(width - depth) / Mathf.Max(0.0001f, Mathf.Max(width, depth));
-        shapeName = ratio <= Mathf.Max(squareRatioTolerance, step / Mathf.Max(0.0001f, width + depth)) ? "Square" : "Rectangle";
+        gridFitted = MakeRectanglePoints(fit, rectPointsPerEdge, y, forceSquare);
+        gridShapeName = forceSquare ? "Square" : "Rectangle";
+        return gridFitted != null && gridFitted.Count >= 4;
+    }
+
+    /// <summary>
+    /// Grid snap rounds X and Z independently, so a diagonal becomes an axis-aligned staircase.
+    /// If every sample stays within tolerance of the chord from first to last point, collapse to that segment
+    /// so straight-line detection yields a true diagonal wall (two endpoints).
+    /// </summary>
+    bool TryCollapseOpenStrokeToChordIfNearlyCollinear(List<Vector3> points)
+    {
+        if (points == null || points.Count < 3)
+            return false;
+
+        Vector2 a = new Vector2(points[0].x, points[0].z);
+        Vector2 b = new Vector2(points[points.Count - 1].x, points[points.Count - 1].z);
+        if (Vector2.Distance(a, b) < 0.02f)
+            return false;
+
+        float maxD = 0f;
+        for (int i = 1; i < points.Count - 1; i++)
+        {
+            Vector2 p = new Vector2(points[i].x, points[i].z);
+            float d = DistancePointSegment(p, a, b);
+            if (d > maxD)
+                maxD = d;
+        }
+
+        float spacing = GetActiveCapturePointSpacing();
+        float tol = Mathf.Max(spacing * openStrokeChordDeviationGridMul, 0.06f);
+
+        if (maxD > tol)
+            return false;
+
+        Vector3 first = points[0];
+        Vector3 last = points[points.Count - 1];
+        points.Clear();
+        points.Add(first);
+        points.Add(last);
         return true;
     }
 
-    static List<Vector3> BuildClosedUniquePath(List<Vector3> source)
+    /// <summary>Aligne les sommets sur la grille hiérarchique (centres ou coins selon les options).</summary>
+    public void SnapCommittedPathToMainGridInPlace(List<Vector3> points, bool closed)
     {
-        var result = new List<Vector3>();
-        if (source == null || source.Count == 0)
-            return result;
+        if (points == null || points.Count == 0 || !enableGridSnap || !snapToHierarchicalVisualGrid)
+            return;
 
-        const float eps = 0.0001f;
-        float epsSqr = eps * eps;
-
-        for (int i = 0; i < source.Count; i++)
-        {
-            Vector3 p = source[i];
-            if (result.Count == 0 || (p - result[result.Count - 1]).sqrMagnitude > epsSqr)
-                result.Add(p);
-        }
-
-        if (result.Count > 1 && (result[0] - result[result.Count - 1]).sqrMagnitude <= epsSqr)
-            result.RemoveAt(result.Count - 1);
-
-        return result;
+        ProjectPathToHierarchicalInPlace(points, closed);
     }
 
     void RefreshLine()
@@ -813,6 +1328,8 @@ public class WallDrawInput : MonoBehaviour
                 return DetectedShapeKind.Circle;
             case "Triangle":
                 return DetectedShapeKind.Triangle;
+            case "Arc":
+                return DetectedShapeKind.OpenArc;
             default:
                 return DetectedShapeKind.Free;
         }
@@ -823,13 +1340,15 @@ public class WallDrawInput : MonoBehaviour
         fittedPoints = null;
         shapeName = "";
 
-        if (!autoStraightLine && !autoCircle && !autoRectangle && !autoTriangle)
+        if (!autoStraightLine && !autoOpenArc && !autoCircle && !autoRectangle && !autoTriangle)
             return false;
 
         float y = rawPoints[0].y;
 
         List<Vector2> pts2 = ToXZ(rawPoints);
-        pts2 = SimplifyBySpacing(pts2, pointSpacing * 0.85f);
+        float simplifyBase = Mathf.Max(0.01f, pointSpacing);
+
+        pts2 = SimplifyBySpacing(pts2, simplifyBase * 0.85f);
 
         if (pts2.Count < 2)
         {
@@ -840,13 +1359,56 @@ public class WallDrawInput : MonoBehaviour
         if (!closed)
         {
             ResetLiveScores();
-
-            if (autoStraightLine &&
-                TryFitStraightLine(
+            // Do not use `flag && Try...()` — short-circuit leaves `out` variables unassigned (CS0165).
+            Vector2 lineStart = default;
+            Vector2 lineEnd = default;
+            float lineErr = float.MaxValue;
+            bool hasLine = false;
+            if (autoStraightLine)
+            {
+                hasLine = TryFitStraightLine(
                     pts2,
                     tolerance * straightLineToleranceMultiplier,
-                    out Vector2 lineStart,
-                    out Vector2 lineEnd))
+                    out lineStart,
+                    out lineEnd,
+                    out lineErr);
+            }
+
+            Vector2 arcCenter = default;
+            float arcRadius = 0f;
+            float arcStartAngle = 0f;
+            float arcEndAngle = 0f;
+            bool arcCounterClockwise = true;
+            float arcErr = float.MaxValue;
+            bool hasArc = false;
+            if (autoOpenArc)
+            {
+                hasArc = TryFitOpenArc(
+                    pts2,
+                    out arcCenter,
+                    out arcRadius,
+                    out arcStartAngle,
+                    out arcEndAngle,
+                    out arcCounterClockwise,
+                    out arcErr);
+            }
+
+            // Prefer the shape with lower normalized fitting error (arc slightly favored).
+            if (hasArc && (!hasLine || arcErr <= lineErr * openArcPreferOverLineMul))
+            {
+                shapeName = "Arc";
+                fittedPoints = MakeOpenArcPoints(
+                    arcCenter,
+                    arcRadius,
+                    arcStartAngle,
+                    arcEndAngle,
+                    arcCounterClockwise,
+                    openArcResolution,
+                    y);
+                return true;
+            }
+
+            if (hasLine)
             {
                 shapeName = "Straight Line";
                 fittedPoints = MakeStraightLinePoints(lineStart, lineEnd, y);
@@ -876,7 +1438,7 @@ public class WallDrawInput : MonoBehaviour
             return false;
         }
 
-        List<Vector2> sample = ResampleClosedEvenly(rawClosed, 48);
+        List<Vector2> sample = ResampleClosedEvenly(rawClosed, closedShapeSampleCount);
         List<CornerSample> corners = DetectCorners(sample);
 
         ShapeCandidate rectangle = default;
@@ -983,10 +1545,71 @@ public class WallDrawInput : MonoBehaviour
             Mathf.Abs(fit.width - fit.height) /
             Mathf.Max(0.0001f, Mathf.Max(fit.width, fit.height)) <= squareRatioTolerance;
 
+        ForceAxisAlignedRectFit(ref fit, forceSquare);
+
         c.name = forceSquare ? "Square" : "Rectangle";
-        c.score = score;
+        c.score = forceSquare ? score * squareClassificationScoreMul : score;
         c.points = MakeRectanglePoints(fit, rectPointsPerEdge, y, forceSquare);
         return c;
+    }
+
+    /// <summary>
+    /// Remplace le rectangle orienté (suivant le tracé) par l’AAB XZ équivalente : axes monde, pas de rotation.
+    /// </summary>
+    static void ForceAxisAlignedRectFit(ref RectFit fit, bool asSquare)
+    {
+        float minx = fit.minX;
+        float maxx = fit.maxX;
+        float miny = fit.minY;
+        float maxy = fit.maxY;
+
+        if (asSquare)
+        {
+            float side = Mathf.Max(fit.width, fit.height);
+            float half = side * 0.5f;
+            minx = -half;
+            maxx = half;
+            miny = -half;
+            maxy = half;
+        }
+
+        Vector2 c = fit.center;
+        Vector2 c0 = c + fit.axisX * minx + fit.axisY * miny;
+        Vector2 c1 = c + fit.axisX * maxx + fit.axisY * miny;
+        Vector2 c2 = c + fit.axisX * maxx + fit.axisY * maxy;
+        Vector2 c3 = c + fit.axisX * minx + fit.axisY * maxy;
+
+        float minXw = Mathf.Min(c0.x, c1.x, c2.x, c3.x);
+        float maxXw = Mathf.Max(c0.x, c1.x, c2.x, c3.x);
+        float minZw = Mathf.Min(c0.y, c1.y, c2.y, c3.y);
+        float maxZw = Mathf.Max(c0.y, c1.y, c2.y, c3.y);
+
+        Vector2 centerW = new Vector2((minXw + maxXw) * 0.5f, (minZw + maxZw) * 0.5f);
+        float bboxW = maxXw - minXw;
+        float bboxZ = maxZw - minZw;
+
+        fit.center = centerW;
+        fit.axisX = Vector2.right;
+        fit.axisY = new Vector2(0f, 1f);
+
+        if (asSquare)
+        {
+            float sideAligned = Mathf.Max(bboxW, bboxZ);
+            float halfA = sideAligned * 0.5f;
+            fit.minX = -halfA;
+            fit.maxX = halfA;
+            fit.minY = -halfA;
+            fit.maxY = halfA;
+        }
+        else
+        {
+            float halfW = bboxW * 0.5f;
+            float halfH = bboxZ * 0.5f;
+            fit.minX = -halfW;
+            fit.maxX = halfW;
+            fit.minY = -halfH;
+            fit.maxY = halfH;
+        }
     }
 
     ShapeCandidate BuildTriangleCandidate(List<Vector2> ptsClosed, List<Vector2> sample, List<CornerSample> corners, float y)
@@ -997,9 +1620,61 @@ public class WallDrawInput : MonoBehaviour
         if (!EvaluateTriangleFit(ptsClosed, sample, corners, out List<Vector2> triPts, out float score))
             return c;
 
+        ForceTriangleOneEdgeAlongWorldX(triPts);
+
         c.score = score;
         c.points = ToWorldPath(triPts, y);
         return c;
+    }
+
+    /// <summary>
+    /// Tourne le triangle dans XZ pour qu’une arête soit parallèle à l’axe X (plus petite boîte englobante axe-alignée parmi les 3 arêtes).
+    /// </summary>
+    static void ForceTriangleOneEdgeAlongWorldX(List<Vector2> tri)
+    {
+        if (tri == null || tri.Count != 3)
+            return;
+
+        Vector2 c = (tri[0] + tri[1] + tri[2]) / 3f;
+        float bestArea = float.MaxValue;
+        float bestAng = 0f;
+
+        for (int e = 0; e < 3; e++)
+        {
+            Vector2 edge = tri[(e + 1) % 3] - tri[e];
+            if (edge.sqrMagnitude < 1e-12f)
+                continue;
+
+            float ang = Mathf.Atan2(edge.y, edge.x);
+            float ca = Mathf.Cos(-ang);
+            float sa = Mathf.Sin(-ang);
+            float minx = float.MaxValue, maxx = float.MinValue, minz = float.MaxValue, maxz = float.MinValue;
+            for (int i = 0; i < 3; i++)
+            {
+                Vector2 p = tri[i] - c;
+                float x = p.x * ca - p.y * sa;
+                float z = p.x * sa + p.y * ca;
+                minx = Mathf.Min(minx, x);
+                maxx = Mathf.Max(maxx, x);
+                minz = Mathf.Min(minz, z);
+                maxz = Mathf.Max(maxz, z);
+            }
+
+            float area = (maxx - minx) * (maxz - minz);
+            if (area < bestArea)
+            {
+                bestArea = area;
+                bestAng = ang;
+            }
+        }
+
+        float co = Mathf.Cos(-bestAng);
+        float si = Mathf.Sin(-bestAng);
+        for (int i = 0; i < 3; i++)
+        {
+            Vector2 p = tri[i] - c;
+            tri[i] = new Vector2(p.x * co - p.y * si, p.x * si + p.y * co) + c;
+        }
     }
 
     List<Vector2> ToXZ(List<Vector3> p3)
@@ -1042,10 +1717,11 @@ public class WallDrawInput : MonoBehaviour
         return res;
     }
 
-    bool TryFitStraightLine(List<Vector2> pts, float tol, out Vector2 start, out Vector2 end)
+    bool TryFitStraightLine(List<Vector2> pts, float tol, out Vector2 start, out Vector2 end, out float normalizedError)
     {
         start = Vector2.zero;
         end = Vector2.zero;
+        normalizedError = float.MaxValue;
 
         if (pts == null || pts.Count < 2)
             return false;
@@ -1079,6 +1755,7 @@ public class WallDrawInput : MonoBehaviour
         float normErr = (err / pts.Count) / len;
         if (normErr > tol)
             return false;
+        normalizedError = normErr;
 
         float d0 = Vector2.Distance(pts[0], aBest) + Vector2.Distance(pts[pts.Count - 1], bBest);
         float d1 = Vector2.Distance(pts[0], bBest) + Vector2.Distance(pts[pts.Count - 1], aBest);
@@ -1097,6 +1774,83 @@ public class WallDrawInput : MonoBehaviour
         return true;
     }
 
+    bool TryFitOpenArc(
+        List<Vector2> pts,
+        out Vector2 center,
+        out float radius,
+        out float startAngle,
+        out float endAngle,
+        out bool counterClockwise,
+        out float normalizedError)
+    {
+        center = Vector2.zero;
+        radius = 0f;
+        startAngle = 0f;
+        endAngle = 0f;
+        counterClockwise = true;
+        normalizedError = float.MaxValue;
+
+        if (pts == null || pts.Count < 3)
+            return false;
+
+        Vector2 a = pts[0];
+        Vector2 b = pts[pts.Count - 1];
+        if (Vector2.Distance(a, b) < 0.08f)
+            return false;
+
+        Vector2 mid = pts.Count == 3 ? pts[1] : GetPathMidpoint(pts);
+        float sagitta = DistancePointSegment(mid, a, b);
+        float minSagitta = Mathf.Max(pointSpacing * openArcMinSagittaGridMul, 0.05f);
+        if (sagitta < minSagitta)
+            return false;
+
+        if (!TryCircleFromThreePoints(a, mid, b, out center, out radius))
+            return false;
+
+        if (radius < 0.08f || float.IsNaN(radius) || float.IsInfinity(radius))
+            return false;
+
+        startAngle = Mathf.Atan2(a.y - center.y, a.x - center.x);
+        endAngle = Mathf.Atan2(b.y - center.y, b.x - center.x);
+        float midAngle = Mathf.Atan2(mid.y - center.y, mid.x - center.x);
+
+        bool midOnCcw = IsAngleOnCcwArc(startAngle, endAngle, midAngle);
+        counterClockwise = midOnCcw;
+        float sweep = counterClockwise
+            ? PositiveDeltaAngle(startAngle, endAngle)
+            : PositiveDeltaAngle(endAngle, startAngle);
+        float sweepDeg = sweep * Mathf.Rad2Deg;
+
+        if (sweepDeg < openArcMinSweepDeg || sweepDeg > openArcMaxSweepDeg)
+            return false;
+
+        float tolAbs = Mathf.Max(pointSpacing * openArcFitTolerance, 0.04f);
+
+        float sum = 0f;
+        float max = 0f;
+        int outside = 0;
+        for (int i = 0; i < pts.Count; i++)
+        {
+            Vector2 p = pts[i];
+            float ang = Mathf.Atan2(p.y - center.y, p.x - center.x);
+            if (!IsAngleOnDirectedArc(startAngle, endAngle, counterClockwise, ang))
+                outside++;
+
+            float d = Mathf.Abs(Vector2.Distance(p, center) - radius);
+            sum += d;
+            if (d > max) max = d;
+        }
+
+        float avg = sum / Mathf.Max(1, pts.Count);
+        if (avg > tolAbs || max > tolAbs * 2.5f)
+            return false;
+        if (outside > Mathf.Max(2, Mathf.RoundToInt(pts.Count * 0.28f)))
+            return false;
+
+        normalizedError = avg / Mathf.Max(0.0001f, radius);
+        return true;
+    }
+
     List<Vector3> MakeStraightLinePoints(Vector2 start, Vector2 end, float y)
     {
         return new List<Vector3>
@@ -1104,6 +1858,104 @@ public class WallDrawInput : MonoBehaviour
             new Vector3(start.x, y, start.y),
             new Vector3(end.x, y, end.y)
         };
+    }
+
+    List<Vector3> MakeOpenArcPoints(
+        Vector2 center,
+        float radius,
+        float startAngle,
+        float endAngle,
+        bool counterClockwise,
+        int maxResolution,
+        float y)
+    {
+        float sweep = counterClockwise
+            ? PositiveDeltaAngle(startAngle, endAngle)
+            : PositiveDeltaAngle(endAngle, startAngle);
+        float arcLen = radius * sweep;
+        int target = Mathf.Clamp(Mathf.RoundToInt(arcLen / Mathf.Max(0.08f, pointSpacing * 0.6f)), 10, Mathf.Max(10, maxResolution));
+        List<Vector3> pts = new List<Vector3>(target + 1);
+
+        for (int i = 0; i <= target; i++)
+        {
+            float t = target <= 0 ? 0f : i / (float)target;
+            float ang = counterClockwise
+                ? startAngle + sweep * t
+                : startAngle - sweep * t;
+            float x = center.x + Mathf.Cos(ang) * radius;
+            float z = center.y + Mathf.Sin(ang) * radius;
+            pts.Add(new Vector3(x, y, z));
+        }
+
+        return pts;
+    }
+
+    Vector2 GetPathMidpoint(List<Vector2> pts)
+    {
+        if (pts == null || pts.Count == 0)
+            return Vector2.zero;
+        if (pts.Count == 1)
+            return pts[0];
+
+        float total = 0f;
+        for (int i = 1; i < pts.Count; i++)
+            total += Vector2.Distance(pts[i - 1], pts[i]);
+        if (total < 0.0001f)
+            return pts[pts.Count / 2];
+
+        float half = total * 0.5f;
+        float acc = 0f;
+        for (int i = 1; i < pts.Count; i++)
+        {
+            float seg = Vector2.Distance(pts[i - 1], pts[i]);
+            if (acc + seg >= half)
+            {
+                float t = Mathf.InverseLerp(acc, acc + seg, half);
+                return Vector2.Lerp(pts[i - 1], pts[i], t);
+            }
+            acc += seg;
+        }
+        return pts[pts.Count / 2];
+    }
+
+    static bool TryCircleFromThreePoints(Vector2 a, Vector2 b, Vector2 c, out Vector2 center, out float radius)
+    {
+        center = Vector2.zero;
+        radius = 0f;
+
+        float d = 2f * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+        if (Mathf.Abs(d) < 0.0001f)
+            return false;
+
+        float a2 = a.sqrMagnitude;
+        float b2 = b.sqrMagnitude;
+        float c2 = c.sqrMagnitude;
+
+        float ux = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
+        float uy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
+        center = new Vector2(ux, uy);
+        radius = Vector2.Distance(center, a);
+        return !float.IsNaN(radius) && !float.IsInfinity(radius) && radius > 0.0001f;
+    }
+
+    static float PositiveDeltaAngle(float from, float to)
+    {
+        float d = to - from;
+        while (d < 0f) d += Mathf.PI * 2f;
+        while (d >= Mathf.PI * 2f) d -= Mathf.PI * 2f;
+        return d;
+    }
+
+    static bool IsAngleOnCcwArc(float from, float to, float angle)
+    {
+        float total = PositiveDeltaAngle(from, to);
+        float part = PositiveDeltaAngle(from, angle);
+        return part <= total + 0.0001f;
+    }
+
+    static bool IsAngleOnDirectedArc(float from, float to, bool ccw, float angle)
+    {
+        return ccw ? IsAngleOnCcwArc(from, to, angle) : IsAngleOnCcwArc(to, from, angle);
     }
 
     bool EvaluateCircleFit(List<Vector2> ptsClosed, List<Vector2> sample, List<CornerSample> corners, out Vector2 center, out float radius, out float score)
@@ -1132,7 +1984,7 @@ public class WallDrawInput : MonoBehaviour
         }
 
         radius = sumRadius / n;
-        if (radius < 0.15f)
+        if (radius < 0.12f)
             return false;
 
         float radialErr = 0f;
@@ -1147,12 +1999,17 @@ public class WallDrawInput : MonoBehaviour
             return false;
 
         float aspect = Mathf.Min(width, height) / Mathf.Max(width, height);
+        float strict = Mathf.Max(0.015f, circleStrictnessMultiplier);
+        float radialScore = Mathf.Clamp01(1f - radialErr / strict);
         float cornerPenalty = Mathf.Clamp01((corners.Count - 2) / 5f);
-        float radialScore = Mathf.Clamp01(1f - radialErr / Mathf.Max(0.02f, circleStrictnessMultiplier));
-        float aspectScore = Mathf.InverseLerp(0.55f, 0.98f, aspect);
+        // Faceted / grid circles create many corner hits; if radial fit is already good, do not crush the circle score.
+        float cornerRelax = Mathf.InverseLerp(strict * 1.2f, strict * 0.32f, radialErr);
+        cornerPenalty *= Mathf.Lerp(1f, 0.30f, cornerRelax);
+        // Grid-snapped circles often have a slightly non-square AABB; be a bit forgiving.
+        float aspectScore = Mathf.InverseLerp(0.45f, 0.98f, aspect);
         float rangeScore = Mathf.Clamp01(1f - ((maxDist - minDist) / Mathf.Max(0.0001f, radius)) / 0.55f);
 
-        score = (radialScore * 0.55f + aspectScore * 0.25f + rangeScore * 0.20f) * circleDetectionBoost;
+        score = (radialScore * 0.58f + aspectScore * 0.22f + rangeScore * 0.20f) * circleDetectionBoost;
         score *= Mathf.Lerp(1f, 1f - rectangleRoundPenalty * 0.60f, cornerPenalty);
         score = Mathf.Clamp01(score);
         return true;
@@ -1172,6 +2029,49 @@ public class WallDrawInput : MonoBehaviour
         res.Add(res[0]);
         EnsureCounterClockwiseXZ(res);
         return res;
+    }
+
+    /// <summary>Cercle fermé pour spawn UI (résolution = <see cref="circleResolution"/>).</summary>
+    public List<Vector3> BuildUiPresetClosedCircle(Vector3 centerWorld, float radiusMeters)
+    {
+        radiusMeters = Mathf.Max(0.05f, radiusMeters);
+        return MakeCirclePoints(new Vector2(centerWorld.x, centerWorld.z), radiusMeters, circleResolution, centerWorld.y);
+    }
+
+    /// <summary>Carré fermé axes monde, côté = <paramref name="sideLengthMeters"/>.</summary>
+    public List<Vector3> BuildUiPresetClosedSquare(Vector3 centerWorld, float sideLengthMeters)
+    {
+        float half = Mathf.Max(0.05f, sideLengthMeters * 0.5f);
+        var fit = new RectFit
+        {
+            center = new Vector2(centerWorld.x, centerWorld.z),
+            axisX = Vector2.right,
+            axisY = new Vector2(0f, 1f),
+            minX = -half,
+            maxX = half,
+            minY = -half,
+            maxY = half,
+        };
+        return MakeRectanglePoints(fit, rectPointsPerEdge, centerWorld.y, true);
+    }
+
+    /// <summary>Triangle équilatéral fermé (côté = <paramref name="sideLengthMeters"/>), centre au centre du triangle.</summary>
+    public List<Vector3> BuildUiPresetClosedTriangle(Vector3 centerWorld, float sideLengthMeters)
+    {
+        sideLengthMeters = Mathf.Max(0.05f, sideLengthMeters);
+        float R = sideLengthMeters / Mathf.Sqrt(3f);
+        var pts = new List<Vector3>(4);
+        for (int i = 0; i < 3; i++)
+        {
+            float ang = i * (2f * Mathf.PI / 3f);
+            float x = centerWorld.x + Mathf.Cos(ang) * R;
+            float z = centerWorld.z + Mathf.Sin(ang) * R;
+            pts.Add(new Vector3(x, centerWorld.y, z));
+        }
+
+        pts.Add(pts[0]);
+        EnsureCounterClockwiseXZ(pts);
+        return pts;
     }
 
     bool EvaluateRectangleFit(List<Vector2> ptsClosed, List<Vector2> sample, List<CornerSample> corners, out RectFit fit, out float score)
@@ -1410,7 +2310,7 @@ public class WallDrawInput : MonoBehaviour
 
                     float circlePenalty = ComputeCircleLikeness(sample);
                     float triScore = edgeScore * 0.50f + insideScore * 0.30f + cornerSharpness * 0.20f;
-                    triScore *= Mathf.Lerp(1f, 0.80f, circlePenalty);
+                    triScore *= Mathf.Lerp(1f, triangleMinScoreWhenStrokeIsCircular, circlePenalty);
                     triScore = Mathf.Clamp01(triScore);
 
                     if (triScore > bestScore)
@@ -1702,7 +2602,7 @@ public class WallDrawInput : MonoBehaviour
         for (int i = 0; i < sample.Count; i++)
             err += Mathf.Abs(Vector2.Distance(center, sample[i]) - avg);
         float radial = (err / sample.Count) / avg;
-        return Mathf.Clamp01(1f - radial / 0.35f);
+        return Mathf.Clamp01(1f - radial / 0.40f);
     }
 
     void ComputeAabb(List<Vector2> pts, out float minX, out float maxX, out float minY, out float maxY)
@@ -1870,64 +2770,6 @@ public class WallDrawInput : MonoBehaviour
             else
             {
                 pts.Reverse();
-            }
-        }
-    }
-
-    void OnDrawGizmos()
-    {
-        if (!showGridGizmos || FindFirstObjectByType<HierarchicalGridManager>() != null)
-            return;
-
-        float fineStep = Mathf.Max(0.05f, gridSize);
-        int levels = Mathf.Clamp(gridHierarchyLevels, 3, 8);
-        float rootStep = ComputeRootGridStep(fineStep);
-        float coverage = rootStep * Mathf.Clamp(gridHalfExtent, 4, 200);
-
-        Vector3 center = transform.position;
-        if (cam != null)
-            center = cam.transform.position;
-
-        float baseY = flattenYToZero ? 0f : gridOrigin.y;
-        float minX = center.x - coverage;
-        float maxX = center.x + coverage;
-        float minZ = center.z - coverage;
-        float maxZ = center.z + coverage;
-        float camHeight = Mathf.Abs(center.y - baseY);
-
-        for (int level = 0; level < levels; level++)
-        {
-            float levelStep = ComputeLevelStep(rootStep, level);
-            float visibility = ComputeLevelVisibility(camHeight, levelStep, level);
-            if (visibility <= 0.001f)
-                continue;
-
-            float t = levels <= 1 ? 0f : level / (float)(levels - 1);
-            float alpha = Mathf.Lerp(gridInnerAlpha, gridOuterAlpha, t) * visibility;
-            float gray = Mathf.Lerp(0.62f, 0.83f, t);
-            Gizmos.color = new Color(gray, gray, gray, alpha);
-
-            int xStartIndex = Mathf.FloorToInt((minX - gridOrigin.x) / levelStep);
-            int xEndIndex = Mathf.CeilToInt((maxX - gridOrigin.x) / levelStep);
-            int zStartIndex = Mathf.FloorToInt((minZ - gridOrigin.z) / levelStep);
-            int zEndIndex = Mathf.CeilToInt((maxZ - gridOrigin.z) / levelStep);
-
-            int xSampleStep = ComputeIndexSampleStep(xStartIndex, xEndIndex);
-            int zSampleStep = ComputeIndexSampleStep(zStartIndex, zEndIndex);
-
-            int firstX = AlignIndexToStride(xStartIndex, xSampleStep);
-            int firstZ = AlignIndexToStride(zStartIndex, zSampleStep);
-
-            for (int i = firstX; i <= xEndIndex; i += xSampleStep)
-            {
-                float x = gridOrigin.x + i * levelStep;
-                Gizmos.DrawLine(new Vector3(x, baseY, minZ), new Vector3(x, baseY, maxZ));
-            }
-
-            for (int i = firstZ; i <= zEndIndex; i += zSampleStep)
-            {
-                float z = gridOrigin.z + i * levelStep;
-                Gizmos.DrawLine(new Vector3(minX, baseY, z), new Vector3(maxX, baseY, z));
             }
         }
     }
