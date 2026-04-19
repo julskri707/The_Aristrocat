@@ -89,7 +89,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1eebb44f462a57f42bd42af8b35205a9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FieldPlacer_NoLayers
-  fieldPrefab: {fileID: 5861965029040414736, guid: b619469e206a78540ac86f223dca6c71, type: 3}
+  fieldPrefab: {fileID: 8734977829553312992, guid: 6a6792d36ff27ca43ae7c3f342a3e548, type: 3}
   buildMode: 0
   minPoints: 3
   maxPoints: 2147483647
@@ -104,7 +104,7 @@ MonoBehaviour:
   autoExitBuildModeOnFinish: 1
   snapToTerrain: 1
   maxSampleDistance: 25
-  previewLine: {fileID: 6504888564872814437, guid: b619469e206a78540ac86f223dca6c71, type: 3}
+  previewOutline: {fileID: 8658760585798664954, guid: 6a6792d36ff27ca43ae7c3f342a3e548, type: 3}
   previewHeightOffset: 0.02
   previewCloseLoop: 1
   smoothPreview: 1

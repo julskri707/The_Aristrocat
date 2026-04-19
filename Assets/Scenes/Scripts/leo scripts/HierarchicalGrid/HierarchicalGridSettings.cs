@@ -28,6 +28,14 @@ public class HierarchicalGridSettings : ScriptableObject
     public Vector3 manualFocusPoint = Vector3.zero;
     public float gridPlaneY = 0f;
 
+    [Header("Map alignment")]
+    [Tooltip("World XZ of the map center. The root grid cell is centered on this point (symmetric around it).")]
+    public Vector2 gridWorldCenterXZ = Vector2.zero;
+
+    [Header("World offset")]
+    [Tooltip("Added to the resolved focus point (camera / target / manual) so the whole grid shifts in world space. X = world +X; Y component maps to world +Z.")]
+    public Vector2 gridFocusOffsetXZ = Vector2.zero;
+
     [Header("Render")]
     [Min(0.0005f)] public float baseLineThickness = 0.05f;
     [Range(0.05f, 2f)] public float deepLevelThicknessFactor = 0.35f;
@@ -37,12 +45,6 @@ public class HierarchicalGridSettings : ScriptableObject
     [Range(-0.05f, 0.25f)] public float surfaceYOffset = 0.01f;
     public bool castShadows = false;
     public bool receiveShadows = false;
-
-    [Header("Sub Grid")]
-    public bool showInternalSubGrid = false;
-    [Range(2, 8)] public int internalSubGridResolution = 4;
-    [Range(0.1f, 1f)] public float internalSubGridOpacity = 0.35f;
-    [Range(0.1f, 1f)] public float internalSubGridThicknessFactor = 0.5f;
 
     [Header("Style")]
     public Gradient levelColorGradient = DefaultGradient();

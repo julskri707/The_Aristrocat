@@ -21,6 +21,11 @@ public class WallUndoManager : MonoBehaviour
     [Header("Stack")]
     [Range(1, MaxUndoSnapshotsHardCap)] public int maxSnapshots = MaxUndoSnapshotsHardCap;
     public bool logDebug = false;
+    [Tooltip("Réduit l'empreinte mémoire de l'undo en limitant le nombre de points stockés par path (0 = illimité). " +
+             "Les lots fusionnés avec arcs denses nécessitent 0 pour éviter une géométrie fausse après Ctrl+Z.")]
+    [Range(0, 512)] public int maxStoredPathPointsPerWall = 0;
+    [Tooltip("Au disable/destroy (ex: fermeture/changement de scène), vide la pile undo pour libérer la mémoire.")]
+    public bool clearUndoStackOnDisable = true;
 
     [Header("Stability")]
     public bool suspendCladdingRebuildDuringUndo = true;
@@ -46,6 +51,20 @@ public class WallUndoManager : MonoBehaviour
 
         if (contextMenu == null)
             contextMenu = FindFirstObjectByType<WallContextMenuUI>(FindObjectsInactive.Include);
+    }
+
+    void OnDisable()
+    {
+        if (!clearUndoStackOnDisable)
+            return;
+
+        if (_rebuildCoroutine != null)
+        {
+            StopCoroutine(_rebuildCoroutine);
+            _rebuildCoroutine = null;
+        }
+
+        _undoStack.Clear();
     }
 
     void Update()
@@ -110,7 +129,14 @@ public class WallUndoManager : MonoBehaviour
 
     SceneUndoSnapshot CaptureSceneSnapshot(string reason)
     {
-        List<WallObject> walls = GetOrderedWalls();
+        List<WallObject> walls = CollectWallsForUndoSnapshot();
+        var wallToSnapshotIndex = new Dictionary<WallObject, int>(walls.Count);
+        for (int i = 0; i < walls.Count; i++)
+        {
+            if (walls[i] != null)
+                wallToSnapshotIndex[walls[i]] = i;
+        }
+
         SceneUndoSnapshot snapshot = new SceneUndoSnapshot();
         snapshot.reason = reason;
         snapshot.selectedIndex = -1;
@@ -126,13 +152,45 @@ public class WallUndoManager : MonoBehaviour
             if (selected == wall)
                 snapshot.selectedIndex = snapshot.walls.Count;
 
-            snapshot.walls.Add(CaptureWallSnapshot(wall));
+            snapshot.walls.Add(CaptureWallSnapshot(wall, wallToSnapshotIndex));
         }
 
         return snapshot;
     }
 
-    WallUndoWallSnapshot CaptureWallSnapshot(WallObject wall)
+    /// <summary>
+    /// Murs gérés par le build + tout autre WallObject dans la scène (sinon Ctrl+Z laisse des orphelins qui se superposent au restore).
+    /// </summary>
+    List<WallObject> CollectWallsForUndoSnapshot()
+    {
+        var seen = new HashSet<WallObject>();
+        var result = new List<WallObject>();
+
+        List<WallObject> managed = GetOrderedWalls();
+        for (int i = 0; i < managed.Count; i++)
+        {
+            WallObject w = managed[i];
+            if (w == null || !seen.Add(w))
+                continue;
+            result.Add(w);
+        }
+
+        WallObject[] inScene = FindObjectsByType<WallObject>(FindObjectsSortMode.None);
+        var extras = new List<WallObject>();
+        for (int i = 0; i < inScene.Length; i++)
+        {
+            WallObject w = inScene[i];
+            if (w == null || !seen.Add(w))
+                continue;
+            extras.Add(w);
+        }
+
+        extras.Sort((a, b) => a.GetInstanceID().CompareTo(b.GetInstanceID()));
+        result.AddRange(extras);
+        return result;
+    }
+
+    WallUndoWallSnapshot CaptureWallSnapshot(WallObject wall, Dictionary<WallObject, int> wallToSnapshotIndex)
     {
         WallUndoWallSnapshot snap = new WallUndoWallSnapshot();
 
@@ -145,7 +203,8 @@ public class WallUndoManager : MonoBehaviour
         snap.wallMaterial = wall.wallMaterial;
         snap.uvMetersPerU = wall.uvMetersPerU;
         snap.uvMetersPerV = wall.uvMetersPerV;
-        snap.path = new List<Vector3>(wall.Points);
+        if (!snap.hasEditShape)
+            snap.path = LimitPathPointCount(wall.Points, wall.closedLoop);
 
         WallStyleInstance styleInstance = wall.GetComponent<WallStyleInstance>();
         if (styleInstance != null)
@@ -156,6 +215,48 @@ public class WallUndoManager : MonoBehaviour
         {
             snap.hasEditShape = true;
             snap.editState = CaptureEditShape(edit);
+            snap.path = null;
+
+            snap.interiorWallsStayInsideLotSnapshotIndex = -1;
+            if (edit.interiorWallsStayInsideLot != null && edit.interiorWallsStayInsideLot.wall != null)
+            {
+                if (wallToSnapshotIndex != null &&
+                    wallToSnapshotIndex.TryGetValue(edit.interiorWallsStayInsideLot.wall, out int lotIdx))
+                    snap.interiorWallsStayInsideLotSnapshotIndex = lotIdx;
+            }
+        }
+
+        HouseExteriorEnvelopeSources envelope = wall.GetComponent<HouseExteriorEnvelopeSources>();
+        if (envelope != null && envelope.SourceLotObjects != null && envelope.SourceLotObjects.Count > 0 &&
+            wallToSnapshotIndex != null)
+        {
+            snap.hasEnvelopeSources = true;
+            snap.envelopeUseIndependentHandles = envelope.UseIndependentSourceHandlesForHouseEnvelope;
+            snap.envelopeSourceWallIndices = new List<int>();
+            IReadOnlyList<GameObject> srcGos = envelope.SourceLotObjects;
+            for (int si = 0; si < srcGos.Count; si++)
+            {
+                GameObject go = srcGos[si];
+                if (go == null)
+                    continue;
+                WallObject sw = go.GetComponent<WallObject>();
+                if (sw != null && wallToSnapshotIndex.TryGetValue(sw, out int ix))
+                    snap.envelopeSourceWallIndices.Add(ix);
+            }
+        }
+
+        HouseEnvelopeBundledSourceTag bundleTag = wall.GetComponent<HouseEnvelopeBundledSourceTag>();
+        if (bundleTag != null && bundleTag.envelopeWall != null && wallToSnapshotIndex != null &&
+            wallToSnapshotIndex.TryGetValue(bundleTag.envelopeWall, out int envIx))
+            snap.bundledEnvelopeSnapshotIndex = envIx;
+
+        HouseParquetFloor floor = wall.GetComponent<HouseParquetFloor>();
+        if (floor != null)
+        {
+            snap.hasParquetFloor = true;
+            snap.parquetMaterial = floor.parquetMaterial;
+            snap.parquetUvMetersPerTile = floor.uvMetersPerTile;
+            snap.parquetYOffsetAboveBase = floor.yOffsetAboveBase;
         }
 
         return snap;
@@ -181,13 +282,31 @@ public class WallUndoManager : MonoBehaviour
         state.rectangleMaxY = edit.rectangleMaxY;
 
         state.ellipseWallResolution = edit.ellipseWallResolution;
-        state.freeControlPoints = new List<Vector3>(edit.freeControlPoints);
+        state.ellipseRotationRad = edit.ellipseRotationRad;
+        state.centerScrollRotationDegrees = edit.centerScrollRotationDegrees;
+        state.triangleControlPoints = edit.triangleControlPoints != null
+            ? LimitPathPointCount(edit.triangleControlPoints, closed: true)
+            : new List<Vector3>();
+
+        state.arcCenterXZ = edit.arcCenterXZ;
+        state.arcRadius = edit.arcRadius;
+        state.arcStartRad = edit.arcStartRad;
+        state.arcEndRad = edit.arcEndRad;
+        state.arcCounterClockwise = edit.arcCounterClockwise;
+        state.openArcWallResolution = edit.openArcWallResolution;
 
         state.closedLoopPrivate = ReflectionGet<bool>(edit, "_closedLoop", false);
         state.freePathWasEdited = ReflectionGet<bool>(edit, "_freePathWasEdited", false);
+        state.mergeFootprintUseExactPolyline = ReflectionGet<bool>(edit, "_mergeFootprintUseExactPolyline", false);
+        state.closedFreeOrthogonalPolylineMode = ReflectionGet<bool>(edit, "_closedFreeOrthogonalPolylineMode", false);
+
+        state.freeControlPoints = LimitPathPointCount(edit.freeControlPoints, state.closedLoopPrivate);
 
         List<Vector3> rawPath = ReflectionGet<List<Vector3>>(edit, "_freeRawPath", null);
-        state.freeRawPath = rawPath != null ? new List<Vector3>(rawPath) : new List<Vector3>();
+        state.freeRawPath = rawPath != null ? LimitPathPointCount(rawPath, state.closedLoopPrivate) : new List<Vector3>();
+
+        state.allowVerticalScrollElevation = edit.allowVerticalScrollElevation;
+        state.verticalScrollElevationMetersPerWheelUnit = edit.verticalScrollElevationMetersPerWheelUnit;
 
         return state;
     }
@@ -206,27 +325,20 @@ public class WallUndoManager : MonoBehaviour
             if (contextMenu != null)
                 contextMenu.Close();
 
-            List<WallObject> existingWalls = GetOrderedWalls();
-            for (int i = 0; i < existingWalls.Count; i++)
-            {
-                if (existingWalls[i] == null)
-                    continue;
-
-                if (Application.isPlaying)
-                    Destroy(existingWalls[i].gameObject);
-                else
-                    DestroyImmediate(existingWalls[i].gameObject);
-            }
+            DestroyAllWallObjectsInActiveScenes();
 
             if (buildController != null)
                 buildController.ClearManagedWalls();
 
             WallObject selectedRestoredWall = null;
 
+            var restoredByIndex = new WallObject[snapshot.walls.Count];
+
             for (int i = 0; i < snapshot.walls.Count; i++)
             {
                 WallUndoWallSnapshot wallSnap = snapshot.walls[i];
                 WallObject wall = RestoreWallSnapshot(wallSnap);
+                restoredByIndex[i] = wall;
                 if (wall == null)
                     continue;
 
@@ -244,6 +356,67 @@ public class WallUndoManager : MonoBehaviour
                 }
             }
 
+            for (int i = 0; i < snapshot.walls.Count; i++)
+            {
+                WallUndoWallSnapshot wallSnap = snapshot.walls[i];
+                WallObject wall = restoredByIndex[i];
+                if (wallSnap == null || wall == null)
+                    continue;
+
+                if (wallSnap.interiorWallsStayInsideLotSnapshotIndex < 0 ||
+                    wallSnap.interiorWallsStayInsideLotSnapshotIndex >= restoredByIndex.Length)
+                    continue;
+
+                WallObject lotWall = restoredByIndex[wallSnap.interiorWallsStayInsideLotSnapshotIndex];
+                WallEditShape childEdit = wall.GetComponent<WallEditShape>();
+                WallEditShape lotEdit = lotWall != null ? lotWall.GetComponent<WallEditShape>() : null;
+                if (childEdit != null && lotEdit != null)
+                    childEdit.interiorWallsStayInsideLot = lotEdit;
+            }
+
+            for (int i = 0; i < snapshot.walls.Count; i++)
+            {
+                WallUndoWallSnapshot ws = snapshot.walls[i];
+                WallObject wall = restoredByIndex[i];
+                if (ws == null || wall == null)
+                    continue;
+
+                if (ws.hasEnvelopeSources && ws.envelopeSourceWallIndices != null && ws.envelopeSourceWallIndices.Count > 0)
+                {
+                    HouseExteriorEnvelopeSources envComp = wall.GetComponent<HouseExteriorEnvelopeSources>();
+                    if (envComp == null)
+                        envComp = wall.gameObject.AddComponent<HouseExteriorEnvelopeSources>();
+
+                    var srcWalls = new List<WallObject>(ws.envelopeSourceWallIndices.Count);
+                    for (int k = 0; k < ws.envelopeSourceWallIndices.Count; k++)
+                    {
+                        int ix = ws.envelopeSourceWallIndices[k];
+                        if (ix >= 0 && ix < restoredByIndex.Length && restoredByIndex[ix] != null)
+                            srcWalls.Add(restoredByIndex[ix]);
+                    }
+
+                    envComp.RestoreUndoState(ws.envelopeUseIndependentHandles, srcWalls);
+                }
+            }
+
+            for (int i = 0; i < snapshot.walls.Count; i++)
+            {
+                WallUndoWallSnapshot ws = snapshot.walls[i];
+                WallObject sourceWall = restoredByIndex[i];
+                if (ws == null || sourceWall == null || ws.bundledEnvelopeSnapshotIndex < 0)
+                    continue;
+                int ei = ws.bundledEnvelopeSnapshotIndex;
+                if (ei >= restoredByIndex.Length || restoredByIndex[ei] == null)
+                    continue;
+
+                WallObject envelopeWall = restoredByIndex[ei];
+                HouseEnvelopeBundledSourceTag tag = sourceWall.GetComponent<HouseEnvelopeBundledSourceTag>();
+                if (tag == null)
+                    tag = sourceWall.gameObject.AddComponent<HouseEnvelopeBundledSourceTag>();
+                tag.envelopeWall = envelopeWall;
+                HouseEnvelopeBundledSourceVisuals.SetBundledSourceVisualsHidden(sourceWall, true);
+            }
+
             if (buildController != null)
                 buildController.ForceSelectWall(selectedRestoredWall);
             else if (overlay != null)
@@ -257,6 +430,8 @@ public class WallUndoManager : MonoBehaviour
             if (usedGlobalSuspend)
                 WallCladdingGenerator.SetGlobalRebuildSuspended(false);
             _isRestoring = false;
+            ControlPointHandleUI.ClearOverlayPointerBlockAfterUndoOrRestore();
+            EnvelopeOverlayHandleFocus.ClearAllFocus();
         }
     }
 
@@ -340,6 +515,33 @@ public class WallUndoManager : MonoBehaviour
             selectable.AutoFindProvider();
         }
 
+        if (snap.hasParquetFloor)
+        {
+            HouseParquetFloor floor = wall.GetComponent<HouseParquetFloor>();
+            if (floor == null)
+                floor = wall.gameObject.AddComponent<HouseParquetFloor>();
+
+            floor.parquetMaterial = snap.parquetMaterial;
+            floor.uvMetersPerTile = snap.parquetUvMetersPerTile;
+            floor.yOffsetAboveBase = snap.parquetYOffsetAboveBase;
+
+            WallEditShape editForFloor = wall.GetComponent<WallEditShape>();
+            if (editForFloor != null && editForFloor.IsClosedLoopPath)
+            {
+                if (editForFloor.shapeKind == WallEditShape.ShapeKind.Rectangle)
+                    floor.ApplyOrRefresh(wall, editForFloor);
+                else if (editForFloor.shapeKind == WallEditShape.ShapeKind.Free)
+                    floor.ApplyOrRefreshClosedFreeLoop(wall, editForFloor);
+                else if (editForFloor.shapeKind == WallEditShape.ShapeKind.Ellipse ||
+                         editForFloor.shapeKind == WallEditShape.ShapeKind.Triangle)
+                    floor.ApplyOrRefreshFromClosedPreviewPath(wall, editForFloor);
+                else
+                    floor.ClearFloor();
+            }
+            else
+                floor.ClearFloor();
+        }
+
         if (snap.currentStyle != null)
         {
             WallStyleInstance instance = wall.GetComponent<WallStyleInstance>();
@@ -369,14 +571,35 @@ public class WallUndoManager : MonoBehaviour
         edit.rectangleMaxY = state.rectangleMaxY;
 
         edit.ellipseWallResolution = state.ellipseWallResolution;
+        edit.ellipseRotationRad = state.ellipseRotationRad;
+        edit.centerScrollRotationDegrees = state.centerScrollRotationDegrees;
+        edit.triangleControlPoints = state.triangleControlPoints != null
+            ? new List<Vector3>(state.triangleControlPoints)
+            : new List<Vector3>();
+
+        edit.arcCenterXZ = state.arcCenterXZ;
+        edit.arcRadius = state.arcRadius;
+        edit.arcStartRad = state.arcStartRad;
+        edit.arcEndRad = state.arcEndRad;
+        edit.arcCounterClockwise = state.arcCounterClockwise;
+        edit.openArcWallResolution = state.openArcWallResolution;
+
         edit.freeControlPoints = state.freeControlPoints != null
             ? new List<Vector3>(state.freeControlPoints)
             : new List<Vector3>();
 
         ReflectionSet(edit, "_closedLoop", state.closedLoopPrivate);
         ReflectionSet(edit, "_freePathWasEdited", state.freePathWasEdited);
+        ReflectionSet(edit, "_mergeFootprintUseExactPolyline", state.mergeFootprintUseExactPolyline);
+        ReflectionSet(edit, "_closedFreeOrthogonalPolylineMode", state.closedFreeOrthogonalPolylineMode);
         ReflectionSet(edit, "_freeRawPath", state.freeRawPath != null ? new List<Vector3>(state.freeRawPath) : new List<Vector3>());
 
+        edit.allowVerticalScrollElevation = state.allowVerticalScrollElevation;
+        edit.verticalScrollElevationMetersPerWheelUnit = state.verticalScrollElevationMetersPerWheelUnit > 0.001f
+            ? state.verticalScrollElevationMetersPerWheelUnit
+            : 5f;
+
+        edit.InvalidateStraightClosedPreviewCache();
         edit.ApplyToWall();
     }
 
@@ -443,6 +666,62 @@ public class WallUndoManager : MonoBehaviour
         field.SetValue(target, value);
     }
 
+    List<Vector3> LimitPathPointCount(IReadOnlyList<Vector3> source, bool closed)
+    {
+        if (source == null)
+            return new List<Vector3>();
+
+        int count = source.Count;
+        if (count == 0)
+            return new List<Vector3>();
+
+        int maxPts = Mathf.Clamp(maxStoredPathPointsPerWall, 0, 512);
+        if (maxPts == 0 || count <= maxPts)
+            return new List<Vector3>(source);
+
+        if (closed)
+        {
+            List<Vector3> ring = new List<Vector3>(count);
+            for (int i = 0; i < count; i++)
+                ring.Add(source[i]);
+
+            if (ring.Count > 1 && Vector3.Distance(ring[0], ring[ring.Count - 1]) < 0.001f)
+                ring.RemoveAt(ring.Count - 1);
+
+            int target = Mathf.Clamp(maxPts, 8, 256);
+            ring = WallObject.ResampleClosedLoopEvenly(ring, target);
+            if (ring.Count > 0)
+                ring.Add(ring[0]);
+            return ring;
+        }
+
+        var reduced = new List<Vector3>(maxPts);
+        float last = count - 1;
+        for (int i = 0; i < maxPts; i++)
+        {
+            int idx = Mathf.RoundToInt((i / Mathf.Max(1f, maxPts - 1f)) * last);
+            idx = Mathf.Clamp(idx, 0, count - 1);
+            reduced.Add(source[idx]);
+        }
+
+        return reduced;
+    }
+
+    void DestroyAllWallObjectsInActiveScenes()
+    {
+        WallObject[] all = FindObjectsByType<WallObject>(FindObjectsSortMode.None);
+        for (int i = 0; i < all.Length; i++)
+        {
+            WallObject w = all[i];
+            if (w == null)
+                continue;
+            if (Application.isPlaying)
+                Destroy(w.gameObject);
+            else
+                DestroyImmediate(w.gameObject);
+        }
+    }
+
     [System.Serializable]
     class SceneUndoSnapshot
     {
@@ -466,7 +745,17 @@ public class WallUndoManager : MonoBehaviour
         public List<Vector3> path = new List<Vector3>();
         public bool hasEditShape;
         public WallEditShapeUndoState editState;
+        public int interiorWallsStayInsideLotSnapshotIndex = -1;
         public WallStyleDefinition currentStyle;
+        public bool hasParquetFloor;
+        public Material parquetMaterial;
+        public float parquetUvMetersPerTile = 0.45f;
+        public float parquetYOffsetAboveBase = 0.003f;
+
+        public bool hasEnvelopeSources;
+        public bool envelopeUseIndependentHandles;
+        public List<int> envelopeSourceWallIndices;
+        public int bundledEnvelopeSnapshotIndex = -1;
     }
 
     [System.Serializable]
@@ -488,10 +777,26 @@ public class WallUndoManager : MonoBehaviour
         public float rectangleMaxY;
 
         public int ellipseWallResolution;
+        public float ellipseRotationRad;
+        public float centerScrollRotationDegrees;
+        public List<Vector3> triangleControlPoints = new List<Vector3>();
+
+        public Vector2 arcCenterXZ;
+        public float arcRadius;
+        public float arcStartRad;
+        public float arcEndRad;
+        public bool arcCounterClockwise;
+        public int openArcWallResolution;
+
         public List<Vector3> freeControlPoints = new List<Vector3>();
 
         public bool closedLoopPrivate;
         public List<Vector3> freeRawPath = new List<Vector3>();
         public bool freePathWasEdited;
+        public bool mergeFootprintUseExactPolyline;
+        public bool closedFreeOrthogonalPolylineMode;
+
+        public bool allowVerticalScrollElevation;
+        public float verticalScrollElevationMetersPerWheelUnit = 5f;
     }
 }
