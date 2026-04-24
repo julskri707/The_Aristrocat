@@ -249,7 +249,7 @@ public class FirstThirdPersonController : MonoBehaviour
         return assignmentPanelRoot != null && assignmentPanelRoot.activeSelf;
     }
 
-    private bool IsInventoryPanelOpen()
+    public bool IsInventoryPanelOpen()
     {
         return inventoryPanelRoot != null && inventoryPanelRoot.activeSelf;
     }

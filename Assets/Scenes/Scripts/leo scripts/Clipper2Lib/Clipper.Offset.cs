@@ -1,4 +1,4 @@
-﻿/*******************************************************************************
+/*******************************************************************************
 * Author    :  Angus Johnson                                                   *
 * Date      :  11 October 2025                                                 *
 * Website   :  https://www.angusj.com                                          *
@@ -6,6 +6,7 @@
 * Purpose   :  Path Offset (Inflate/Shrink)                                    *
 * License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************/
+#nullable enable
 
 using System;
 using System.Collections.Generic;

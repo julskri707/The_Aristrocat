@@ -75,7 +75,7 @@ MonoBehaviour:
   furrowLengthSegments: 32
   furrowSegmentsPerStrip: 5
   furrowHeight: 0.3
-  furrowEdgeDip: 0.04
+  furrowEdgeDip: 0.08
   furrowPlateauHalfWidth: 0.47
   furrowPlateauEdgeSoftness: 0.0098
   furrowBoundaryBlendDistance: 3

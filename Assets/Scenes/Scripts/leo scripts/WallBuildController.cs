@@ -54,7 +54,9 @@ public class WallBuildController : MonoBehaviour
     [SerializeField, Min(0.02f)] float wallCornerSnapRadius = 0.24f;
     public float WallCornerSnapRadius => wallCornerSnapRadius;
     [Tooltip("Obsolète : la fusion au relâchement du tracé est désactivée. Les lots ne s’unissent en périmètre extérieur qu’en rapprochant des murs déjà désignés « maison ».")]
+#pragma warning disable CS0414
     [SerializeField] bool mergeLotsWhenCommitSnappedToWallCorner = true;
+#pragma warning restore CS0414
     [Tooltip("Après déplacement d’une poignée de contour (lot orthogonal) : ne fusionner avec un mur voisin que si le relâchement a accroché la poignée à un coin ou une intersection qui n’est pas déjà une poignée de ce même lot. Sinon la fusion peut se déclencher dès que les contours se touchent sans raccord volontaire au coin.")]
     [SerializeField] bool mergeAdjacentLotsOnlyWhenOrthogonalHandleSnappedToForeignCorner = true;
 
@@ -207,7 +209,7 @@ public class WallBuildController : MonoBehaviour
         if (edit == null || !edit.allowVerticalScrollElevation)
             return;
 
-        if (ControlPointHandleUI.SelectedProvider == edit && ControlPointHandleUI.SelectedIndex >= 0)
+        if ((UnityEngine.Object)ControlPointHandleUI.SelectedProvider == (UnityEngine.Object)edit && ControlPointHandleUI.SelectedIndex >= 0)
             return;
 
         if (MergedLotShapePivotHandleUI.ActivePivotForScroll != null)

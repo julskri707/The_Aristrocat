@@ -5925,6 +5925,9 @@ GameObject:
   - component: {fileID: 404743207}
   - component: {fileID: 404743206}
   - component: {fileID: 404743208}
+  - component: {fileID: 404743209}
+  - component: {fileID: 404743210}
+  - component: {fileID: 404743211}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -6088,6 +6091,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerEquipment
   inventory: {fileID: 404743204}
   handHolder: {fileID: 423160547}
+  playerView: {fileID: 404743201}
   equippedItems:
   - {fileID: 0}
   - {fileID: 0}
@@ -6095,6 +6099,8 @@ MonoBehaviour:
   - {fileID: 0}
   activeSlotIndex: 0
   allowNumberKeySelection: 1
+  enableTabCycle: 1
+  cycleActiveSlotKey: 9
 --- !u!114 &404743207
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6138,6 +6144,104 @@ MonoBehaviour:
   upwardOffset: 0.2
   forwardImpulse: 2.5
   upwardImpulse: 1.25
+--- !u!114 &404743209
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 404743200}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f1a2b3c4d5e6f708192a3b4c5d6e7f80, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DamageableHealth
+  team: 0
+  maxHealth: 100
+  currentHealth: 100
+  resetToMaxHealthOnAwake: 1
+  canBeHealed: 1
+  invincible: 0
+  allowFriendlyFire: 0
+  onDamaged:
+    m_PersistentCalls:
+      m_Calls: []
+  onHealed:
+    m_PersistentCalls:
+      m_Calls: []
+  onDeath:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &404743210
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 404743200}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f1a2b3c4d5e6f708192a3b4c5d6e7f81, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerStamina
+  ownerHealth: {fileID: 404743209}
+  maxStamina: 100
+  currentStamina: 100
+  resetToMaxOnAwake: 1
+  staminaRegenPerSecond: 18
+  regenDelayAfterSpend: 1
+  onStaminaChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  onStaminaEmptied:
+    m_PersistentCalls:
+      m_Calls: []
+  onStaminaFull:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &404743211
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 404743200}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 427ffae98dca2bc4c8ab10af880fba62, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerSwordCombat
+  animator: {fileID: 0}
+  ownerHealth: {fileID: 404743209}
+  swordHitbox: {fileID: 0}
+  playerStamina: {fileID: 404743210}
+  playerEquipment: {fileID: 404743206}
+  lookCamera: {fileID: 0}
+  useBuiltInInput: 1
+  mouseButton: 0
+  requireCursorLockForInput: 1
+  treeRaycastDistance: 3.5
+  treeRaycastMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  treeChopFollowthroughDuration: 0.45
+  damagePerHit: 25
+  attackCooldown: 0.55
+  animatorTriggerName: SwordAttack
+  enableCriticalHits: 1
+  criticalChance: 0.15
+  criticalMultiplier: 2
+  requireStamina: 1
+  staminaCostPerAttack: 12
+  hitScanInterval: 0.02
+  queryTriggerInteraction: 2
+  hitDamageableRootWithoutHitbox: 1
+  overlapBufferSize: 32
+  useAnimationEvents: 0
+  fallbackWindup: 0.1
+  fallbackHitDuration: 0.12
+  fallbackTotalAttackDuration: 0.45
+  debugLogs: 0
 --- !u!4 &406840881 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1785748991163630896, guid: 449b66b87a35b2b4481d1f8bf3981d36, type: 3}
@@ -20985,6 +21089,63 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 2969433353282931623, guid: 549ec97f4eb7ebd488005d5727d2a800, type: 3}
   m_PrefabInstance: {fileID: 803508240}
   m_PrefabAsset: {fileID: 0}
+--- !u!1001 &1416624084
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1618.1249
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 29
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 1304.5146
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.5337719
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.22141594
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.25795454
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.7742881
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: -170.044
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: -10.442017
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668415552800943314, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: -21.184998
+      objectReference: {fileID: 0}
+    - target: {fileID: 4153167880261187176, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+      propertyPath: m_Name
+      value: Schwert_welt
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
 --- !u!1001 &1417283023
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -33646,3 +33807,4 @@ SceneRoots:
   - {fileID: 1285180347}
   - {fileID: 1886726138}
   - {fileID: 842029139}
+  - {fileID: 1416624084}

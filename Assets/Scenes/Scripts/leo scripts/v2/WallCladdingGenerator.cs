@@ -171,7 +171,9 @@ public sealed partial class WallCladdingGenerator : MonoBehaviour
     private float triangleBollardAngleOffsetMin = 0.45f;
     private float triangleBollardAngleOffsetMax = 0.60f;
     private float triangleBollardAngleOffsetResponse = 1.35f;
+#pragma warning disable CS0414
     [SerializeField] private float triangleBollardLateralClampMinAngleDeg = 8f;
+#pragma warning restore CS0414
     [SerializeField] private float triangleBollardLateralFollowMinAngleDeg = 8f;
 
     private WallObject wall;

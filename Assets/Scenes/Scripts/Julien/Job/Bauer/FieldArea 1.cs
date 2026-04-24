@@ -1702,6 +1702,9 @@ public class FieldArea : MonoBehaviour
         if (polyMax.x < tpos.x || polyMin.x > terrX1 || polyMax.y < tpos.z || polyMin.y > terrZ1)
             return;
 
+        // Snapshot full detail layers once per TerrainData before we clear any cells, so session end can restore grass/stones.
+        TerrainDetailSessionBackup.EnsureBaselineBeforeModify(terrain);
+
         int xmin = DetailIndexMin(polyMin.x, tpos.x, td.size.x, dw);
         int xmax = DetailIndexMax(polyMax.x, tpos.x, td.size.x, dw);
         int zmin = DetailIndexMin(polyMin.y, tpos.z, td.size.z, dh);

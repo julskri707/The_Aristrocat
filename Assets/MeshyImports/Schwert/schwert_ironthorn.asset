@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 91847278d1f2b1e43b0af59c425a13e7, type: 3}
+  m_Name: schwert_ironthorn
+  m_EditorClassIdentifier: Assembly-CSharp::InventoryItemData
+  itemId: schwert_ironthorn
+  itemDisplayName: Schwert (Ironthorn)
+  iconTexture: {fileID: 2800000, guid: a0b75ed7a45f61248927b1ce75eb9ff9, type: 3}
+  maxStack: 1
+  canEquip: 1
+  allowedEquipmentSlot: 0
+  allowedSlotMask: 3
+  handPrefab: {fileID: 3289593587085534249, guid: 9fb833a887090ff4ea6b2b6cacf11980, type: 3}
+  enableSwordCombat: 1
+  overrideHandPose: 1
+  handLocalPosition: {x: -0.1332, y: 2.3, z: 2.71}
+  handLocalEulerAngles: {x: -140.518, y: -185.017, z: -67.36}
+  worldDropPrefab: {fileID: 4153167880261187176, guid: 20b04b9fdced7dc47be256a2eebb72ea, type: 3}
+  worldObjectScale: {x: 514.68, y: 514.68, z: 514.68}
+  handObjectScale: {x: 514.68, y: 514.68, z: 514.68}
+  chopPower: 0

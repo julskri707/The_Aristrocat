@@ -2,6 +2,11 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Schwertkampf: LMB-Overlap-Schaden (Standard 15), optional Baum per Blick-Raycast (<see cref="TreeResourceNode.TryApplySwordHit"/>).
+/// Sichtbarer Schwung: <see cref="HeldItemSway.TriggerUseSwing"/> + zeitgesteuerte Coroutine (kein Animator-Clip nötig).
+/// Optional: <see cref="useAnimatorForSwordAttack"/> für einen zusätzlichen Animator-Trigger.
+/// </summary>
 public class PlayerSwordCombat : MonoBehaviour
 {
     [Header("References")]
@@ -9,15 +14,27 @@ public class PlayerSwordCombat : MonoBehaviour
     [SerializeField] private DamageableHealth ownerHealth;
     [SerializeField] private SwordMeleeHitbox swordHitbox;
     [SerializeField] private PlayerStamina playerStamina;
+    [SerializeField] private PlayerEquipment playerEquipment;
+    [SerializeField] private Camera lookCamera;
 
     [Header("Input")]
     [SerializeField] private bool useBuiltInInput = true;
     [SerializeField] private int mouseButton = 0;
+    [SerializeField] private bool requireCursorLockForInput = true;
+
+    [Header("Tree chopping (sword)")]
+    [SerializeField] private float treeRaycastDistance = 3.5f;
+    [SerializeField] private LayerMask treeRaycastMask = ~0;
+    [SerializeField] private float treeChopFollowthroughDuration = 0.45f;
 
     [Header("Attack")]
-    [SerializeField] private float damagePerHit = 25f;
+    [SerializeField] private float damagePerHit = 15f;
     [SerializeField] private float attackCooldown = 0.55f;
     [SerializeField] private string animatorTriggerName = "SwordAttack";
+
+    [Header("Optional Animator")]
+    [Tooltip("Aus = kein Animator-Trigger; Schwung nur über HeldItemSway + zeitgesteuerten Angriff (kein Clip im Animator nötig).")]
+    [SerializeField] private bool useAnimatorForSwordAttack = false;
 
     [Header("Critical Hits")]
     [SerializeField] private bool enableCriticalHits = true;
@@ -34,8 +51,9 @@ public class PlayerSwordCombat : MonoBehaviour
     [SerializeField] private bool hitDamageableRootWithoutHitbox = true;
     [SerializeField] private int overlapBufferSize = 32;
 
-    [Header("Fallback Without Animation Events")]
-    [SerializeField] private bool useAnimationEvents = true;
+    [Header("Script-timed attack (default)")]
+    [Tooltip("Aus = Trefferfenster per Coroutine (Fallback-Zeiten). An = nur sinnvoll mit Animator-Animation-Events; zusätzlich useAnimatorForSwordAttack einschalten.")]
+    [SerializeField] private bool useAnimationEvents = false;
     [SerializeField] private float fallbackWindup = 0.10f;
     [SerializeField] private float fallbackHitDuration = 0.12f;
     [SerializeField] private float fallbackTotalAttackDuration = 0.45f;
@@ -81,6 +99,16 @@ public class PlayerSwordCombat : MonoBehaviour
             playerStamina = GetComponent<PlayerStamina>();
         }
 
+        if (playerEquipment == null)
+        {
+            playerEquipment = GetComponent<PlayerEquipment>();
+            if (playerEquipment == null)
+                playerEquipment = GetComponentInParent<PlayerEquipment>();
+        }
+
+        if (lookCamera == null)
+            lookCamera = Camera.main;
+
         if (ownerHealth == null)
         {
             Debug.LogWarning($"[{nameof(PlayerSwordCombat)}] Missing {nameof(DamageableHealth)} on '{name}'.", this);
@@ -106,6 +134,8 @@ public class PlayerSwordCombat : MonoBehaviour
         fallbackWindup = Mathf.Max(0f, fallbackWindup);
         fallbackHitDuration = Mathf.Max(0f, fallbackHitDuration);
         fallbackTotalAttackDuration = Mathf.Max(0f, fallbackTotalAttackDuration);
+        treeRaycastDistance = Mathf.Max(0.1f, treeRaycastDistance);
+        treeChopFollowthroughDuration = Mathf.Max(0.01f, treeChopFollowthroughDuration);
     }
 
     private void OnDisable()
@@ -128,9 +158,12 @@ public class PlayerSwordCombat : MonoBehaviour
 
         if (useBuiltInInput)
         {
-            if (Input.GetMouseButtonDown(mouseButton))
+            if (!requireCursorLockForInput || Cursor.lockState == CursorLockMode.Locked)
             {
-                TryStartAttack();
+                if (Input.GetMouseButtonDown(mouseButton))
+                {
+                    TryStartAttack();
+                }
             }
         }
 
@@ -163,6 +196,60 @@ public class PlayerSwordCombat : MonoBehaviour
             }
         }
 
+        if (TryStartTreeChopAttack())
+            return true;
+
+        return BeginStandardSwordAttack();
+    }
+
+    private bool TryStartTreeChopAttack()
+    {
+        if (!TryGetTreeNodeFromLookRay(out TreeResourceNode tree))
+            return false;
+
+        if (!tree.TryApplySwordHit())
+            return false;
+
+        BeginAttackCommon();
+
+        TriggerHeldItemSway();
+        TriggerSwordAnimator();
+
+        if (fallbackRoutine != null)
+            StopCoroutine(fallbackRoutine);
+
+        fallbackRoutine = StartCoroutine(TreeChopFollowthroughRoutine());
+        return true;
+    }
+
+    private bool BeginStandardSwordAttack()
+    {
+        BeginAttackCommon();
+
+        TriggerHeldItemSway();
+        TriggerSwordAnimator();
+
+        if (ShouldUseScriptTimedAttack())
+        {
+            if (fallbackRoutine != null)
+                StopCoroutine(fallbackRoutine);
+
+            fallbackRoutine = StartCoroutine(FallbackAttackRoutine());
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Reine Script-Steuerung, solange kein vollständiger Animator-gesteuerter Angriff mit Events aktiv ist.
+    /// </summary>
+    private bool ShouldUseScriptTimedAttack()
+    {
+        return !useAnimationEvents || !useAnimatorForSwordAttack;
+    }
+
+    private void BeginAttackCommon()
+    {
         attackInProgress = true;
         hitWindowActive = false;
         currentAttackId++;
@@ -173,30 +260,62 @@ public class PlayerSwordCombat : MonoBehaviour
         {
             Debug.Log($"[{nameof(PlayerSwordCombat)}] Attack started. AttackId={currentAttackId}", this);
         }
+    }
+
+    private void TriggerHeldItemSway()
+    {
+        if (playerEquipment == null)
+            return;
+
+        HeldItemSway sway = playerEquipment.GetComponentInChildren<HeldItemSway>();
+        if (sway != null)
+            sway.TriggerUseSwing();
+    }
+
+    private void TriggerSwordAnimator()
+    {
+        if (!useAnimatorForSwordAttack)
+            return;
 
         if (animator != null && !string.IsNullOrWhiteSpace(animatorTriggerName))
         {
             animator.ResetTrigger(animatorTriggerName);
             animator.SetTrigger(animatorTriggerName);
         }
+    }
 
-        if (!useAnimationEvents)
-        {
-            if (fallbackRoutine != null)
-            {
-                StopCoroutine(fallbackRoutine);
-            }
+    private bool TryGetTreeNodeFromLookRay(out TreeResourceNode tree)
+    {
+        tree = null;
 
-            fallbackRoutine = StartCoroutine(FallbackAttackRoutine());
-        }
+        Camera cam = lookCamera != null ? lookCamera : Camera.main;
+        if (cam == null)
+            return false;
 
-        return true;
+        Ray ray = new Ray(cam.transform.position, cam.transform.forward);
+        if (!Physics.Raycast(ray, out RaycastHit hit, treeRaycastDistance, treeRaycastMask, queryTriggerInteraction))
+            return false;
+
+        tree = TreeResourceNode.FindFromCollider(hit.collider, true);
+        return tree != null;
+    }
+
+    private IEnumerator TreeChopFollowthroughRoutine()
+    {
+        yield return new WaitForSeconds(treeChopFollowthroughDuration);
+        FinishAttack();
+        fallbackRoutine = null;
     }
 
     public bool CanStartAttack()
     {
         if (ownerHealth != null && ownerHealth.IsDead)
             return false;
+
+        if (!ActiveItemAllowsSwordCombat())
+            return false;
+
+        EnsureSwordHitboxResolved();
 
         if (attackInProgress)
             return false;
@@ -291,6 +410,8 @@ public class PlayerSwordCombat : MonoBehaviour
 
     private void PerformHitScan()
     {
+        EnsureSwordHitboxResolved();
+
         if (swordHitbox == null)
             return;
 
@@ -469,6 +590,20 @@ public class PlayerSwordCombat : MonoBehaviour
             $"[{nameof(PlayerSwordCombat)}] '{name}' requires {nameof(PlayerStamina)} but none was found.",
             this
         );
+    }
+
+    private bool ActiveItemAllowsSwordCombat()
+    {
+        if (playerEquipment == null)
+            return false;
+
+        InventoryItemData item = playerEquipment.GetActiveItem();
+        return item != null && item.enableSwordCombat;
+    }
+
+    private void EnsureSwordHitboxResolved()
+    {
+        swordHitbox = GetComponentInChildren<SwordMeleeHitbox>(true);
     }
 
     public void AE_BeginSwordHitWindow()
