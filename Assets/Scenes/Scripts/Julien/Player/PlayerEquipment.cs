@@ -6,6 +6,7 @@ public class PlayerEquipment : MonoBehaviour
     [Header("References")]
     [SerializeField] private PlayerInventory inventory;
     [SerializeField] private Transform handHolder;
+    [SerializeField] private FirstThirdPersonController playerView;
 
     [Header("Slots")]
     [SerializeField] private InventoryItemData[] equippedItems = new InventoryItemData[4];
@@ -13,6 +14,8 @@ public class PlayerEquipment : MonoBehaviour
 
     [Header("Input")]
     [SerializeField] private bool allowNumberKeySelection = true;
+    [SerializeField] private bool enableTabCycle = true;
+    [SerializeField] private KeyCode cycleActiveSlotKey = KeyCode.Tab;
 
     private GameObject spawnedHeldObject;
 
@@ -26,11 +29,23 @@ public class PlayerEquipment : MonoBehaviour
         if (inventory == null)
             inventory = GetComponentInParent<PlayerInventory>();
 
+        if (playerView == null)
+            playerView = GetComponent<FirstThirdPersonController>();
+
+        if (playerView == null)
+            playerView = GetComponentInParent<FirstThirdPersonController>();
+
         RefreshHeldVisual();
     }
 
     private void Update()
     {
+        if (enableTabCycle && Input.GetKeyDown(cycleActiveSlotKey))
+        {
+            if (playerView == null || !playerView.IsInventoryPanelOpen())
+                SelectSlot((activeSlotIndex + 1) % equippedItems.Length);
+        }
+
         if (!allowNumberKeySelection)
             return;
 
@@ -53,7 +68,7 @@ public class PlayerEquipment : MonoBehaviour
         if (itemData == null || !itemData.canEquip)
             return false;
 
-        if ((int)itemData.allowedEquipmentSlot != slotIndex)
+        if (!itemData.IsAllowedInEquipmentSlot(slotIndex))
             return false;
 
         if (inventory == null)
@@ -95,10 +110,10 @@ public class PlayerEquipment : MonoBehaviour
         if (dragged == null)
             return false;
 
-        if ((int)dragged.allowedEquipmentSlot != toSlot)
+        if (!dragged.IsAllowedInEquipmentSlot(toSlot))
             return false;
 
-        if (target != null && (int)target.allowedEquipmentSlot != fromSlot)
+        if (target != null && !target.IsAllowedInEquipmentSlot(fromSlot))
             return false;
 
         equippedItems[fromSlot] = target;
@@ -170,9 +185,18 @@ public class PlayerEquipment : MonoBehaviour
             return;
 
         spawnedHeldObject = Instantiate(activeItem.handPrefab, handHolder);
-        spawnedHeldObject.transform.localPosition = Vector3.zero;
-        spawnedHeldObject.transform.localRotation = Quaternion.identity;
-        spawnedHeldObject.transform.localScale = activeItem.handObjectScale;
+        if (activeItem.overrideHandPose)
+        {
+            spawnedHeldObject.transform.localPosition = activeItem.handLocalPosition;
+            spawnedHeldObject.transform.localRotation = Quaternion.Euler(activeItem.handLocalEulerAngles);
+        }
+        else
+        {
+            spawnedHeldObject.transform.localPosition = Vector3.zero;
+            spawnedHeldObject.transform.localRotation = Quaternion.identity;
+        }
+
+        // Größe kommt nur aus dem handPrefab (Inspector), nicht aus Item-Daten.
 
         DisablePhysicsOnHeldObject(spawnedHeldObject);
     }

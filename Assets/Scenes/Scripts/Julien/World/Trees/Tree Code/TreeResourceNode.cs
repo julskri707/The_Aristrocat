@@ -21,6 +21,13 @@ public class TreeResourceNode : MonoBehaviour
     [Min(0)]
     [SerializeField] private int currentHealth = 5;
 
+    [Header("Sword chopping")]
+    [Tooltip("Schwert-Holzfällen ist unabhängig von der Axt-Gesundheit (ApplyChopDamage).")]
+    [Min(1)]
+    [SerializeField] private int swordHitsRequired = 10;
+
+    private int swordHitsAccumulated;
+
     [Header("State")]
     [SerializeField] private bool isFelled = false;
 
@@ -102,6 +109,7 @@ public class TreeResourceNode : MonoBehaviour
         AutoAssignReferences();
         currentWood = maxWoodYield;
         currentHealth = maxHealth;
+        swordHitsAccumulated = 0;
     }
 
     private void Awake()
@@ -115,6 +123,8 @@ public class TreeResourceNode : MonoBehaviour
 
             if (currentHealth <= 0)
                 currentHealth = maxHealth;
+
+            swordHitsAccumulated = 0;
         }
 
         ClampValues();
@@ -216,6 +226,44 @@ public class TreeResourceNode : MonoBehaviour
             Fell();
 
         return true;
+    }
+
+    /// <summary>
+    /// Ein Treffer mit dem Schwert (Raycast). Zählt getrennt von <see cref="ApplyChopDamage"/>.
+    /// Bei <c>swordHitsAccumulated &gt;= swordHitsRequired</c> wird <see cref="Fell"/> ausgelöst.
+    /// </summary>
+    public bool TryApplySwordHit()
+    {
+        if (isFelled) return false;
+        if (isFallingOrRemoving) return false;
+
+        swordHitsAccumulated++;
+        OnDamaged?.Invoke(this, 1);
+
+        if (swordHitsAccumulated >= swordHitsRequired)
+            Fell();
+
+        return true;
+    }
+
+    /// <summary>Sucht <see cref="TreeResourceNode"/> am getroffenen Collider (self, Parent, Child).</summary>
+    public static TreeResourceNode FindFromCollider(Collider hitCollider, bool searchParentsAndChildren = true)
+    {
+        if (hitCollider == null)
+            return null;
+
+        TreeResourceNode node = hitCollider.GetComponent<TreeResourceNode>();
+        if (node != null)
+            return node;
+
+        if (!searchParentsAndChildren)
+            return null;
+
+        node = hitCollider.GetComponentInParent<TreeResourceNode>();
+        if (node != null)
+            return node;
+
+        return hitCollider.GetComponentInChildren<TreeResourceNode>();
     }
 
     public void Fell()
@@ -659,6 +707,8 @@ public class TreeResourceNode : MonoBehaviour
 
         maxHealth = Mathf.Max(1, maxHealth);
         currentHealth = isFelled ? 0 : Mathf.Clamp(currentHealth <= 0 ? maxHealth : currentHealth, 0, maxHealth);
+
+        swordHitsRequired = Mathf.Max(1, swordHitsRequired);
 
         woodPerPickup = Mathf.Max(1, woodPerPickup);
         woodDropRadius = Mathf.Max(0f, woodDropRadius);

@@ -1,4 +1,4 @@
-﻿/*******************************************************************************
+/*******************************************************************************
 * Author    :  Angus Johnson                                                   *
 * Date      :  7 October 2025                                                 *
 * Website   :  http://www.angusj.com                                           *
@@ -8,6 +8,7 @@
 *           :  and Daniel Gosnell for their invaluable assistance with C#.     *
 * License   :  http://www.boost.org/LICENSE_1_0.txt                            *
 *******************************************************************************/
+#nullable enable
 
 using System;
 using System.Collections;

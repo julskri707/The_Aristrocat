@@ -18,7 +18,12 @@ MonoBehaviour:
   maxStack: 999
   canEquip: 1
   allowedEquipmentSlot: 0
+  allowedSlotMask: 0
   handPrefab: {fileID: 3697768510973624520, guid: d70125512cd84434c9ec314517963007, type: 3}
+  enableSwordCombat: 0
+  overrideHandPose: 0
+  handLocalPosition: {x: 0, y: 0, z: 0}
+  handLocalEulerAngles: {x: 0, y: 0, z: 0}
   worldDropPrefab: {fileID: 3697768510973624520, guid: d70125512cd84434c9ec314517963007, type: 3}
   worldObjectScale: {x: 115, y: 115, z: 115}
   handObjectScale: {x: 200, y: 200, z: 200}

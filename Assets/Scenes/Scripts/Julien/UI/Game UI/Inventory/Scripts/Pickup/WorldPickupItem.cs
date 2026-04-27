@@ -77,9 +77,6 @@ public class WorldPickupItem : MonoBehaviour
 
     private void ApplyWorldScale()
     {
-        if (itemData == null)
-            return;
-
-        transform.localScale = itemData.worldObjectScale;
+        // Größe kommt nur aus dem Welt-Prefab (Inspector), nicht aus InventoryItemData.worldObjectScale.
     }
 }
