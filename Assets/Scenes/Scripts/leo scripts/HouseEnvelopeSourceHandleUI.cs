@@ -100,6 +100,32 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
         return s_Build;
     }
 
+    /// <summary>Clic droit sur la rose : menu du pivot (étage sur ce plan seulement, etc.).</summary>
+    void TryOpenSourcePlanPivotMenu(PointerEventData eventData)
+    {
+        WallEditShape srcEdit = TryResolveSourceEdit();
+        if (srcEdit == null || srcEdit.wall == null || !srcEdit.IsClosedLoopPath)
+            return;
+
+        PivotPointActionsMenuUI pivotMenu = FindFirstObjectByType<PivotPointActionsMenuUI>(FindObjectsInactive.Include);
+        if (pivotMenu == null)
+            return;
+
+        WallContextMenuUI ctx = FindFirstObjectByType<WallContextMenuUI>(FindObjectsInactive.Include);
+        if (ctx != null && ctx.IsOpen)
+            ctx.Close();
+
+        LotBuildMenuUI lot = FindFirstObjectByType<LotBuildMenuUI>(FindObjectsInactive.Include);
+        if (lot != null && lot.IsOpen)
+            lot.Close();
+
+        EnvelopeOverlayHandleFocus.SetFocusPink(envelopeEdit.wall);
+        LastInteractedSourceLotIndex = sourceLotIndex;
+        PendingHighlightSourceLotIndex = sourceLotIndex;
+
+        pivotMenu.OpenForWall(srcEdit.wall, eventData.position, HousePivotAddFloorScope.CurrentWallOnly);
+    }
+
     void Awake()
     {
         CacheCanvas();
@@ -332,6 +358,14 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
     {
         if (cam == null || envelopeEdit == null || envelopeEdit.wall == null)
             return;
+
+        if (eventData.button == PointerEventData.InputButton.Right)
+        {
+            if (ControlPointHandleUI.ShouldBlockNewOverlayPointerDown())
+                return;
+            TryOpenSourcePlanPivotMenu(eventData);
+            return;
+        }
 
         if (eventData.button != PointerEventData.InputButton.Left)
             return;

@@ -40,11 +40,11 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
     [Tooltip("Below this dot threshold, corners use bevel fallback instead of long miters.")]
     [Range(0.05f, 0.95f)] public float sharpCornerThreshold = 0.35f;
 
-    [Tooltip("Coupe les pointes du centreline avant extrusion. Ignoré sur les boucles presque orthogonales (L, rectangle) pour garder des angles vifs.")]
+    [Tooltip("Chamfrein sur le centreline (hors sommets H/V en angle droit) si la boucle n'est pas 100% Manhattan. Les coins stricte-axes (carré + arc) ne sont pas coupés. Ignoré sur les boucles entièrement H/V (L, rectangle).")]
     [Min(0f)] public float closedLoopCornerBevel = 0.035f;
 
     [Header("Mesh optimization")]
-    [Tooltip("Closed loops only. If > 0 and the path has more vertices than this, the wall mesh is rebuilt from an evenly resampled loop (fewer triangles). Skipped for axis-aligned orthogonal rings (L, U, rectangles) so the extruded mesh matches the control polyline and cladding. Control points are unchanged.")]
+    [Tooltip("Boucle fermée : rééchantillonage si beaucoup de sommets. Sauté si le contour est entièrement H/V, ou s'il comporte un coin H/V 90° (ex. carré fusionné à un cercle) pour ne pas lisser les droits du carré.")]
     [Range(0, 256)] public int maxClosedLoopMeshVertices = 56;
     [Tooltip("Skip tangent generation on rebuild. Keep OFF if your wall material does not use normal maps.")]
     public bool recalculateTangents = false;
@@ -225,7 +225,8 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             points = ApplyClosedLoopCornerBevel(points, closedLoopCornerBevel);
 
         if (isClosed && maxClosedLoopMeshVertices > 0 && points.Count > maxClosedLoopMeshVertices &&
-            !IsClosedLoopOrthogonalAxisAlignedXZ(points))
+            !IsClosedLoopOrthogonalAxisAlignedXZ(points) &&
+            !ClosedLoopHasAnyAxisAlignedHvNinetyCorner(points))
             points = ResampleClosedLoopEvenly(points, maxClosedLoopMeshVertices);
 
         int count = points.Count;
@@ -504,6 +505,52 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         return true;
     }
 
+    /// <summary>
+    /// Sommet dont les deux arêtes incidentes sont l’une parallèle à X, l’autre à Z (angle droit, saillant ou rentrant L).
+    /// Sert à ne pas appliquer le chamfrein maillage sur ce coin lorsque le contour global mélange arc et facette rectiligne.
+    /// </summary>
+    static bool IsVertexAxisAlignedHvNinetyDegreeCornerXZ(List<Vector3> pts, int i, int count)
+    {
+        const float minLen = 1e-4f;
+        const float axisFrac = 0.02f;
+        Vector3 p = pts[i];
+        Vector3 prev = pts[(i - 1 + count) % count];
+        Vector3 next = pts[(i + 1) % count];
+        Vector3 toPrev = p - prev;
+        Vector3 toNext = next - p;
+        toPrev.y = 0f;
+        toNext.y = 0f;
+        float lenP = toPrev.magnitude;
+        float lenN = toNext.magnitude;
+        if (lenP < minLen || lenN < minLen)
+            return false;
+
+        float axP = Mathf.Abs(toPrev.x) / lenP;
+        float azP = Mathf.Abs(toPrev.z) / lenP;
+        float axN = Mathf.Abs(toNext.x) / lenN;
+        float azN = Mathf.Abs(toNext.z) / lenN;
+
+        bool prevH = axP > 0.01f && azP < axisFrac;
+        bool prevV = azP > 0.01f && axP < axisFrac;
+        bool nextH = axN > 0.01f && azN < axisFrac;
+        bool nextV = azN > 0.01f && axN < axisFrac;
+
+        return (prevH && nextV) || (prevV && nextH);
+    }
+
+    static bool ClosedLoopHasAnyAxisAlignedHvNinetyCorner(List<Vector3> pts)
+    {
+        if (pts == null || pts.Count < 3)
+            return false;
+        int n = pts.Count;
+        for (int i = 0; i < n; i++)
+        {
+            if (IsVertexAxisAlignedHvNinetyDegreeCornerXZ(pts, i, n))
+                return true;
+        }
+        return false;
+    }
+
     private static Vector3 GetDirPrev(List<Vector3> points, int i, int count, bool closed)
     {
         const float eps = 0.000001f;
@@ -676,6 +723,12 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             float lenPrev = toPrev.magnitude;
             float lenNext = toNext.magnitude;
             if (lenPrev < 0.0001f || lenNext < 0.0001f)
+            {
+                result.Add(p);
+                continue;
+            }
+
+            if (IsVertexAxisAlignedHvNinetyDegreeCornerXZ(pts, i, count))
             {
                 result.Add(p);
                 continue;

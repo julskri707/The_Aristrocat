@@ -923,7 +923,7 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
     /// Après fusion de deux lots : applique le contour extérieur calculé (L, U, …) tel quel.
     /// Évite <see cref="InitFromPath"/> qui peut retomber sur du lissage ou une enveloppe convexe (grand rectangle).
     /// </summary>
-    /// <param name="drawInputForSnap">Si non null et <paramref name="snapCommittedOutlineToMainGrid"/> : aligne le contour sur la grille hiérarchique avant canonicalisation (même logique que le dessin).</param>
+    /// <param name="drawInputForSnap">Si non null, <paramref name="snapCommittedOutlineToMainGrid"/> et contour <b>uniquement H/V (Manhattan)</b> : aligne le contour sur la grille (lots L/U). Les enveloppes avec arcs (cercle, union triangle/ellipse) ne sont pas accrochées à la grille pour éviter l’escalier à angles droits.</param>
     public void InitFromMergedLotOutline(
         List<Vector3> mergedClosedWorldPath,
         WallDrawInput drawInputForSnap = null,
@@ -944,10 +944,14 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
         if (src.Count < 3)
             return;
 
+        // Accrochage grille : seulement contours 100% horizontaux / verticaux (L, U, rect). Sinon
+        // (cercle échantillonné, union tri/ellipse) → chaque sommet sur la grille = escalier 90°.
+        bool outlineIsOrthogonalAxis = WallObject.IsClosedLoopOrthogonalAxisAlignedXZ(src);
         if (drawInputForSnap != null &&
             snapCommittedOutlineToMainGrid &&
             drawInputForSnap.enableGridSnap &&
-            drawInputForSnap.snapToHierarchicalVisualGrid)
+            drawInputForSnap.snapToHierarchicalVisualGrid &&
+            outlineIsOrthogonalAxis)
         {
             drawInputForSnap.SnapCommittedPathToMainGridInPlace(src, closed: true);
         }
@@ -955,8 +959,8 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
         shapeY = src[0].y;
         _freePathWasEdited = false;
         _mergeFootprintUseExactPolyline = true;
-        _closedFreeOrthogonalPolylineMode = true;
-        orthogonalMidHandleDragsWholeWallRun = true;
+        _closedFreeOrthogonalPolylineMode = outlineIsOrthogonalAxis;
+        orthogonalMidHandleDragsWholeWallRun = outlineIsOrthogonalAxis;
         InvalidateStraightClosedPreviewCache();
 
         freeControlPoints.Clear();
@@ -969,11 +973,13 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
 
         EnsureClosedFreeRingCounterClockwiseXZ();
 
-        InsertMidpointsOnCoinToCoinEdgesOrthogonalRing();
-
-        // Même pipeline qu’après édition : sinon segments diagonaux / cordes [coin,coin] ne sont jamais corrigés
-        // tant que l’utilisateur n’a pas déplacé une poignée.
-        FinalizeOrthogonalFreeRingAfterControlEdit();
+        if (outlineIsOrthogonalAxis)
+        {
+            InsertMidpointsOnCoinToCoinEdgesOrthogonalRing();
+            // Même pipeline qu’après édition : sinon segments diagonaux / cordes [coin,coin] ne sont jamais corrigés
+            // tant que l’utilisateur n'a pas déplacé une poignée.
+            FinalizeOrthogonalFreeRingAfterControlEdit();
+        }
 
         shapeKind = ShapeKind.Free;
         ApplyToWall();
@@ -3748,7 +3754,22 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
         else
         {
             freeControlPoints[index] = new Vector3(worldPos.x, shapeY, worldPos.z);
-            _mergeFootprintUseExactPolyline = false;
+            // Ne pas effacer le mode « contour fusionné = polyline exacte » : c’est ce qui basculait le mesh en
+            // <see cref="BuildClosedCatmullRomThroughControls"/> (murs arrondis). Synchroniser le raw sur les poignées.
+            if (_closedLoop && _mergeFootprintUseExactPolyline)
+            {
+                _freeRawPath.Clear();
+                for (int i = 0; i < freeControlPoints.Count; i++)
+                {
+                    Vector3 p = freeControlPoints[i];
+                    _freeRawPath.Add(new Vector3(p.x, shapeY, p.z));
+                }
+            }
+            else
+            {
+                _mergeFootprintUseExactPolyline = false;
+            }
+
             _freePathWasEdited = true;
             ClampOpenFreeVerticesToInteriorLotConstraint();
         }
@@ -4935,7 +4956,10 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
                 return _straightClosedPreviewCache;
         }
 
-        if (_mergeFootprintUseExactPolyline && _closedLoop && !_freePathWasEdited)
+        // Ne pas exiger « !_freePathWasEdited » : dès le premier drag en mode non-orthogonal, l’ancien code mettait
+        // <see cref="_mergeFootprintUseExactPolyline"/> à faux et on passait en Catmull-Rom → murs « fondus » alors
+        // que les poignées restent un polygone. Tant que le drapeau fusion est actif, le mur doit suivre la polyline.
+        if (_mergeFootprintUseExactPolyline && _closedLoop)
         {
             List<Vector3> exact = BuildExactMergedFootprintPolyline();
             if (exact != null && exact.Count >= 3)

@@ -47,6 +47,9 @@ public class ControlPointOverlayManager : MonoBehaviour
     /// </summary>
     int _independentHouseEnvelopeFocusedSourceLot = -1;
 
+    /// <summary>Lot source actuellement focalisé pour les poignées indépendantes (enveloppe multi-plans). -1 si N/A.</summary>
+    public int IndependentHouseEnvelopeFocusedSourceLotIndex => _independentHouseEnvelopeFocusedSourceLot;
+
     void Awake()
     {
         if (cam == null)

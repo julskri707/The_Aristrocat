@@ -303,7 +303,7 @@ public sealed partial class WallCladdingGenerator
                     ApplyMaterialDoubleSided(stoneMaterial);
                 ApplyPerStoneMaterialVariation(profile, mr, rng, true);
                 AttachQuoinRuntimeLodIfEnabled(go, mf, mesh, GetEffectiveUvMetersPerUnit(profile));
-                if (combineGeneratedStonesPerSide && profile != null && mf.sharedMesh != null)
+                if (_effectiveCombineStonesThisRebuild && profile != null && mf.sharedMesh != null)
                     ApplyPerStoneTintAsVertexColors(mf.sharedMesh, profile, rng, true);
                 stoneIndex++;
             }

@@ -741,8 +741,11 @@ MonoBehaviour:
   mergeContactTolerance: 0.15
   flushMergeMaxGapFractionOfCell: 0.012
   flushMergeMaxGapAbsoluteM: 0.0025
+  designatedHouseLotsUseOuterEnvelopeOnly: 1
+  mergeDrawnOrPresetShapesWithAdjacentDesignatedHouseOnCommit: 1
   enableClipboardDuplicate: 1
   pasteOffsetXZ: {x: 1, y: 1}
+  defaultHouseParquetMaterialForPaste: {fileID: 0}
   houseMenuSpawnWallHalfLengthM: 1.25
   verticalScrollElevationMetersPerWheelUnit: 5
   addFloorHeightMeters: 2.5
@@ -1014,6 +1017,10 @@ PrefabInstance:
       propertyPath: overlay
       value: 
       objectReference: {fileID: 1195328562}
+    - target: {fileID: 9056970342576363664, guid: 8edf61e9bf5a7bc4da05af3dbaa722b5, type: 3}
+      propertyPath: menuRoot
+      value: 
+      objectReference: {fileID: 0}
     - target: {fileID: 9056970342576363664, guid: 8edf61e9bf5a7bc4da05af3dbaa722b5, type: 3}
       propertyPath: undoManager
       value: 
@@ -1334,6 +1341,10 @@ MonoBehaviour:
   defaultHouseLabel: "Cr\xE9er une maison"
   defaultFieldLabel: "Cr\xE9er un champ (bient\xF4t)"
   defaultParquetMaterial: {fileID: 0}
+  buttonPresetCircleAtLotCenter: {fileID: 0}
+  buttonPresetTriangleAtLotCenter: {fileID: 0}
+  presetCircleRadiusMeters: 2
+  presetTriangleSideMeters: 3
   buildController: {fileID: 0}
 --- !u!114 &764339436
 MonoBehaviour:
@@ -1679,6 +1690,7 @@ MonoBehaviour:
   handlesRoot: {fileID: 1360271856}
   handlePrefab: {fileID: 8250726105603032479, guid: 2d057d9ee81b16844a2b4eaab2450459, type: 3}
   mergedLotShapePivotPrefab: {fileID: 1827364500011000001, guid: 7d4e9f2a1b6c508493d2e7a1f4c9b0de, type: 3}
+  houseEnvelopeSourceHandlePrefab: {fileID: 0}
   linksRoot: {fileID: 1637475659}
   linkPrefab: {fileID: 6353280019826154621, guid: f570c87757436bd45b622dc10bf17f41, type: 3}
   showLinks: 1
@@ -2447,6 +2459,9 @@ MonoBehaviour:
   panelRoot: {fileID: 1664895438}
   buttonAddWall: {fileID: 73079164}
   buttonAddFloor: {fileID: 1273134659}
+  buttonPresetCircleAtLotCenter: {fileID: 0}
+  buttonPresetTriangleAtLotCenter: {fileID: 0}
+  buttonSplitEnvelopeLots: {fileID: 0}
   backgroundCloseButton: {fileID: 1664895440}
   titleText: {fileID: 0}
   closeOnEscape: 1
@@ -2454,8 +2469,15 @@ MonoBehaviour:
   panelScreenOffset: {x: 18, y: -18}
   screenPadding: {x: 18, y: 18}
   defaultTitle: Lot maison
+  titleSinglePlan: Un plan de la maison
+  titleEntireHouse: 
   defaultAddWallLabel: Ajouter un mur
   defaultAddFloorLabel: "Ajouter un \xE9tage (bient\xF4t)"
+  defaultPresetCircleLabel: Cercle au centre du lot
+  defaultPresetTriangleLabel: Triangle au centre du lot
+  defaultSplitEnvelopeLabel: "S\xE9parer les lots"
+  presetCircleRadiusMeters: 2
+  presetTriangleSideMeters: 3
   buildController: {fileID: 0}
   wallDrawInput: {fileID: 0}
 --- !u!114 &1664895444
@@ -2661,6 +2683,9 @@ MonoBehaviour:
   toggleUIKey: 9
   panelPos: {x: 16, y: 16}
   panelSize: {x: 320, y: 110}
+  uiPresetCircleRadiusM: 2
+  uiPresetSquareSideM: 3
+  uiPresetTriangleSideM: 3
 --- !u!1 &1972683404
 GameObject:
   m_ObjectHideFlags: 0

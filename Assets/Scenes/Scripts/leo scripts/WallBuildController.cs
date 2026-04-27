@@ -71,8 +71,8 @@ public class WallBuildController : MonoBehaviour
     [SerializeField, Min(0.0002f)] float flushMergeMaxGapAbsoluteM = 0.005f;
     [Tooltip("Maisons adjacentes: conserve les lots sources (cachés) et met à jour un mur enveloppe extérieur unique au lieu de fusionner destructivement les lots.")]
     [SerializeField] bool designatedHouseLotsUseOuterEnvelopeOnly = true;
-    [Tooltip("Si activé : au relâchement du tracé ou des presets (carré, cercle, triangle), tentative de fusion avec un lot « maison » voisin. Désactiver pour placer une nouvelle forme sans fusion immédiate — fusion ensuite en déplaçant le lot ou le pivot violet.")]
-    [SerializeField] bool mergeDrawnOrPresetShapesWithAdjacentDesignatedHouseOnCommit = false;
+    [Tooltip("Obsolète/conservé pour compatibilité scène : la fusion auto maison est toujours active côté code et ne concerne que les lots maison.")]
+    [SerializeField] bool mergeDrawnOrPresetShapesWithAdjacentDesignatedHouseOnCommit = true;
 
     [Header("Duplication (Ctrl+C / Ctrl+V)")]
     [Tooltip("Si désactivé, les raccourcis ne sont pas traités.")]
@@ -321,6 +321,7 @@ public class WallBuildController : MonoBehaviour
 
                 EnsureWallStoneCladdingEnabled(wall);
                 RegisterExistingWall(wall);
+                RequestDeferredCladdingRefresh(wall);
                 lastWall = wall;
             }
         });
@@ -330,6 +331,28 @@ public class WallBuildController : MonoBehaviour
 
         if (logDebug)
             Debug.Log("[WallBuildController] Spawned open wall(s) from house menu (per storey).");
+    }
+
+    /// <summary>
+    /// Un seul lot fermé : hauteur + dalle + duplication des murs intérieurs du dernier niveau.
+    /// Pas d’undo ni de <see cref="RunWithCladdingRebuildSuspended"/> — l’appelant s’en charge.
+    /// </summary>
+    void ApplyAddFloorToSingleClosedLot(WallObject referenceLot, float story)
+    {
+        WallEditShape lotEdit = referenceLot.GetComponent<WallEditShape>();
+        if (lotEdit == null || !lotEdit.IsClosedLoopPath)
+            return;
+
+        HouseParquetFloor parquet = referenceLot.GetComponent<HouseParquetFloor>();
+        if (parquet != null)
+            parquet.storeyHeightMeters = story;
+
+        ExtendLotWallHeightOnly(referenceLot, story);
+
+        if (TryGetMaxInteriorShapeYAttachedToLot(lotEdit, out float maxInteriorY))
+            DuplicateInteriorWallsOnTopFloor(lotEdit, maxInteriorY, story);
+
+        lotEdit.ApplyToWall();
     }
 
     /// <summary>
@@ -352,19 +375,12 @@ public class WallBuildController : MonoBehaviour
 
         float story = Mathf.Max(0.1f, addFloorHeightMeters);
 
-        RunWithCladdingRebuildSuspended(() =>
-        {
-            HouseParquetFloor parquet = referenceLot.GetComponent<HouseParquetFloor>();
-            if (parquet != null)
-                parquet.storeyHeightMeters = story;
+        RunWithCladdingRebuildSuspended(() => ApplyAddFloorToSingleClosedLot(referenceLot, story));
 
-            ExtendLotWallHeightOnly(referenceLot, story);
-
-            if (TryGetMaxInteriorShapeYAttachedToLot(lotEdit, out float maxInteriorY))
-                DuplicateInteriorWallsOnTopFloor(lotEdit, maxInteriorY, story);
-
-            lotEdit.ApplyToWall();
-        });
+        // Maison multi-plans : hauteur commune = min(sources) sur l’enveloppe (tout le bas du pourtour). Les lots
+        // plus hauts qu’un seul côté ont la pierre du haut générée <b>uniquement</b> sur le contour de ce lot (bande
+        // haute, sans doubler l’enveloppe sur 0..min, voir <see cref="HouseEnvelopeBundledSourceVisuals"/>).
+        TrySyncBundledShellHeightsAfterIndividualStoreyAddOnSource(referenceLot);
 
         ForceSelectWall(referenceLot);
 
@@ -372,6 +388,133 @@ public class WallBuildController : MonoBehaviour
             Debug.Log("[WallBuildController] Extended wall height for add floor.");
 
         return referenceLot;
+    }
+
+    /// <summary>
+    /// Enveloppe maison + ≥2 lots : l’enveloppe reste à <c>min</c> (hauteur commune) sur tout l’emprise fusionnée ;
+    /// chaque lot plus haut reçoit la pierre extérieure du « surplus » de hauteur uniquement sur <b>son</b> périmètre
+    /// (le bas reste couvert par l’enveloppe seule, sans 2e couche de pierre).
+    /// </summary>
+    void TrySyncBundledShellHeightsAfterIndividualStoreyAddOnSource(WallObject lotAfterStoreyAdd)
+    {
+        if (lotAfterStoreyAdd == null)
+            return;
+
+        WallObject env = HouseEnvelopeBundledSourceTag.ResolveEnvelopeForSourceLot(lotAfterStoreyAdd, true);
+        if (env == null || env == lotAfterStoreyAdd)
+            return;
+
+        HouseExteriorEnvelopeSources meta = env.GetComponent<HouseExteriorEnvelopeSources>();
+        if (meta == null)
+            return;
+
+        IReadOnlyList<GameObject> gos = meta.SourceLotObjects;
+        if (gos == null)
+            return;
+
+        float minH = env.height;
+        for (int i = 0; i < gos.Count; i++)
+        {
+            if (gos[i] == null)
+                continue;
+            WallObject w = gos[i].GetComponent<WallObject>();
+            if (w == null)
+                continue;
+            minH = Mathf.Min(minH, w.height);
+        }
+
+        if (minH < env.height - 0.0001f)
+        {
+            env.SetHeight(minH);
+            EnsureWallStoneCladdingEnabled(env);
+            if (isActiveAndEnabled)
+                StartCoroutine(CoRefreshCladdingAfterLotMerge(env));
+        }
+        else if (isActiveAndEnabled)
+            StartCoroutine(CoRefreshCladdingAfterLotMerge(env));
+
+        for (int i = 0; i < gos.Count; i++)
+        {
+            if (gos[i] == null)
+                continue;
+            WallObject w = gos[i].GetComponent<WallObject>();
+            if (w == null)
+                continue;
+
+            if (w.height > minH + 0.01f)
+            {
+                HouseEnvelopeBundledSourceVisuals.ApplyTallerSourceUpperBandExteriorCladdingOnly(w, minH);
+
+                WallEditShape ed = w.GetComponent<WallEditShape>();
+                HouseParquetFloor pf = w.GetComponent<HouseParquetFloor>();
+                if (pf != null && ed != null)
+                    ApplyHouseParquetForDesignatedClosedLot(pf, w, ed);
+
+                EnsureWallStoneCladdingEnabled(w);
+                if (isActiveAndEnabled)
+                    StartCoroutine(CoRefreshCladdingAfterLotMerge(w));
+            }
+            else
+                HouseEnvelopeBundledSourceVisuals.SetBundledSourceVisualsHidden(w, true);
+        }
+
+        if (overlay == null)
+            overlay = FindFirstObjectByType<ControlPointOverlayManager>(FindObjectsInactive.Include);
+        if (overlay != null)
+            overlay.RebuildOverlay();
+    }
+
+    /// <summary>
+    /// Depuis le pivot violet (enveloppe multi-plans) : +1 étage sur l’enveloppe <b>et</b> sur chaque lot source lié
+    /// sur <see cref="HouseExteriorEnvelopeSources"/>, un seul snapshot undo. Si pas de composant / pas de sources, équivalent à <see cref="AddFloorFromHouseMenu"/>.
+    /// </summary>
+    public WallObject AddFloorToEntireLinkedHouseEnsemble(WallObject envelopeWall)
+    {
+        if (envelopeWall == null)
+            return null;
+
+        WallEditShape envEdit = envelopeWall.GetComponent<WallEditShape>();
+        if (envEdit == null || !envEdit.IsClosedLoopPath)
+            return null;
+
+        HouseExteriorEnvelopeSources hes = envelopeWall.GetComponent<HouseExteriorEnvelopeSources>();
+        if (hes == null || hes.SourceLotObjects == null || hes.SourceLotObjects.Count == 0)
+            return AddFloorFromHouseMenu(envelopeWall);
+
+        if (undoManager == null)
+            undoManager = FindFirstObjectByType<WallUndoManager>();
+        if (undoManager != null)
+            undoManager.RecordSnapshot("Add floor (toute la maison liée)");
+
+        float story = Mathf.Max(0.1f, addFloorHeightMeters);
+
+        var targets = new HashSet<WallObject> { envelopeWall };
+        IReadOnlyList<GameObject> srcGos = hes.SourceLotObjects;
+        for (int i = 0; i < srcGos.Count; i++)
+        {
+            GameObject go = srcGos[i];
+            if (go == null)
+                continue;
+            WallObject w = go.GetComponent<WallObject>();
+            if (w == null || w == envelopeWall)
+                continue;
+            WallEditShape e = w.GetComponent<WallEditShape>();
+            if (e != null && e.IsClosedLoopPath)
+                targets.Add(w);
+        }
+
+        RunWithCladdingRebuildSuspended(() =>
+        {
+            foreach (WallObject w in targets)
+                ApplyAddFloorToSingleClosedLot(w, story);
+        });
+
+        ForceSelectWall(envelopeWall);
+
+        if (logDebug)
+            Debug.Log("[WallBuildController] Add floor ensemble: " + targets.Count + " lots.");
+
+        return envelopeWall;
     }
 
     /// <summary>
@@ -504,6 +647,7 @@ public class WallBuildController : MonoBehaviour
 
         EnsureWallStoneCladdingEnabled(wall);
         RegisterExistingWall(wall);
+        RequestDeferredCladdingRefresh(wall);
     }
 
     bool TryBuildOpenSegmentAcrossReferenceLot(WallEditShape referenceEdit, Vector3 center, out Vector3 a, out Vector3 b)
@@ -1223,6 +1367,7 @@ public class WallBuildController : MonoBehaviour
             WallStyleApplier.Apply(wall, defaultWallStyle);
 
         EnsureWallStoneCladdingEnabled(wall);
+        RequestDeferredCladdingRefresh(wall);
         RegisterExistingWall(wall);
         ForceSelectWall(wall);
 
@@ -1238,8 +1383,9 @@ public class WallBuildController : MonoBehaviour
         if (points == null || points.Count < 2)
             return;
 
-        if (mergeDrawnOrPresetShapesWithAdjacentDesignatedHouseOnCommit &&
-            TryMergeCommittedShapeIntoHouse(points, detectedKind, null, requireDesignatedHouseLot: true))
+        // Toujours tenter : TryMergeCommittedShapeIntoHouse ne fait rien s'il n'y a pas de voisin en contact.
+        // Ne pas dépendre de la valeur sérialisée du champ ci-dessus, qui peut rester false sur des scènes existantes.
+        if (TryMergeCommittedShapeIntoHouse(points, detectedKind, null, requireDesignatedHouseLot: true))
             return;
 
         CommitNewWallFromShapePath(points, detectedKind, detectedName);
@@ -1279,6 +1425,9 @@ public class WallBuildController : MonoBehaviour
             WallStyleApplier.Apply(wall, defaultWallStyle);
 
         EnsureWallStoneCladdingEnabled(wall);
+        // Même hors RunWithCladdingRebuildSuspended : budget global / intervalle min peuvent repousser
+        // le 1er ForceRebuild en LateUpdate — une 2e passe frame suivante stabilise pierres + teintes.
+        RequestDeferredCladdingRefresh(wall);
 
         if (registerAndSelect)
         {
@@ -1322,8 +1471,9 @@ public class WallBuildController : MonoBehaviour
     }
 
     /// <summary>
-    /// Fusion menu lot / pivot / pan : <see cref="TryMergeCommittedShapeIntoHouse"/> avec <c>requireDesignatedHouseLot</c>
-    /// exige un <paramref name="mergeSurvivorHint"/> non nul — les presets passent le lot / enveloppe sous le curseur.
+    /// Fusion menu lot / pivot / pan : <see cref="TryMergeCommittedShapeIntoHouse"/> avec référence lot / enveloppe.
+    /// Sans référence : fusion au relâchement lorsque le BFS détecte un contact avec un lot « maison »
+    /// (même sans mur déplacé).
     /// </summary>
     bool TryPresetShapeMergeIntoHouse(
         List<Vector3> path,
@@ -1337,16 +1487,11 @@ public class WallBuildController : MonoBehaviour
         {
             if (TryMergeCommittedShapeIntoHouse(path, kind, referenceLotOrNull, requireDesignatedHouseLot: true))
                 return true;
-            if (TryMergeCommittedShapeIntoHouse(path, kind, referenceLotOrNull, requireDesignatedHouseLot: false))
-                return true;
         }
-
-        if (!mergeDrawnOrPresetShapesWithAdjacentDesignatedHouseOnCommit)
-            return false;
 
         if (TryMergeCommittedShapeIntoHouse(path, kind, null, requireDesignatedHouseLot: true))
             return true;
-        return TryMergeCommittedShapeIntoHouse(path, kind, null, requireDesignatedHouseLot: false);
+        return false;
     }
 
     /// <summary>
@@ -1656,7 +1801,10 @@ public class WallBuildController : MonoBehaviour
 
         float tolMerge = Mathf.Max(mergeContactTolerance, 0.08f);
         var unionRects = new List<WallOrthoMergeUtility.RectXZ>(srcGos.Count * 2);
+        var rectsForSplitCheck = new List<WallOrthoMergeUtility.RectXZ>(srcGos.Count * 2);
+        var ringsForBooleanUnion = new List<List<Vector3>>(srcGos.Count);
         float yRef = envelopeWall.transform.position.y;
+        bool useClipperBooleanRingUnion = false;
 
         for (int i = 0; i < srcGos.Count; i++)
         {
@@ -1681,15 +1829,54 @@ public class WallBuildController : MonoBehaviour
                     continue;
             }
 
+            // Même ordre / même filtre que unionRects : l'union booléenne doit recevoir exactement ces lots.
+            ringsForBooleanUnion.Add(new List<Vector3>(path));
+            if (ed.shapeKind == WallEditShape.ShapeKind.Triangle || ed.shapeKind == WallEditShape.ShapeKind.Ellipse)
+                useClipperBooleanRingUnion = true;
+
             for (int k = 0; k < footprint.Count; k++)
                 unionRects.Add(footprint[k]);
+
+            if (ed.shapeKind == WallEditShape.ShapeKind.Triangle || ed.shapeKind == WallEditShape.ShapeKind.Ellipse)
+            {
+                if (TryGetAabbOnlyFootprintFromPreviewPath(path, out _, out List<WallOrthoMergeUtility.RectXZ> splitAabb) &&
+                    splitAabb != null)
+                {
+                    for (int k = 0; k < splitAabb.Count; k++)
+                        rectsForSplitCheck.Add(splitAabb[k]);
+                }
+                else
+                {
+                    for (int k = 0; k < footprint.Count; k++)
+                        rectsForSplitCheck.Add(footprint[k]);
+                }
+            }
+            else
+            {
+                for (int k = 0; k < footprint.Count; k++)
+                    rectsForSplitCheck.Add(footprint[k]);
+            }
         }
 
         if (unionRects.Count == 0)
             return false;
 
-        // Plusieurs lots mais empreintes en îlots séparés (ex. deux carrés décollés) → impossible avec un seul mur enveloppe.
-        if (meta.HasMultipleSourceLots && WallOrthoMergeUtility.IsRectUnionDisconnectedFourWay(unionRects))
+        // Plusieurs lots mais empreintes en îlots séparés : on ne casse plus tout le groupe ici.
+        // Si c'est le lot en cours de déplacement, on le retire seul de la maison et on garde le reste groupé.
+        if (meta.HasMultipleSourceLots && WallOrthoMergeUtility.IsRectUnionDisconnectedFourWay(rectsForSplitCheck) &&
+            preferSelectSourceWallAfterSplit != null &&
+            SourceLotListContains(meta, preferSelectSourceWallAfterSplit))
+        {
+            return TryDetachOneSourceFromHouseEnvelope(
+                envelopeWall,
+                preferSelectSourceWallAfterSplit,
+                snapMergedOutlineToGrid,
+                refreshControlPointOverlay,
+                recordUndoSnapshotWhenAutoSplit,
+                immediateFullCladdingRefresh);
+        }
+
+        if (meta.HasMultipleSourceLots && WallOrthoMergeUtility.IsRectUnionDisconnectedFourWay(rectsForSplitCheck))
             return TrySplitHouseEnvelopeIntoSourceLots(
                 envelopeWall,
                 recordUndoSnapshotWhenAutoSplit,
@@ -1699,12 +1886,29 @@ public class WallBuildController : MonoBehaviour
 
         List<Vector3> mergedPath = null;
         bool isFilledRectangle = false;
+        bool mergedFromClipperRings = false;
+        bool builtPoly = false;
 
-        bool builtPoly = WallOrthoMergeUtility.TryBuildMergedClosedPathFromRectUnionWorld(
-            unionRects,
-            newAabb.y,
-            out mergedPath,
-            out isFilledRectangle);
+        // Triangle : arêtes obliques. Cercle / ellipse : courbe (l’emp. « carré r±r » pour les rects donne
+        // un mur enveloppe en coudes H/V + zigzag). Ici on unionne les vrais anneaux d’échantillonnage.
+        if (useClipperBooleanRingUnion && ringsForBooleanUnion.Count > 0 &&
+            WallPolygonBooleanUnion.TryUnionClosedRingsWorldXZ(
+                ringsForBooleanUnion, yRef, out mergedPath, out isFilledRectangle) &&
+            mergedPath != null &&
+            mergedPath.Count >= 3)
+        {
+            builtPoly = true;
+            mergedFromClipperRings = true;
+        }
+
+        if (!builtPoly)
+        {
+            builtPoly = WallOrthoMergeUtility.TryBuildMergedClosedPathFromRectUnionWorld(
+                unionRects,
+                newAabb.y,
+                out mergedPath,
+                out isFilledRectangle);
+        }
 
         if (!builtPoly || mergedPath == null)
         {
@@ -1735,7 +1939,7 @@ public class WallBuildController : MonoBehaviour
         if (drawInput != null && snapMergedOutlineToGrid && isFilledRectangle)
             drawInput.SnapCommittedPathToMainGridInPlace(mergedPath, closed: true);
 
-        if (isFilledRectangle &&
+        if (isFilledRectangle && !mergedFromClipperRings &&
             WallOrthoMergeUtility.TryExpandFilledRectanglePathWithInternalPartitionSpikes(
                 mergedPath,
                 unionRects,
@@ -1892,6 +2096,220 @@ public class WallBuildController : MonoBehaviour
             StartCoroutine(CoResumeMergedPivotBulkDragAfterSplitDeferred(pick, pinkSplitResume));
 
         return true;
+    }
+
+    static bool SourceLotListContains(HouseExteriorEnvelopeSources meta, WallObject wall)
+    {
+        if (meta == null || wall == null)
+            return false;
+        IReadOnlyList<GameObject> list = meta.SourceLotObjects;
+        if (list == null)
+            return false;
+        for (int i = 0; i < list.Count; i++)
+        {
+            GameObject go = list[i];
+            if (go == null)
+                continue;
+            if (go == wall.gameObject)
+                return true;
+        }
+        return false;
+    }
+
+    static void UnbundleHouseSourceLotForStandalone(WallObject sourceWall)
+    {
+        if (sourceWall == null)
+            return;
+        HouseEnvelopeBundledSourceTag bundledTag = sourceWall.GetComponent<HouseEnvelopeBundledSourceTag>();
+        if (bundledTag != null)
+        {
+            if (Application.isPlaying)
+                UnityEngine.Object.Destroy(bundledTag);
+            else
+                UnityEngine.Object.DestroyImmediate(bundledTag);
+        }
+        HouseEnvelopeBundledSourceVisuals.SetBundledSourceVisualsHidden(sourceWall, false);
+        sourceWall.gameObject.SetActive(true);
+    }
+
+    /// <summary>
+    /// Un seul lot source s'est écarté : le retirer du groupe, le reste reste une maison enveloppée.
+    /// </summary>
+    bool TryDetachOneSourceFromHouseEnvelope(
+        WallObject envelopeWall,
+        WallObject detachedWall,
+        bool snapMergedOutlineToGrid,
+        bool refreshControlPointOverlay,
+        bool recordUndoSnapshot,
+        bool immediateFullCladdingRefresh)
+    {
+        if (envelopeWall == null || detachedWall == null)
+            return false;
+
+        HouseExteriorEnvelopeSources meta = envelopeWall.GetComponent<HouseExteriorEnvelopeSources>();
+        if (meta == null || meta.SourceLotObjects == null)
+            return false;
+
+        EnvelopePinkDragCapture pinkSplitResume = default;
+        bool wantPinkSplitResume = !recordUndoSnapshot && HouseEnvelopeSourceHandleUI.ActiveDragInstance != null;
+        if (wantPinkSplitResume)
+            pinkSplitResume = HouseEnvelopeSourceHandleUI.ActiveDragInstance.CaptureForSplitResume();
+
+        var remaining = new List<WallObject>(meta.SourceLotObjects.Count);
+        for (int i = 0; i < meta.SourceLotObjects.Count; i++)
+        {
+            GameObject go = meta.SourceLotObjects[i];
+            if (go == null)
+                continue;
+            WallObject wo = go.GetComponent<WallObject>();
+            if (wo == null || wo == detachedWall)
+                continue;
+            remaining.Add(wo);
+        }
+
+        if (recordUndoSnapshot)
+        {
+            if (undoManager == null)
+                undoManager = FindFirstObjectByType<WallUndoManager>();
+            if (undoManager != null)
+                undoManager.RecordSnapshot("Detach one house source from envelope");
+        }
+
+        UnbundleHouseSourceLotForStandalone(detachedWall);
+        WallEditShape detachedEdit = detachedWall.GetComponent<WallEditShape>();
+        if (detachedEdit != null)
+            detachedEdit.ApplyToWall();
+        RegisterExistingWall(detachedWall);
+        HouseParquetFloor dpf = detachedWall.GetComponent<HouseParquetFloor>();
+        if (dpf != null && detachedEdit != null && detachedEdit.IsClosedLoopPath && dpf.parquetMaterial != null)
+            ApplyHouseParquetForDesignatedClosedLot(dpf, detachedWall, detachedEdit);
+        EnsureWallStoneCladdingEnabled(detachedWall);
+        StartCoroutine(CoRefreshCladdingAfterLotMerge(detachedWall));
+
+        if (remaining.Count == 0)
+        {
+            UnregisterWall(envelopeWall);
+            if (Application.isPlaying)
+                Destroy(envelopeWall.gameObject);
+            else
+                DestroyImmediate(envelopeWall.gameObject);
+            PostDetachReselectEnvelopeAndDetached(
+                null,
+                detachedWall,
+                detachedEdit,
+                refreshControlPointOverlay,
+                wantPinkSplitResume,
+                pinkSplitResume);
+            return true;
+        }
+
+        if (remaining.Count == 1)
+        {
+            WallObject only = remaining[0];
+            UnbundleHouseSourceLotForStandalone(only);
+            WallEditShape onlyEd = only.GetComponent<WallEditShape>();
+            if (onlyEd != null)
+                onlyEd.ApplyToWall();
+            UnregisterWall(envelopeWall);
+            if (Application.isPlaying)
+                Destroy(envelopeWall.gameObject);
+            else
+                DestroyImmediate(envelopeWall.gameObject);
+            RegisterExistingWall(only);
+            HouseParquetFloor opf = only.GetComponent<HouseParquetFloor>();
+            if (opf != null && onlyEd != null && onlyEd.IsClosedLoopPath && opf.parquetMaterial != null)
+                ApplyHouseParquetForDesignatedClosedLot(opf, only, onlyEd);
+            EnsureWallStoneCladdingEnabled(only);
+            StartCoroutine(CoRefreshCladdingAfterLotMerge(only));
+            PostDetachReselectEnvelopeAndDetached(
+                null,
+                detachedWall,
+                detachedEdit,
+                refreshControlPointOverlay,
+                wantPinkSplitResume,
+                pinkSplitResume);
+            return true;
+        }
+
+        meta.SetSources(remaining);
+        for (int r = 0; r < remaining.Count; r++)
+        {
+            WallObject rw = remaining[r];
+            if (rw == null)
+                continue;
+            if (meta.UseIndependentSourceHandlesForHouseEnvelope)
+            {
+                HouseEnvelopeBundledSourceTag tag = rw.GetComponent<HouseEnvelopeBundledSourceTag>();
+                if (tag == null)
+                    tag = rw.gameObject.AddComponent<HouseEnvelopeBundledSourceTag>();
+                tag.envelopeWall = envelopeWall;
+                HouseEnvelopeBundledSourceVisuals.SetBundledSourceVisualsHidden(rw, true);
+            }
+            else
+                rw.gameObject.SetActive(false);
+        }
+
+        bool rebuilt = TryRebuildHouseOuterEnvelopeFromSources(
+            envelopeWall,
+            snapMergedOutlineToGrid,
+            refreshControlPointOverlay,
+            recordUndoSnapshotWhenAutoSplit: false,
+            immediateFullCladdingRefresh,
+            preferSelectSourceWallAfterSplit: null);
+        PostDetachReselectEnvelopeAndDetached(
+            envelopeWall,
+            detachedWall,
+            detachedEdit,
+            refreshControlPointOverlay,
+            wantPinkSplitResume,
+            pinkSplitResume);
+        return rebuilt;
+    }
+
+    void PostDetachReselectEnvelopeAndDetached(
+        WallObject envelopeWall,
+        WallObject detachedWall,
+        WallEditShape detachedEdit,
+        bool refreshControlPointOverlay,
+        bool wantPinkSplitResume,
+        EnvelopePinkDragCapture pinkSplitResume)
+    {
+        if (wantPinkSplitResume && pinkSplitResume.IsValid && detachedWall != null && Application.isPlaying)
+        {
+            ControlPointHandleUI.ClearStaleWallSelectionState();
+            ControlPointHandleUI.ForceCancelActivePointerDrag();
+
+            if (detachedEdit != null)
+                ControlPointHandleUI.ApplyEditingSelectionAfterHouseEnvelopeMerge(detachedEdit);
+
+            HouseEnvelopeSourceHandleUI.ClearPinkHighlightTracking();
+
+            WallSelectable wsE = envelopeWall != null ? envelopeWall.GetComponent<WallSelectable>() : null;
+            if (wsE != null)
+                wsE.AutoFindProvider();
+            WallSelectable wsD = detachedWall.GetComponent<WallSelectable>();
+            if (wsD != null)
+                wsD.AutoFindProvider();
+
+            ForceSelectWall(detachedWall);
+
+            if (refreshControlPointOverlay && overlay != null)
+                overlay.RebuildOverlay();
+
+            StartCoroutine(CoResumeMergedPivotBulkDragAfterSplitDeferred(detachedWall, pinkSplitResume));
+            return;
+        }
+
+        HouseEnvelopeSourceHandleUI.ClearPinkHighlightTracking();
+        WallSelectable wsE2 = envelopeWall != null ? envelopeWall.GetComponent<WallSelectable>() : null;
+        if (wsE2 != null)
+            wsE2.AutoFindProvider();
+        WallSelectable wsD2 = detachedWall != null ? detachedWall.GetComponent<WallSelectable>() : null;
+        if (wsD2 != null)
+            wsD2.AutoFindProvider();
+        ForceSelectWall(detachedWall);
+        if (refreshControlPointOverlay && overlay != null)
+            overlay.RebuildOverlay();
     }
 
     IEnumerator CoResumeMergedPivotBulkDragAfterSplitDeferred(WallObject wall, EnvelopePinkDragCapture capture)
@@ -2441,6 +2859,15 @@ public class WallBuildController : MonoBehaviour
             if (wall == null || !seenWalls.Add(wall))
                 return;
 
+            // Sources déjà "bundlées" à une enveloppe : ne pas les traiter comme lots voisins autonomes
+            // lors d'une fusion normale, sinon le mergeSet peut embarquer des murs cachés historiques.
+            if (mergeSurvivorHint == null || wall != mergeSurvivorHint)
+            {
+                WallObject bundledEnv = HouseEnvelopeBundledSourceTag.GetEnvelopeIfBundled(wall);
+                if (bundledEnv != null)
+                    return;
+            }
+
             // Enveloppe maison multi-plans : les lots sources restent dans la scène (masqués) et touchent encore
             // l’empreinte fusionnée — ne pas les traiter comme des voisins à re-fusionner avec l’enveloppe.
             if (mergeSurvivorHint != null)
@@ -2510,7 +2937,9 @@ public class WallBuildController : MonoBehaviour
         if (lots.Count == 0)
             return false;
 
-        float flushGap = ComputeFlushMergeMaxGap();
+        // Le contact visible des murs peut laisser un petit écart entre les empreintes XZ (épaisseur / snap / pierres).
+        // La grille donne un minimum très strict ; mergeContactTolerance est la marge métier exposée dans l'inspector.
+        float flushGap = Mathf.Max(ComputeFlushMergeMaxGap(), tolMerge);
         float footprintArea = Mathf.Max(1e-12f, (newAabb.maxX - newAabb.minX) * (newAabb.maxZ - newAabb.minZ));
         // Chevauchement 2D (rectangles qui se recouvrent sans être « bord à bord ») : nécessaire pour fusionner
         // deux lots maison qui se superposent ; sans cela seuls cercle + adjacence flush étaient pris en compte.
@@ -2533,18 +2962,43 @@ public class WallBuildController : MonoBehaviour
             mergeSet.Contains(mergeSurvivorHint))
             return false;
 
+        if (requireDesignatedHouseLot && designatedHouseLotsUseOuterEnvelopeOnly)
+            TryExpandMergeSetWithExistingHouseEnvelopeSourceLots(ref mergeSet, mergeSurvivorHint);
+
         if (requireDesignatedHouseLot)
         {
-            // Pas de fusion au simple tracé d’une nouvelle forme : uniquement après déplacement d’un mur existant.
+            // Sans hint (tracé/preset) : mergeSet prouve qu'un voisin maison est en contact.
+            // Avec hint (drag) : le mur déplacé doit lui-même être un lot maison.
             if (mergeSurvivorHint == null)
-                return false;
-            if (!WallCountsAsDesignatedHouse(mergeSurvivorHint))
-                return false;
-            foreach (WallObject w in mergeSet)
             {
-                if (w == null || !WallCountsAsDesignatedHouse(w))
+                if (mergeSet == null || mergeSet.Count < 1)
                     return false;
             }
+            else
+            {
+                if (!WallCountsAsDesignatedHouse(mergeSurvivorHint))
+                    return false;
+            }
+
+            // N'embarquer que des maisons. Un mur non-maison voisin ne doit pas bloquer une fusion maison valide.
+            var designatedOnly = new HashSet<WallObject>();
+            foreach (WallObject w in mergeSet)
+            {
+                if (w != null && WallCountsAsDesignatedHouse(w))
+                    designatedOnly.Add(w);
+            }
+            if (mergeSurvivorHint != null && WallCountsAsDesignatedHouse(mergeSurvivorHint))
+                designatedOnly.Add(mergeSurvivorHint);
+            if (designatedOnly.Count == 0)
+                return false;
+
+            mergeSet = designatedOnly;
+
+            // Après filtrage, s'il ne reste que le mur hint, pas de vraie fusion à effectuer.
+            if (mergeSurvivorHint != null &&
+                mergeSet.Count == 1 &&
+                mergeSet.Contains(mergeSurvivorHint))
+                return false;
         }
 
         WallObject targetWall = SelectMergeSurvivorWall(lots, mergeSet, mergeSurvivorHint);
@@ -2712,10 +3166,10 @@ public class WallBuildController : MonoBehaviour
                 {
                     if (w == null)
                         continue;
-                    WallObject envFromTag = HouseEnvelopeBundledSourceTag.GetEnvelopeIfBundled(w);
-                    if (envFromTag != null)
+                    WallObject envFromSource = HouseEnvelopeBundledSourceTag.ResolveEnvelopeForSourceLot(w);
+                    if (envFromSource != null)
                     {
-                        envelopeWall = envFromTag;
+                        envelopeWall = envFromSource;
                         break;
                     }
                 }
@@ -2756,11 +3210,39 @@ public class WallBuildController : MonoBehaviour
             HouseExteriorEnvelopeSources envelopeMeta = envelopeWall.GetComponent<HouseExteriorEnvelopeSources>();
             if (envelopeMeta == null)
                 envelopeMeta = envelopeWall.gameObject.AddComponent<HouseExteriorEnvelopeSources>();
-            envelopeMeta.SetSources(mergeSet);
 
-            foreach (WallObject w in mergeSet)
+            // Tracé/preset sans mur déplacé : committedPoints a participé au mergedPath, mais aucun WallObject source
+            // n'existe encore pour ce nouveau lot. Sans cette création, l'enveloppe peut s'agrandir une frame puis
+            // revenir aux deux sources précédentes au prochain recalcul.
+            if (mergeSurvivorHint == null)
             {
-                if (w == null || w == envelopeWall)
+                WallObject committedSource = CreateCommittedHouseSourceForEnvelopeMerge(
+                    committedPoints,
+                    detectedKind,
+                    envelopeWall,
+                    mergeSet);
+                if (committedSource != null)
+                    mergeSet.Add(committedSource);
+            }
+            else if (mergeSurvivorHint != envelopeWall &&
+                     mergeSurvivorHint.GetComponent<HouseExteriorEnvelopeSources>() == null)
+            {
+                // Drag/preset avec un vrai mur maison déjà créé : committedPoints met bien à jour le contour,
+                // mais ce mur doit aussi devenir une source de l'enveloppe. Sinon on reste bloqué aux 2 sources
+                // précédentes et la 3e maison reste séparée / réapparaît au prochain recalcul.
+                mergeSet.Add(mergeSurvivorHint);
+            }
+
+            envelopeMeta.SetSourcesMergingWithMergeSet(mergeSet, envelopeWall);
+
+            IReadOnlyList<GameObject> bundledSources = envelopeMeta.SourceLotObjects;
+            for (int bi = 0; bi < bundledSources.Count; bi++)
+            {
+                GameObject bgo = bundledSources[bi];
+                if (bgo == null)
+                    continue;
+                WallObject w = bgo.GetComponent<WallObject>();
+                if (w == null)
                     continue;
 
                 if (envelopeMeta.UseIndependentSourceHandlesForHouseEnvelope)
@@ -2928,6 +3410,14 @@ public class WallBuildController : MonoBehaviour
             gen.EnsureStoneCladdingEnabledAndRefresh();
     }
 
+    void RequestDeferredCladdingRefresh(WallObject wall)
+    {
+        if (wall == null || !isActiveAndEnabled)
+            return;
+
+        StartCoroutine(CoRefreshCladdingAfterLotMerge(wall));
+    }
+
     IEnumerator CoRefreshCladdingAfterLotMerge(WallObject wall)
     {
         yield return null;
@@ -2986,7 +3476,7 @@ public class WallBuildController : MonoBehaviour
     /// </summary>
     static bool AreRectsFlushAdjacentForMerge(RectBounds a, RectBounds b, float maxGap)
     {
-        float minOverlapAlongEdge = Mathf.Max(maxGap * 10f, 0.035f);
+        float minOverlapAlongEdge = Mathf.Max(Mathf.Min(maxGap * 2f, 0.12f), 0.035f);
 
         bool ZSpanLongEnough()
         {
@@ -3019,6 +3509,106 @@ public class WallBuildController : MonoBehaviour
                Mathf.Abs(a.maxZ - b.maxZ) <= maxGap;
     }
 
+    WallObject CreateCommittedHouseSourceForEnvelopeMerge(
+        List<Vector3> committedPoints,
+        WallDrawInput.DetectedShapeKind detectedKind,
+        WallObject envelopeWall,
+        HashSet<WallObject> mergeSet)
+    {
+        if (committedPoints == null || committedPoints.Count < 3 || envelopeWall == null)
+            return null;
+
+        WallObject source = CreateWallFromShapePathInternal(committedPoints, detectedKind, registerAndSelect: false);
+        if (source == null)
+            return null;
+
+        WallObject reference = envelopeWall;
+        if (!WallCountsAsDesignatedHouse(reference) && mergeSet != null)
+        {
+            foreach (WallObject w in mergeSet)
+            {
+                if (WallCountsAsDesignatedHouse(w))
+                {
+                    reference = w;
+                    break;
+                }
+            }
+        }
+
+        CopyDesignatedHouseAppearanceFromReference(reference, source);
+        RegisterExistingWall(source);
+        return source;
+    }
+
+    /// <summary>
+    /// Quand un 3ᵉ (ou Nᵉ) carré ne touche l’enveloppe qu’en bordure, le BFS peut ne relier qu’enveloppe + nouveau lot
+    /// sans remonter aux carrés sources distants. On les ré-injecte depuis <see cref="HouseExteriorEnvelopeSources"/>
+    /// et on retire l’enveloppe du <paramref name="mergeSet"/> pour l’union de rectangles / Clipper.
+    /// </summary>
+    void TryExpandMergeSetWithExistingHouseEnvelopeSourceLots(
+        ref HashSet<WallObject> mergeSet,
+        WallObject mergeSurvivorHint)
+    {
+        if (mergeSet == null || mergeSet.Count == 0)
+            return;
+
+        WallObject envelopeW = null;
+        if (mergeSurvivorHint != null)
+        {
+            envelopeW = HouseEnvelopeBundledSourceTag.ResolveEnvelopeForSourceLot(mergeSurvivorHint);
+            if (envelopeW == null && mergeSurvivorHint.GetComponent<HouseExteriorEnvelopeSources>() != null)
+                envelopeW = mergeSurvivorHint;
+        }
+
+        if (envelopeW == null)
+        {
+            foreach (WallObject w in mergeSet)
+            {
+                if (w == null)
+                    continue;
+                if (w.GetComponent<HouseExteriorEnvelopeSources>() != null)
+                {
+                    envelopeW = w;
+                    break;
+                }
+            }
+        }
+
+        if (envelopeW == null)
+        {
+            foreach (WallObject w in mergeSet)
+            {
+                if (w == null)
+                    continue;
+                envelopeW = HouseEnvelopeBundledSourceTag.ResolveEnvelopeForSourceLot(w);
+                if (envelopeW != null)
+                    break;
+            }
+        }
+
+        if (envelopeW == null)
+            return;
+
+        HouseExteriorEnvelopeSources meta = envelopeW.GetComponent<HouseExteriorEnvelopeSources>();
+        if (meta == null || meta.SourceLotObjects == null)
+            return;
+
+        IReadOnlyList<GameObject> srcGos = meta.SourceLotObjects;
+        for (int i = 0; i < srcGos.Count; i++)
+        {
+            GameObject go = srcGos[i];
+            if (go == null)
+                continue;
+            WallObject srcW = go.GetComponent<WallObject>();
+            if (srcW == null)
+                continue;
+            mergeSet.Add(srcW);
+        }
+
+        if (mergeSet.Contains(envelopeW))
+            mergeSet.Remove(envelopeW);
+    }
+
     bool TryBuildMergeSetFlushAdjacent(
         List<LotMergeInfo> lots,
         List<WallOrthoMergeUtility.RectXZ> newFootprint,
@@ -3042,7 +3632,8 @@ public class WallBuildController : MonoBehaviour
                 overlapOk = AnyFootprintOverlapArea(newFootprint, h.footprint, minFootprintOverlapArea);
                 if (!overlapOk)
                 {
-                    List<WallOrthoMergeUtility.RectXZ> inflated = InflateFootprintXZ(newFootprint, flushGap * 2f);
+                    float nearOverlapInflate = Mathf.Min(flushGap * 2f, 0.04f);
+                    List<WallOrthoMergeUtility.RectXZ> inflated = InflateFootprintXZ(newFootprint, nearOverlapInflate);
                     overlapOk = AnyFootprintOverlapArea(inflated, h.footprint, 1e-8f);
                 }
             }
@@ -3084,7 +3675,8 @@ public class WallBuildController : MonoBehaviour
                     linked = AnyFootprintOverlapArea(fp0, h.footprint, minFootprintOverlapArea);
                     if (!linked)
                     {
-                        List<WallOrthoMergeUtility.RectXZ> inflated = InflateFootprintXZ(fp0, flushGap * 2f);
+                        float nearOverlapInflate = Mathf.Min(flushGap * 2f, 0.04f);
+                        List<WallOrthoMergeUtility.RectXZ> inflated = InflateFootprintXZ(fp0, nearOverlapInflate);
                         linked = AnyFootprintOverlapArea(inflated, h.footprint, 1e-8f);
                     }
                 }
@@ -3147,7 +3739,17 @@ public class WallBuildController : MonoBehaviour
             return false;
 
         HouseParquetFloor f = wall.GetComponent<HouseParquetFloor>();
-        return f != null && f.IsDesignatedHouseLot;
+        if (f != null && f.IsDesignatedHouseLot)
+            return true;
+
+        // Lot source caché d'une enveloppe : peut ne plus avoir de mesh parquet (ClearFloor lors du masquage),
+        // mais doit rester éligible aux fusions maison.
+        HouseEnvelopeBundledSourceTag bundled = wall.GetComponent<HouseEnvelopeBundledSourceTag>();
+        if (bundled != null && bundled.envelopeWall != null)
+            return true;
+
+        // Mur enveloppe lui-même.
+        return wall.GetComponent<HouseExteriorEnvelopeSources>() != null;
     }
 
     static WallObject SelectMergeSurvivorWall(

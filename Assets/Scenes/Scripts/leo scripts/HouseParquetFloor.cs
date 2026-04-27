@@ -434,6 +434,13 @@ public class HouseParquetFloor : MonoBehaviour
             _mr.enabled = false;
     }
 
+    public void SetFloorRendererEnabled(bool enabled)
+    {
+        EnsureComponents();
+        if (_mr != null)
+            _mr.enabled = enabled;
+    }
+
     void OnDestroy()
     {
         if (_mesh != null)

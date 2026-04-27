@@ -189,6 +189,11 @@ public class LotBuildMenuUI : MonoBehaviour
         else
             floor.ApplyOrRefreshFromClosedPreviewPath(CurrentLotWall, edit);
 
+        // Une forme qui devient maison doit rejoindre immédiatement une maison voisine déjà enveloppée.
+        // Cela réutilise le pipeline existant (TryMergeCommittedShapeIntoHouse + sources d'enveloppe N lots).
+        if (buildController != null)
+            buildController.TryMergeWallWithAdjacentLots(CurrentLotWall);
+
         Close();
     }
 

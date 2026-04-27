@@ -624,7 +624,7 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         // reçoivent à nouveau les raycasts (voir EnvelopeOverlayHandleFocus).
         if (provider is WallEditShape editBundled && editBundled.wall != null)
         {
-            WallObject env = HouseEnvelopeBundledSourceTag.GetEnvelopeIfBundled(editBundled.wall);
+            WallObject env = HouseEnvelopeBundledSourceTag.ResolveEnvelopeForSourceLot(editBundled.wall);
             if (env != null)
                 EnvelopeOverlayHandleFocus.SetFocusPink(env);
         }
@@ -800,7 +800,7 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
             WallBuildController bc = GetBuildController();
             if (bc != null)
             {
-                WallObject bundledEnv = HouseEnvelopeBundledSourceTag.GetEnvelopeIfBundled(movedEdit.wall);
+                WallObject bundledEnv = HouseEnvelopeBundledSourceTag.ResolveEnvelopeForSourceLot(movedEdit.wall);
                 if (bundledEnv != null)
                 {
                     bc.TryRebuildHouseOuterEnvelopeFromSources(
@@ -846,6 +846,9 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
     static void TryRefreshBundledHouseEnvelopeDuringSourceDrag(WallEditShape sourceEdit)
     {
+        // Ne pas appeler ResolveEnvelopeForSourceLot ici : exécuté chaque frame pendant le drag.
+        // Un tag manquant forcerait FindObjectsByType en boucle (gel / crash). Le tag est réparé
+        // au PointerDown (SetFocusPink) et au relâchement (fusion enveloppe).
         WallObject env = HouseEnvelopeBundledSourceTag.GetEnvelopeIfBundled(sourceEdit.wall);
         if (env == null)
             return;
@@ -854,6 +857,9 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         if (bc == null)
             return;
 
+        // Contour enveloppe + maillage vectoriel : à jour chaque frame. Avec immediateFullCladdingRefresh: false
+        // on évite parquet + coroutine lourds, mais il faut quand même recalculer les pierres sur l’enveloppe
+        // (sinon décalage visible typique des formes « maison » multi-plans).
         bc.TryRebuildHouseOuterEnvelopeFromSources(
             env,
             snapMergedOutlineToGrid: false,
@@ -861,6 +867,10 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
             recordUndoSnapshotWhenAutoSplit: false,
             immediateFullCladdingRefresh: false,
             preferSelectSourceWallAfterSplit: sourceEdit.wall);
+
+        WallCladdingGenerator envCladding = env.GetComponent<WallCladdingGenerator>();
+        if (envCladding != null)
+            envCladding.EnsureStoneCladdingEnabledAndRefresh();
     }
 
     private bool TryScreenToPlaneWorld(Vector2 screenPos, Plane plane, out Vector3 world)

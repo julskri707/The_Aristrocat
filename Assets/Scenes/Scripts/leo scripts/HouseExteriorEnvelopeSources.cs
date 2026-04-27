@@ -53,6 +53,43 @@ public sealed class HouseExteriorEnvelopeSources : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Remplace la liste en conservant toutes les références de lots sources déjà enregistrées, puis en y ajoutant
+    /// ceux de <paramref name="mergeSet"/> (hors mur enveloppe). Nécessaire quand le BFS ne remonte qu’enveloppe + nouveau lot
+    /// mais pas les carrés sources non contigus entre eux, sinon on repasse à 2 formes au lieu de N.
+    /// </summary>
+    public void SetSourcesMergingWithMergeSet(IEnumerable<WallObject> mergeSet, WallObject envelopeWall)
+    {
+        HashSet<WallObject> combined = new HashSet<WallObject>();
+        if (sourceLotObjects != null)
+        {
+            for (int i = 0; i < sourceLotObjects.Count; i++)
+            {
+                GameObject go = sourceLotObjects[i];
+                if (go == null)
+                    continue;
+                WallObject w = go.GetComponent<WallObject>();
+                if (w == null)
+                    continue;
+                if (envelopeWall != null && w == envelopeWall)
+                    continue;
+                combined.Add(w);
+            }
+        }
+        if (mergeSet != null)
+        {
+            foreach (WallObject w in mergeSet)
+            {
+                if (w == null)
+                    continue;
+                if (envelopeWall != null && w == envelopeWall)
+                    continue;
+                combined.Add(w);
+            }
+        }
+        SetSources(combined);
+    }
+
     /// <summary>Restauration Ctrl+Z : réapplique aussi le mode poignées indépendantes.</summary>
     public void RestoreUndoState(bool independentHandles, IEnumerable<WallObject> walls)
     {
@@ -163,5 +200,46 @@ public sealed class HouseExteriorEnvelopeSources : MonoBehaviour
         float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / lenSq);
         Vector2 proj = a + ab * t;
         return (p - proj).magnitude;
+    }
+
+    /// <summary>
+    /// Si <see cref="HouseEnvelopeBundledSourceTag"/> manque sur un lot source, retrouve l'enveloppe via les listes
+    /// enregistrées sur les objets enveloppe (undo, vieux prefabs, chemins de fusion sans tag).
+    /// </summary>
+    public static bool TryFindEnvelopeWallForSourceLot(WallObject sourceLot, out WallObject envelopeWall)
+    {
+        envelopeWall = null;
+        if (sourceLot == null)
+            return false;
+
+        HouseExteriorEnvelopeSources[] metas = Object.FindObjectsByType<HouseExteriorEnvelopeSources>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+
+        for (int i = 0; i < metas.Length; i++)
+        {
+            HouseExteriorEnvelopeSources meta = metas[i];
+            if (meta == null)
+                continue;
+
+            IReadOnlyList<GameObject> src = meta.SourceLotObjects;
+            if (src == null)
+                continue;
+
+            for (int j = 0; j < src.Count; j++)
+            {
+                GameObject go = src[j];
+                if (go == null)
+                    continue;
+                WallObject w = go.GetComponent<WallObject>();
+                if (w != null && w == sourceLot)
+                {
+                    envelopeWall = meta.GetComponent<WallObject>();
+                    return envelopeWall != null;
+                }
+            }
+        }
+
+        return false;
     }
 }

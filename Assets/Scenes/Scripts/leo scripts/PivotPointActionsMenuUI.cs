@@ -2,6 +2,17 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
+/// Clic droit : « étage » sur toute la maison liée (pivot violet) ou un seul plan (poignée rose).
+/// </summary>
+public enum HousePivotAddFloorScope
+{
+    /// <summary>Enveloppe + chaque lot sur <see cref="HouseExteriorEnvelopeSources"/> (pivot violet).</summary>
+    EntireLinkedEnsemble = 0,
+    /// <summary>Un seul mur / plan (poignée rose).</summary>
+    CurrentWallOnly = 1,
+}
+
+/// <summary>
 /// Menu contextuel (clic droit sur le pivot violet — lot « maison ») : ajouter un mur, ajouter un étage (plus tard).
 /// Assigner les références UI dans l’inspecteur (même Canvas que <see cref="LotBuildMenuUI"/> possible).
 /// </summary>
@@ -31,8 +42,12 @@ public class PivotPointActionsMenuUI : MonoBehaviour
 
     [Header("Default labels")]
     public string defaultTitle = "Lot maison";
+    [Tooltip("Titre (poignée rose). Vide = defaultTitle.")]
+    public string titleSinglePlan = "Un plan de la maison";
+    [Tooltip("Titre (pivot violet, ensemble). Vide = defaultTitle (ex. « Lot maison »).")]
+    public string titleEntireHouse = "";
     public string defaultAddWallLabel = "Ajouter un mur";
-    public string defaultAddFloorLabel = "Ajouter un étage (bientôt)";
+    public string defaultAddFloorLabel = "Ajouter un étage";
     public string defaultPresetCircleLabel = "Cercle au centre du lot";
     public string defaultPresetTriangleLabel = "Triangle au centre du lot";
     public string defaultSplitEnvelopeLabel = "Séparer les lots";
@@ -46,6 +61,7 @@ public class PivotPointActionsMenuUI : MonoBehaviour
     public WallDrawInput wallDrawInput;
 
     public WallObject CurrentWall { get; private set; }
+    public HousePivotAddFloorScope AddFloorScope { get; private set; }
     public bool IsOpen => menuRoot != null && menuRoot.gameObject.activeSelf;
 
     void Awake()
@@ -136,27 +152,43 @@ public class PivotPointActionsMenuUI : MonoBehaviour
         return canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
     }
 
-    public void OpenForWall(WallObject wall, Vector2 screenPosition)
+    public void OpenForWall(WallObject wall, Vector2 screenPosition, HousePivotAddFloorScope addFloorScope = HousePivotAddFloorScope.EntireLinkedEnsemble)
     {
         if (wall == null || menuRoot == null || panelRoot == null)
             return;
 
         CurrentWall = wall;
+        AddFloorScope = addFloorScope;
 
         if (buildController != null)
             buildController.ForceSelectWall(wall);
 
         if (titleText != null)
-            titleText.text = defaultTitle;
+        {
+            if (addFloorScope == HousePivotAddFloorScope.CurrentWallOnly)
+                titleText.text = string.IsNullOrEmpty(titleSinglePlan) ? defaultTitle : titleSinglePlan;
+            else
+                titleText.text = string.IsNullOrEmpty(titleEntireHouse) ? defaultTitle : titleEntireHouse;
+        }
 
         if (buttonAddFloor != null)
+        {
+            SetButtonLabel(
+                buttonAddFloor,
+                string.IsNullOrEmpty(defaultAddFloorLabel) ? "Ajouter un étage" : defaultAddFloorLabel);
             buttonAddFloor.interactable = CanAddFloorOnCurrentWall();
+        }
 
         if (buttonSplitEnvelopeLots != null)
         {
-            HouseExteriorEnvelopeSources he = wall.GetComponent<HouseExteriorEnvelopeSources>();
-            bool canSplit = he != null && he.SourceLotObjects != null && he.SourceLotObjects.Count >= 1;
-            buttonSplitEnvelopeLots.gameObject.SetActive(canSplit);
+            if (addFloorScope == HousePivotAddFloorScope.CurrentWallOnly)
+                buttonSplitEnvelopeLots.gameObject.SetActive(false);
+            else
+            {
+                HouseExteriorEnvelopeSources he = wall.GetComponent<HouseExteriorEnvelopeSources>();
+                bool canSplit = he != null && he.SourceLotObjects != null && he.SourceLotObjects.Count >= 1;
+                buttonSplitEnvelopeLots.gameObject.SetActive(canSplit);
+            }
         }
 
         WallEditShape wes = wall.GetComponent<WallEditShape>();
@@ -176,6 +208,7 @@ public class PivotPointActionsMenuUI : MonoBehaviour
             menuRoot.gameObject.SetActive(false);
 
         CurrentWall = null;
+        AddFloorScope = HousePivotAddFloorScope.EntireLinkedEnsemble;
     }
 
     void OnAddWallClicked()
@@ -203,13 +236,19 @@ public class PivotPointActionsMenuUI : MonoBehaviour
     void OnAddFloorClicked()
     {
         WallObject lot = CurrentWall;
+        HousePivotAddFloorScope scope = AddFloorScope;
 
         if (buildController == null)
             buildController = FindFirstObjectByType<WallBuildController>();
 
         Close();
 
-        if (buildController != null && lot != null)
+        if (buildController == null || lot == null)
+            return;
+
+        if (scope == HousePivotAddFloorScope.EntireLinkedEnsemble)
+            buildController.AddFloorToEntireLinkedHouseEnsemble(lot);
+        else
             buildController.AddFloorFromHouseMenu(lot);
     }
 

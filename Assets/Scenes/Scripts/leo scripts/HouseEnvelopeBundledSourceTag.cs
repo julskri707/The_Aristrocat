@@ -16,6 +16,34 @@ public sealed class HouseEnvelopeBundledSourceTag : MonoBehaviour
         HouseEnvelopeBundledSourceTag tag = sourceWall.GetComponent<HouseEnvelopeBundledSourceTag>();
         return tag != null ? tag.envelopeWall : null;
     }
+
+    /// <summary>
+    /// Enveloppe associée à ce lot source : tag si présent, sinon résolution via
+    /// <see cref="HouseExteriorEnvelopeSources"/> et réparation optionnelle du tag.
+    /// </summary>
+    public static WallObject ResolveEnvelopeForSourceLot(WallObject sourceWall, bool repairMissingTag = true)
+    {
+        if (sourceWall == null)
+            return null;
+
+        HouseEnvelopeBundledSourceTag tag = sourceWall.GetComponent<HouseEnvelopeBundledSourceTag>();
+        if (tag != null && tag.envelopeWall != null)
+            return tag.envelopeWall;
+
+        if (HouseExteriorEnvelopeSources.TryFindEnvelopeWallForSourceLot(sourceWall, out WallObject env) && env != null)
+        {
+            if (repairMissingTag)
+            {
+                if (tag == null)
+                    tag = sourceWall.gameObject.AddComponent<HouseEnvelopeBundledSourceTag>();
+                tag.envelopeWall = env;
+            }
+
+            return env;
+        }
+
+        return null;
+    }
 }
 
 /// <summary>
@@ -27,6 +55,10 @@ public static class HouseEnvelopeBundledSourceVisuals
     {
         if (sourceWall == null)
             return;
+
+        WallCladdingGenerator cg = sourceWall.GetComponent<WallCladdingGenerator>();
+        if (cg != null)
+            cg.ClearExteriorCladdingMinHeightFromWallBaseMeters();
 
         var rends = sourceWall.GetComponentsInChildren<Renderer>(true);
         for (int i = 0; i < rends.Length; i++)
@@ -49,5 +81,38 @@ public static class HouseEnvelopeBundledSourceVisuals
         HouseParquetFloor parquet = sourceWall.GetComponent<HouseParquetFloor>();
         if (parquet != null && hide)
             parquet.ClearFloor();
+    }
+
+    /// <summary>
+    /// Lot source plus haut que le <b>seuil</b> commun (en m depuis la base du prisme) : n’active que le habillage
+    /// extérieur au-dessus de ce seuil (l’enveloppe couvre le bas sur tout le pourtour) ; prisme de base + colliders
+    /// du source restent masqués côté interaction.
+    /// </summary>
+    public static void ApplyTallerSourceUpperBandExteriorCladdingOnly(WallObject sourceWall, float commonShellMaxHeightMeters)
+    {
+        if (sourceWall == null)
+            return;
+
+        var colliders = sourceWall.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] != null)
+                colliders[i].enabled = false;
+        }
+
+        MeshRenderer baseMr = sourceWall.GetComponent<MeshRenderer>();
+        if (baseMr != null)
+            baseMr.enabled = false;
+
+        WallCladdingGenerator gen = sourceWall.GetComponent<WallCladdingGenerator>();
+        if (gen != null)
+        {
+            gen.SetExteriorCladdingMinHeightFromWallBaseMeters(Mathf.Max(0f, commonShellMaxHeightMeters));
+            gen.enabled = true;
+        }
+
+        HouseParquetFloor parquet = sourceWall.GetComponent<HouseParquetFloor>();
+        if (parquet != null)
+            parquet.SetFloorRendererEnabled(true);
     }
 }

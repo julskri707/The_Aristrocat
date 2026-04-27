@@ -3,6 +3,115 @@ using UnityEngine;
 
 public sealed partial class WallCladdingGenerator
 {
+    /// <summary>
+    /// Enveloppe maison multi-sources : le contour fusionné a &gt; 3 côtés, donc
+    /// <see cref="DetectClosedLoopShape"/> ne renvoie jamais <see cref="WallLoopShapeKind.Triangle"/>.
+    /// On aligne quand même les bollards d’angles très aigus sur les sommets des lots sources triangulaires
+    /// visibles sur le périmètre extérieur.
+    /// </summary>
+    private void TryEmitHouseEnvelopeSourceTriangleAcuteBollardsAtMatchingCorners(
+        WallCladdingProfile profile,
+        Transform root,
+        Material stoneMaterial,
+        List<PathSample> samples,
+        float sideSign,
+        float yMin,
+        float yMax,
+        System.Random rng,
+        ref int stoneIndex)
+    {
+        if (profile == null || profile.stone == null || profile.stone.endQuoins == null || wall == null || !wall.closedLoop ||
+            samples == null || samples.Count < 3)
+            return;
+
+        HouseExteriorEnvelopeSources hes = wall.GetComponent<HouseExteriorEnvelopeSources>();
+        if (hes == null || !hes.HasMultipleSourceLots)
+            return;
+
+        EndQuoinSettings settings = profile.stone.endQuoins;
+        if (!settings.enabled)
+            return;
+
+        const float matchEps = 0.16f;
+        float matchEpsSq = matchEps * matchEps;
+
+        IReadOnlyList<GameObject> srcGos = hes.SourceLotObjects;
+        if (srcGos == null)
+            return;
+
+        var usedCorner = new HashSet<int>();
+
+        for (int i = 0; i < samples.Count; i++)
+        {
+            if (usedCorner.Contains(i))
+                continue;
+
+            Vector3 cornerPoint = samples[i].b;
+            bool onTriangleSourceVertex = false;
+            for (int s = 0; s < srcGos.Count && !onTriangleSourceVertex; s++)
+            {
+                GameObject go = srcGos[s];
+                if (go == null)
+                    continue;
+                WallEditShape wes = go.GetComponent<WallEditShape>();
+                if (wes == null || wes.shapeKind != WallEditShape.ShapeKind.Triangle)
+                    continue;
+                for (int vi = 0; vi < 3; vi++)
+                {
+                    Vector3 tv = wes.GetControlPointWorld(vi);
+                    float dx = cornerPoint.x - tv.x;
+                    float dz = cornerPoint.z - tv.z;
+                    if (dx * dx + dz * dz <= matchEpsSq)
+                    {
+                        onTriangleSourceVertex = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!onTriangleSourceVertex)
+                continue;
+
+            PathSample prev = samples[i];
+            PathSample next = samples[(i + 1) % samples.Count];
+            float cornerAngleDeg = Vector3.Angle(-prev.tangent, next.tangent);
+            if (cornerAngleDeg > 140f || cornerAngleDeg >= 35f)
+                continue;
+
+            usedCorner.Add(i);
+
+            Vector3 inwardA = -prev.tangent.normalized;
+            Vector3 inwardB = next.tangent.normalized;
+            Vector3 inwardBisector = (inwardA + inwardB).normalized;
+            if (inwardBisector.sqrMagnitude < 0.000001f)
+                inwardBisector = inwardA.sqrMagnitude > 0.000001f ? inwardA : inwardB;
+
+            Vector3 outwardA = Vector3.Cross(Vector3.up, prev.tangent).normalized * sideSign;
+            Vector3 outwardB = Vector3.Cross(Vector3.up, next.tangent).normalized * sideSign;
+            Vector3 outward = (outwardA + outwardB).normalized;
+            if (outward.sqrMagnitude < 0.000001f)
+                outward = outwardA.sqrMagnitude > 0.000001f ? outwardA : outwardB;
+
+            EmitTriangleAcuteCornerBollard(
+                profile,
+                root,
+                stoneMaterial,
+                settings,
+                prev.b,
+                inwardA,
+                inwardB,
+                inwardBisector,
+                outwardA,
+                outwardB,
+                outward,
+                cornerAngleDeg,
+                yMin,
+                yMax,
+                rng,
+                ref stoneIndex);
+        }
+    }
+
     [Header("Triangle D-Bollard Debug")]
     [SerializeField] private bool debugColorizeTriangleBollardFaces = false;
     private const bool forceDebugColorizeTriangleBollardFacesFromCode = false;
@@ -209,7 +318,7 @@ public sealed partial class WallCladdingGenerator
                             ApplyDebugFaceColors(mesh, mr, stoneMaterial);
                         ApplyPerStoneMaterialVariation(profile, mr, rng, true);
                         AttachQuoinRuntimeLodIfEnabled(go, mf, mesh, GetEffectiveUvMetersPerUnit(profile));
-                        if (combineGeneratedStonesPerSide && profile != null && mf.sharedMesh != null)
+                        if (_effectiveCombineStonesThisRebuild && profile != null && mf.sharedMesh != null)
                             ApplyPerStoneTintAsVertexColors(mf.sharedMesh, profile, rng, true);
                         stoneIndex++;
                     }
@@ -479,7 +588,7 @@ public sealed partial class WallCladdingGenerator
             // Always keep textured/material rendering for these stones.
             ApplyPerStoneMaterialVariation(profile, mr, rng, true);
             AttachQuoinRuntimeLodIfEnabled(go, mf, mesh, GetEffectiveUvMetersPerUnit(profile));
-            if (combineGeneratedStonesPerSide && profile != null && mf.sharedMesh != null)
+            if (_effectiveCombineStonesThisRebuild && profile != null && mf.sharedMesh != null)
                 ApplyPerStoneTintAsVertexColors(mf.sharedMesh, profile, rng, true);
             stoneIndex++;
 

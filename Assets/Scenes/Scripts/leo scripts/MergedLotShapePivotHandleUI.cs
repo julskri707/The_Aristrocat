@@ -92,6 +92,7 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
     static WallDrawInput s_DrawInput;
     static WallBuildController s_Build;
     static bool s_ScrollUndoArmed = true;
+    static ControlPointOverlayManager s_CachedControlPointOverlay;
 
     static WallUndoManager GetUndoManager()
     {
@@ -112,6 +113,33 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         if (s_Build == null)
             s_Build = FindFirstObjectByType<WallBuildController>();
         return s_Build;
+    }
+
+    static bool TryGetFocusedIndependentSourceEditForEnvelope(WallEditShape envelopeEdit, out WallEditShape sourceEdit)
+    {
+        sourceEdit = null;
+        if (envelopeEdit == null || envelopeEdit.wall == null)
+            return false;
+
+        HouseExteriorEnvelopeSources hes = envelopeEdit.wall.GetComponent<HouseExteriorEnvelopeSources>();
+        if (hes == null || !hes.HasMultipleSourceLots || !hes.UseIndependentSourceHandlesForHouseEnvelope)
+            return false;
+
+        if (s_CachedControlPointOverlay == null)
+            s_CachedControlPointOverlay = FindFirstObjectByType<ControlPointOverlayManager>(FindObjectsInactive.Include);
+        if (s_CachedControlPointOverlay == null)
+            return false;
+
+        int f = s_CachedControlPointOverlay.IndependentHouseEnvelopeFocusedSourceLotIndex;
+        if (f < 0)
+            return false;
+
+        IReadOnlyList<GameObject> gos = hes.SourceLotObjects;
+        if (gos == null || f >= gos.Count || gos[f] == null)
+            return false;
+
+        sourceEdit = gos[f].GetComponent<WallEditShape>();
+        return sourceEdit != null;
     }
 
     public static void ClearActivePivotForScroll()
@@ -289,6 +317,8 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
 
     Vector3 GetPivotWorld()
     {
+        // Enveloppe multi-plans (poignées indépendantes) : le pivot violet est toujours le centre
+        // global de l’enveloppe fusionnée (ajout d’étages, rotation, menu), pas celui du seul lot focalisé.
         if (_useMergedCentroid)
             return edit.GetMergedOrthogonalShapeCentroidWorld();
         return edit.GetControlPointWorld(_standardCenterIndex);
@@ -526,7 +556,7 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         if (lot != null && lot.IsOpen)
             lot.Close();
 
-        pivotMenu.OpenForWall(edit.wall, eventData.position);
+        pivotMenu.OpenForWall(edit.wall, eventData.position, HousePivotAddFloorScope.EntireLinkedEnsemble);
     }
 
     void TryOpenLotBuildMenuForClosedLotPivot(PointerEventData eventData)
@@ -612,7 +642,10 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
 
         _dragging = true;
         _dragUsesRawMouseContinuation = false;
-        if (edit.UsesMergedLotOrthogonalHandles)
+        if (TryGetFocusedIndependentSourceEditForEnvelope(edit, out WallEditShape srcForStroke) &&
+            srcForStroke.UsesMergedLotOrthogonalHandles)
+            srcForStroke.NotifyOrthogonalVertexDragStrokeStarted();
+        else if (edit.UsesMergedLotOrthogonalHandles)
             edit.NotifyOrthogonalVertexDragStrokeStarted();
 
         Vector3 startWorld = GetPivotWorld();
@@ -724,8 +757,8 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         if (di != null && di.enableGridSnap)
             target = di.SnapWorldPointForEditing(target);
 
-        Vector3 pivotBefore = GetPivotWorld();
-        Vector3 deltaBulk = new Vector3(target.x - pivotBefore.x, 0f, target.z - pivotBefore.z);
+        Vector3 pivotBeforeEnv = GetPivotWorld();
+        Vector3 deltaBulk = new Vector3(target.x - pivotBeforeEnv.x, 0f, target.z - pivotBeforeEnv.z);
 
         if (_useMergedCentroid)
             edit.TrySetMergedOrthogonalShapeCentroidWorld(target);
@@ -758,7 +791,10 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         _dragPlane = capture.DragPlane;
         _offsetWorld = capture.OffsetWorld;
         _dragPivotY = capture.DragPivotY;
-        if (edit != null && edit.UsesMergedLotOrthogonalHandles)
+        if (TryGetFocusedIndependentSourceEditForEnvelope(edit, out WallEditShape srcResume) &&
+            srcResume.UsesMergedLotOrthogonalHandles)
+            srcResume.NotifyOrthogonalVertexDragStrokeStarted();
+        else if (edit != null && edit.UsesMergedLotOrthogonalHandles)
             edit.NotifyOrthogonalVertexDragStrokeStarted();
     }
 
@@ -775,7 +811,10 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         ControlPointHandleUI.ClearPointerDragOwnerIf(this);
         ControlPointHandleUI.SetPivotBulkMoveDragging(false, null);
 
-        if (edit != null)
+        if (TryGetFocusedIndependentSourceEditForEnvelope(edit, out WallEditShape srcEndRaw) &&
+            srcEndRaw.UsesMergedLotOrthogonalHandles)
+            srcEndRaw.NotifyOrthogonalVertexDragStrokeEnded();
+        else if (edit != null)
             edit.NotifyOrthogonalVertexDragStrokeEnded();
 
         if (edit != null && edit.wall != null)
@@ -814,7 +853,10 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         ControlPointHandleUI.ClearPointerDragOwnerIf(this);
         ControlPointHandleUI.SetPivotBulkMoveDragging(false, null);
 
-        if (edit != null)
+        if (TryGetFocusedIndependentSourceEditForEnvelope(edit, out WallEditShape srcEnd) &&
+            srcEnd.UsesMergedLotOrthogonalHandles)
+            srcEnd.NotifyOrthogonalVertexDragStrokeEnded();
+        else if (edit != null)
             edit.NotifyOrthogonalVertexDragStrokeEnded();
 
         if (edit != null && edit.wall != null)
