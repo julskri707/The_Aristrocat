@@ -105,7 +105,9 @@ public class WallSelectionManager : MonoBehaviour
         if (wall == null)
             return false;
 
-        providerBehaviour = ResolveProvider(wall);
+        HouseRoofControlPointProvider roofPick =
+            hit.collider.GetComponentInParent<HouseRoofControlPointProvider>();
+        providerBehaviour = roofPick != null ? roofPick : ResolveProvider(wall);
         if (providerBehaviour == null)
         {
             if (logDebug)
@@ -245,8 +247,10 @@ public class WallSelectionManager : MonoBehaviour
         if (wall == null || providerBehaviour == null)
             return;
 
+        MonoBehaviour overlayOverride = providerBehaviour is HouseRoofControlPointProvider r ? r : null;
+
         if (buildController != null)
-            buildController.ForceSelectWall(wall, envelopeClickHitWorld);
+            buildController.ForceSelectWall(wall, envelopeClickHitWorld, null, overlayOverride);
 
         if (logDebug)
             Debug.Log($"[WallSelectionManager] Selected {wall.name} with {providerBehaviour.GetType().Name}");

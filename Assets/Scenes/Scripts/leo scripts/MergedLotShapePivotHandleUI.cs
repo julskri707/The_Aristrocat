@@ -149,12 +149,14 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         ActivePivotForScroll = null;
     }
 
-    public static void ApplySplitResumeToWallIfPresent(WallObject wall, EnvelopePinkDragCapture capture)
+    public static bool ApplySplitResumeToWallIfPresent(WallObject wall, EnvelopePinkDragCapture capture)
     {
         if (wall == null || !capture.IsValid)
-            return;
+            return false;
 
-        MergedLotShapePivotHandleUI[] arr = FindObjectsByType<MergedLotShapePivotHandleUI>(FindObjectsSortMode.None);
+        MergedLotShapePivotHandleUI[] arr = FindObjectsByType<MergedLotShapePivotHandleUI>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
         for (int i = 0; i < arr.Length; i++)
         {
             MergedLotShapePivotHandleUI p = arr[i];
@@ -162,8 +164,29 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
                 continue;
 
             p.ApplySplitResume(capture);
-            return;
+            return true;
         }
+
+        return false;
+    }
+
+    public static bool TryBeginRawContinuationForWallFromCurrentPointer(WallObject wall)
+    {
+        if (wall == null || !PrimaryPointerHeld())
+            return false;
+
+        MergedLotShapePivotHandleUI[] arr = FindObjectsByType<MergedLotShapePivotHandleUI>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        for (int i = 0; i < arr.Length; i++)
+        {
+            MergedLotShapePivotHandleUI p = arr[i];
+            if (p == null || p.edit == null || p.edit.wall != wall)
+                continue;
+            return p.BeginRawContinuationFromCurrentPointer();
+        }
+
+        return false;
     }
 
     static bool WallIsDesignatedHouseLot(WallEditShape e)
@@ -204,6 +227,8 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
 
         return ControlPointHandleUI.IsDraggingAnyHandle;
     }
+
+
 
     /// <summary>
     /// Mur enveloppe maison : dès que le composant existe (fusion / recalcul), pas seulement quand
@@ -272,11 +297,18 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
 
         if (ControlPointHandleUI.IsDraggingAnyHandle)
             return _dragging;
+
         if (edit != null && edit.wall != null)
         {
             HouseExteriorEnvelopeSources hes = edit.wall.GetComponent<HouseExteriorEnvelopeSources>();
             if (hes != null && hes.HasMultipleSourceLots)
+            {
+                // Avec un lot source déjà focus (rose), garder le pivot violet cliquable pour permettre
+                // un drag global sans devoir réinitialiser le focus.
+                if (TryGetFocusedIndependentSourceEditForEnvelope(edit, out _))
+                    return true;
                 return EnvelopeOverlayHandleFocus.ShouldVioletReceiveRaycasts(edit.wall);
+            }
         }
 
         return true;
@@ -397,6 +429,42 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         if (Input.touchCount > 0)
             return Input.GetTouch(0).position;
         return Input.mousePosition;
+    }
+
+    bool BeginRawContinuationFromCurrentPointer()
+    {
+        if (!PrimaryPointerHeld() || cam == null || edit == null || !ResolveMode())
+            return false;
+
+        if (_dragging && _dragUsesRawMouseContinuation)
+            return true;
+
+        PushMergedPivotOverlayPreserve();
+        s_ActiveBulkDragPivot = this;
+        _dragging = true;
+        _dragUsesRawMouseContinuation = true;
+        ActivePivotForScroll = this;
+        if (edit.wall != null)
+            EnvelopeOverlayHandleFocus.SetFocusViolet(edit.wall);
+        ControlPointHandleUI.RegisterPointerDragOwner(this);
+        ControlPointHandleUI.SetPivotBulkMoveDragging(true, edit);
+
+        if (TryGetFocusedIndependentSourceEditForEnvelope(edit, out WallEditShape srcResume) &&
+            srcResume.UsesMergedLotOrthogonalHandles)
+            srcResume.NotifyOrthogonalVertexDragStrokeStarted();
+        else if (edit.UsesMergedLotOrthogonalHandles)
+            edit.NotifyOrthogonalVertexDragStrokeStarted();
+
+        Vector3 startWorld = GetPivotWorld();
+        _dragPivotY = startWorld.y;
+        _dragPlane = new Plane(Vector3.up, new Vector3(0f, groundY, 0f));
+        Vector2 screen = PrimaryPointerPosition();
+        if (TryScreenToPlaneWorld(screen, _dragPlane, out var hit))
+            _offsetWorld = startWorld - hit;
+        else
+            _offsetWorld = Vector3.zero;
+
+        return true;
     }
 
     void LateUpdate()

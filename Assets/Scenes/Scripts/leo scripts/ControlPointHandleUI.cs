@@ -138,6 +138,9 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         if (SelectedProvider is WallEditShape edit && edit.wall != null)
             return edit.wall;
 
+        if (SelectedProvider is HouseRoofControlPointProvider roofSel && roofSel.HostWall != null)
+            return roofSel.HostWall;
+
         if (SelectedProvider is Component c)
             return c.GetComponent<WallObject>();
 
@@ -165,6 +168,8 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
             return false;
         if (provider is WallEditShape wes)
             return wes.wall == wall;
+        if (provider is HouseRoofControlPointProvider roofProv)
+            return roofProv.HostWall == wall;
         if (provider is Component c)
             return c.GetComponent<WallObject>() == wall;
         return false;
@@ -639,6 +644,10 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         else
             _dragPlane = new Plane(-cam.transform.forward, startWorld);
 
+        if (provider is IControlPointDragPlaneProvider dragPlaneProv &&
+            dragPlaneProv.TryGetDragPlane(index, cam, startWorld, out Plane customPlane))
+            _dragPlane = customPlane;
+
         if (TryScreenToPlaneWorld(eventData.position, _dragPlane, out var hit))
             _offsetWorld = startWorld - hit;
         else
@@ -808,11 +817,12 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
                         snapMergedOutlineToGrid: true,
                         refreshControlPointOverlay: false,
                         recordUndoSnapshotWhenAutoSplit: true,
-                        immediateFullCladdingRefresh: false,
+                        immediateFullCladdingRefresh: true,
                         preferSelectSourceWallAfterSplit: movedEdit.wall);
 
                     bc.TryMergeWallWithAdjacentLots(bundledEnv);
                     bc.ScheduleEnvelopePinkReleaseVisualFollowup(bundledEnv);
+                    bc.ScheduleDeferredHouseEnvelopeRebuildAfterWhiteHandleEdit(movedEdit.wall);
                 }
                 else
                 {
@@ -839,6 +849,7 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
                     if (!skipMerge && mergeAllowed)
                         bc.TryMergeWallWithAdjacentLots(movedEdit.wall);
+                    bc.ScheduleDeferredHouseEnvelopeRebuildAfterWhiteHandleEdit(movedEdit.wall);
                 }
             }
         }
@@ -888,6 +899,9 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
     private Vector3 SnapDraggedPointIfNeeded(Vector3 world)
     {
+        if (provider is HouseRoofControlPointProvider)
+            return world;
+
         WallDrawInput di = GetWallDrawInput();
         if (di == null || !di.enableGridSnap)
             return world;

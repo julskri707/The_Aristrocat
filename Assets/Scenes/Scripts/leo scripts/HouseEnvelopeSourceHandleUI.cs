@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -456,6 +457,8 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
         if (!_dragging)
             return;
 
+        WallObject keepSelectedAfterRelease = null;
+
         // Rebuild + fusion d’abord tant que ActiveDragInstance / SetPivotBulkMoveDragging sont encore actifs :
         // sinon TryMerge → ForceSelectWall → RebuildOverlay laisse le violet capter les raycasts un instant
         // et casse la cohérence « je termine un drag rose ».
@@ -470,15 +473,36 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
                 snapMergedOutlineToGrid: true,
                 refreshControlPointOverlay: false,
                 recordUndoSnapshotWhenAutoSplit: true,
-                immediateFullCladdingRefresh: false,
+                immediateFullCladdingRefresh: true,
                 preferSelectSourceWallAfterSplit: preferSourceWall);
 
-            bc.TryMergeWallWithAdjacentLots(envelopeEdit.wall);
-            bc.ScheduleEnvelopePinkReleaseVisualFollowup(envelopeEdit.wall);
+            // Si la source qu'on vient de draguer est sortie de l'enveloppe,
+            // conserver la sélection sur cette forme détachée (ne pas rebasculer sur l'enveloppe).
+            bool detachedFromEnvelope = preferSourceWall != null &&
+                                        HouseEnvelopeBundledSourceTag.GetEnvelopeIfBundled(preferSourceWall) != envelopeEdit.wall;
+            if (detachedFromEnvelope)
+            {
+                bc.ForceSelectWall(preferSourceWall);
+                keepSelectedAfterRelease = preferSourceWall;
+            }
+            else
+            {
+                bc.TryMergeWallWithAdjacentLots(envelopeEdit.wall);
+                bc.ScheduleEnvelopePinkReleaseVisualFollowup(envelopeEdit.wall);
 
-            if (LastInteractedSourceLotIndex >= 0)
-                PendingHighlightSourceLotIndex = LastInteractedSourceLotIndex;
-            EnvelopeOverlayHandleFocus.SetFocusPink(envelopeEdit.wall);
+                if (LastInteractedSourceLotIndex >= 0)
+                    PendingHighlightSourceLotIndex = LastInteractedSourceLotIndex;
+                EnvelopeOverlayHandleFocus.SetFocusPink(envelopeEdit.wall);
+            }
+
+            // Sélection finale explicite : en Play Mode le Destroy(tag) est différé d'une frame,
+            // donc le test "encore bundlé ?" peut être transitoirement faux.
+            // On force toujours la forme draguée en dernier pour garantir le comportement utilisateur.
+            if (preferSourceWall != null)
+            {
+                bc.ForceSelectWall(preferSourceWall);
+                keepSelectedAfterRelease = preferSourceWall;
+            }
         }
 
         _dragging = false;
@@ -491,6 +515,9 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
 
         if (envelopeEdit != null)
             envelopeEdit.NotifyOrthogonalVertexDragStrokeEnded();
+
+        if (keepSelectedAfterRelease != null && bc != null)
+            bc.KeepWallSelectedAfterInputSettles(keepSelectedAfterRelease, frames: 8);
     }
 
     void OnDisable()
@@ -504,6 +531,8 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
                 ActiveDragInstance = null;
             ControlPointHandleUI.ClearPointerDragOwnerIf(this);
             ControlPointHandleUI.SetPivotBulkMoveDragging(false, null);
+            if (envelopeEdit != null)
+                envelopeEdit.NotifyOrthogonalVertexDragStrokeEnded();
         }
     }
 

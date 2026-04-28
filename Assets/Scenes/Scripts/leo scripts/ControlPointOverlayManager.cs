@@ -129,6 +129,21 @@ public class ControlPointOverlayManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Pivot violet / roses enveloppe : même lorsque l’overlay cible le provider du toit, le déplacement maison reste sur le <see cref="WallEditShape"/> du lot.
+    /// </summary>
+    WallEditShape ResolveWallEditShapeForOverlayTarget()
+    {
+        if (targetProviderBehaviour is WallEditShape w)
+            return w;
+        if (targetProviderBehaviour is HouseRoofControlPointProvider roof)
+        {
+            WallObject hw = roof.HostWall;
+            return hw != null ? hw.GetComponent<WallEditShape>() : null;
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Même contour que le plancher maison : <see cref="WallEditShape.GetOverlayPathWorld"/> évite le fil gris en « carré / L orthogonal »
     /// quand le mesh du mur suit encore l’ovale.
     /// </summary>
@@ -329,7 +344,8 @@ public class ControlPointOverlayManager : MonoBehaviour
         if (handlesRoot == null || cam == null || mergedLotShapePivotPrefab == null)
             return;
 
-        if (targetProviderBehaviour is not WallEditShape wes)
+        WallEditShape wes = ResolveWallEditShapeForOverlayTarget();
+        if (wes == null)
             return;
 
         if (!wes.TryGetShapeBulkMovePivotInfo(out _, out _))
@@ -371,7 +387,8 @@ public class ControlPointOverlayManager : MonoBehaviour
         if (handlesRoot == null || cam == null || prefab == null)
             return;
 
-        if (targetProviderBehaviour is not WallEditShape wes || wes.wall == null)
+        WallEditShape wes = ResolveWallEditShapeForOverlayTarget();
+        if (wes == null || wes.wall == null)
             return;
 
         HouseExteriorEnvelopeSources env = wes.wall.GetComponent<HouseExteriorEnvelopeSources>();
@@ -528,7 +545,12 @@ public class ControlPointOverlayManager : MonoBehaviour
         if (_links.Count == 0)
             return true;
 
-        List<Vector3> path = envelopeWes.GetOverlayPathWorld();
+        WallEditShape pathOwner = envelopeWes;
+        List<Vector3> path = TryGetFocusedIndependentHouseEnvelopeSourceOverlayPath(envelopeWes, out WallEditShape focusedSource)
+            ? focusedSource.GetOverlayPathWorld()
+            : envelopeWes.GetOverlayPathWorld();
+        if (focusedSource != null)
+            pathOwner = focusedSource;
         if (path == null || path.Count < 2)
         {
             ClearLinks();
@@ -548,8 +570,8 @@ public class ControlPointOverlayManager : MonoBehaviour
                 continue;
 
             _links[i].cam = cam;
-            _links[i].provider = envelopeWes;
-            _links[i].providerBehaviour = envelopeWes;
+            _links[i].provider = pathOwner;
+            _links[i].providerBehaviour = pathOwner;
             _links[i].selectionManager = selectionManager;
             _links[i].SetDirectWorldPoints(path[i], path[i + 1]);
         }
@@ -592,16 +614,49 @@ public class ControlPointOverlayManager : MonoBehaviour
         if (meta == null || !meta.HasMultipleSourceLots || !meta.UseIndependentSourceHandlesForHouseEnvelope)
             return false;
 
-        // Un seul contour (enveloppe) : évite de dessiner deux fois les arêtes communes entre lots sources.
-        List<Vector3> path = envelopeWes.GetOverlayPathWorld();
+        WallEditShape pathOwner = envelopeWes;
+        List<Vector3> path = TryGetFocusedIndependentHouseEnvelopeSourceOverlayPath(envelopeWes, out WallEditShape focusedSource)
+            ? focusedSource.GetOverlayPathWorld()
+            : envelopeWes.GetOverlayPathWorld();
+        if (focusedSource != null)
+            pathOwner = focusedSource;
         if (path == null || path.Count < 2)
             return false;
 
         for (int i = 0; i < path.Count - 1; i++)
-            CreateDirectLink(path[i], path[i + 1], envelopeWes, envelopeWes);
+            CreateDirectLink(path[i], path[i + 1], pathOwner, pathOwner);
 
         _linksUsePreviewPath = true;
         return true;
+    }
+
+    bool TryGetFocusedIndependentHouseEnvelopeSourceOverlayPath(WallEditShape envelopeWes, out WallEditShape focusedSource)
+    {
+        focusedSource = null;
+        if (envelopeWes == null || envelopeWes.wall == null)
+            return false;
+
+        HouseExteriorEnvelopeSources meta = envelopeWes.wall.GetComponent<HouseExteriorEnvelopeSources>();
+        if (meta == null || !meta.HasMultipleSourceLots || !meta.UseIndependentSourceHandlesForHouseEnvelope)
+            return false;
+
+        if (_independentHouseEnvelopeFocusedSourceLot < 0)
+            return false;
+
+        IReadOnlyList<GameObject> srcGos = meta.SourceLotObjects;
+        if (srcGos == null || _independentHouseEnvelopeFocusedSourceLot >= srcGos.Count)
+            return false;
+
+        GameObject go = srcGos[_independentHouseEnvelopeFocusedSourceLot];
+        if (go == null)
+            return false;
+
+        focusedSource = go.GetComponent<WallEditShape>();
+        if (focusedSource == null)
+            return false;
+
+        List<Vector3> path = focusedSource.GetOverlayPathWorld();
+        return path != null && path.Count >= 2;
     }
 
     void ClearHandles()

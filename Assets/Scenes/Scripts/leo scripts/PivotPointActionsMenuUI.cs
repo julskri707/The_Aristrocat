@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 /// <summary>
 /// Clic droit : « étage » sur toute la maison liée (pivot violet) ou un seul plan (poignée rose).
@@ -13,7 +14,7 @@ public enum HousePivotAddFloorScope
 }
 
 /// <summary>
-/// Menu contextuel (clic droit sur le pivot violet — lot « maison ») : ajouter un mur, ajouter un étage (plus tard).
+/// Menu contextuel (clic droit sur le pivot violet — lot « maison ») : ajouter un toit (placeholder), ajouter un étage.
 /// Assigner les références UI dans l’inspecteur (même Canvas que <see cref="LotBuildMenuUI"/> possible).
 /// </summary>
 public class PivotPointActionsMenuUI : MonoBehaviour
@@ -46,7 +47,7 @@ public class PivotPointActionsMenuUI : MonoBehaviour
     public string titleSinglePlan = "Un plan de la maison";
     [Tooltip("Titre (pivot violet, ensemble). Vide = defaultTitle (ex. « Lot maison »).")]
     public string titleEntireHouse = "";
-    public string defaultAddWallLabel = "Ajouter un mur";
+    public string defaultAddWallLabel = "Ajouter un toit";
     public string defaultAddFloorLabel = "Ajouter un étage";
     public string defaultPresetCircleLabel = "Cercle au centre du lot";
     public string defaultPresetTriangleLabel = "Triangle au centre du lot";
@@ -116,6 +117,10 @@ public class PivotPointActionsMenuUI : MonoBehaviour
         Text t = button.GetComponentInChildren<Text>(true);
         if (t != null)
             t.text = label;
+
+        TMP_Text tmp = button.GetComponentInChildren<TMP_Text>(true);
+        if (tmp != null)
+            tmp.text = label;
     }
 
     void Update()
@@ -179,6 +184,9 @@ public class PivotPointActionsMenuUI : MonoBehaviour
             buttonAddFloor.interactable = CanAddFloorOnCurrentWall();
         }
 
+        if (buttonAddWall != null)
+            SetButtonLabel(buttonAddWall, "Ajouter un toit");
+
         if (buttonSplitEnvelopeLots != null)
         {
             if (addFloorScope == HousePivotAddFloorScope.CurrentWallOnly)
@@ -221,16 +229,7 @@ public class PivotPointActionsMenuUI : MonoBehaviour
         Close();
 
         if (buildController != null && lot != null)
-        {
-            buildController.SpawnOpenWallFromHouseMenu(lot);
-            return;
-        }
-
-        if (wallDrawInput == null)
-            wallDrawInput = FindFirstObjectByType<WallDrawInput>();
-
-        if (wallDrawInput != null)
-            wallDrawInput.BeginWallStrokeAfterMenuChoice();
+            buildController.AddRoofFromHouseMenu(lot);
     }
 
     void OnAddFloorClicked()

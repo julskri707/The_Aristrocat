@@ -1,0 +1,19 @@
+---
+description: Prioritize systemic fixes over local patches
+alwaysApply: true
+---
+
+# System Integration First
+
+- For bug fixes and feature changes, implement the behavior in the core system flow, not as surface-level workarounds.
+- Avoid one-off "patch-only" logic that bypasses the main pipeline unless explicitly requested.
+- Prefer shared, reusable logic paths that naturally cover all relevant shapes/cases.
+- If a quick fix is added temporarily, replace it with a robust integrated solution in the same task whenever feasible.
+- Keep user-visible behavior stable while improving internals.
+
+## Preferred approach
+
+1. Identify the canonical pipeline for the behavior.
+2. Integrate the fix there so all callers benefit.
+3. Remove or reduce legacy heuristics that conflict with the canonical logic.
+4. Verify no regressions in related interactions (selection, visuals, drag, merge/split states).
