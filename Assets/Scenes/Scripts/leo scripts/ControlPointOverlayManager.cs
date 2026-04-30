@@ -441,7 +441,8 @@ public class ControlPointOverlayManager : MonoBehaviour
         if (_provider == null)
             return;
 
-        if (usePreviewPathForLinks && _pathProvider != null)
+        bool forcePreviewPathForRoof = targetProviderBehaviour is HouseRoofControlPointProvider;
+        if ((usePreviewPathForLinks || forcePreviewPathForRoof) && _pathProvider != null)
         {
             List<Vector3> path = GetOverlayPathForCurrentTarget();
             if (path != null && path.Count >= 2)
@@ -450,6 +451,16 @@ public class ControlPointOverlayManager : MonoBehaviour
 
                 for (int i = 0; i < path.Count - 1; i++)
                     CreateDirectLink(path[i], path[i + 1]);
+
+                if (targetProviderBehaviour is ISecondaryControlPointPathProvider secProv)
+                {
+                    List<Vector3> path2 = secProv.GetSecondaryPreviewPathWorld();
+                    if (path2 != null && path2.Count >= 2)
+                    {
+                        for (int i = 0; i < path2.Count - 1; i++)
+                            CreateDirectLink(path2[i], path2[i + 1]);
+                    }
+                }
 
                 return;
             }
@@ -510,24 +521,49 @@ public class ControlPointOverlayManager : MonoBehaviour
             return;
         }
 
-        int desiredLinkCount = path.Count - 1;
+        ISecondaryControlPointPathProvider secProv = targetProviderBehaviour as ISecondaryControlPointPathProvider;
+        List<Vector3> path2 = secProv != null ? secProv.GetSecondaryPreviewPathWorld() : null;
+
+        int primaryLinks = path.Count - 1;
+        int secondaryLinks = path2 != null && path2.Count >= 2 ? path2.Count - 1 : 0;
+        int desiredLinkCount = primaryLinks + secondaryLinks;
+
         if (desiredLinkCount != _links.Count)
         {
             RebuildLinks();
             return;
         }
 
-        for (int i = 0; i < _links.Count; i++)
+        int li = 0;
+        for (int i = 0; i < primaryLinks; i++)
         {
-            if (_links[i] == null)
+            if (_links[li] == null)
                 continue;
 
-            _links[i].cam = cam;
-            _links[i].provider = _provider;
-            _links[i].providerBehaviour = targetProviderBehaviour;
-            _links[i].selectionManager = selectionManager;
-            _links[i].SetDirectWorldPoints(path[i], path[i + 1]);
+            _links[li].cam = cam;
+            _links[li].provider = _provider;
+            _links[li].providerBehaviour = targetProviderBehaviour;
+            _links[li].selectionManager = selectionManager;
+            _links[li].SetDirectWorldPoints(path[i], path[i + 1]);
+            li++;
         }
+
+        if (path2 != null && secondaryLinks > 0)
+        {
+            for (int i = 0; i < secondaryLinks; i++)
+            {
+                if (_links[li] == null)
+                    continue;
+
+                _links[li].cam = cam;
+                _links[li].provider = _provider;
+                _links[li].providerBehaviour = targetProviderBehaviour;
+                _links[li].selectionManager = selectionManager;
+                _links[li].SetDirectWorldPoints(path2[i], path2[i + 1]);
+                li++;
+            }
+        }
+
     }
 
     bool TryRefreshIndependentHouseEnvelopeLinks()
