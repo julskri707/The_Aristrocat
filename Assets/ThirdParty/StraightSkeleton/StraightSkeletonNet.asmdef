@@ -1,0 +1,14 @@
+{
+    "name": "StraightSkeletonNet",
+    "rootNamespace": "StraightSkeletonNet",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

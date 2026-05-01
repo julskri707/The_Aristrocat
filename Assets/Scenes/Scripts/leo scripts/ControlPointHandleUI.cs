@@ -603,6 +603,19 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
         if (eventData.button == PointerEventData.InputButton.Right)
         {
+            if (provider is HouseRoofControlPointProvider roofPv &&
+                index == HouseRoofControlPointProvider.IdxHeight &&
+                roofPv.TryAddSecondaryRidgePeakFromContextMenu())
+            {
+                WallUndoManager undoRoof = GetUndoManager();
+                if (undoRoof != null)
+                    undoRoof.RecordSnapshot("Roof ridge peak");
+                ControlPointOverlayManager om = GetOverlayManager();
+                if (om != null)
+                    om.RebuildOverlay();
+                return;
+            }
+
             TryOpenLotBuildMenuIfClosedLotCenter(eventData);
             return;
         }
@@ -936,7 +949,17 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         bool selected = provider != null &&
                         provider == SelectedProvider &&
                         (SelectAllOnProvider || index == SelectedIndex);
-        Color c = selected ? selectedColor : normalColor;
+
+        Color baseNormal = normalColor;
+        if (provider is HouseRoofControlPointProvider roofPv)
+        {
+            if (index == HouseRoofControlPointProvider.IdxHeight)
+                baseNormal = new Color(1f, 0.92f, 0.2f, 1f);
+            else if (roofPv.IsSecondaryRidgePeakIndex(index))
+                baseNormal = new Color(0.72f, 0.62f, 0.12f, 1f);
+        }
+
+        Color c = selected ? selectedColor : baseNormal;
 
         if (_graphic != null)
             _graphic.color = c;

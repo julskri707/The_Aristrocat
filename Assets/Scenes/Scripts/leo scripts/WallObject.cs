@@ -339,6 +339,14 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         float uHeight = height / Mathf.Max(0.01f, uvMetersPerU);
         float uThickness = thickness / Mathf.Max(0.01f, uvMetersPerU);
 
+        // Boucle fermée + toit paramétrique : le plateau horizontal au sommet du mur (quad « deck » intérieur/extérieur)
+        // reste sous le HouseRoofSystem et se superpose / Z-fight avec la nouvelle géométrie du toit (bande « plate » grise).
+        HouseRoofSystem houseRoof = GetComponent<HouseRoofSystem>();
+        bool omitClosedLoopTopDeck =
+            isClosed &&
+            houseRoof != null &&
+            houseRoof.enabled;
+
         for (int i = 0; i < segCount; i++)
         {
             int n = isClosed ? (i + 1) % count : i + 1;
@@ -363,10 +371,13 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
                 0f, v1, uHeight, v0,
                 -expectedOuterNormal);
 
-            AddQuadOriented(verts, uvs, tris,
-                outT[i], inT[i], inT[n], outT[n],
-                0f, v0, uThickness, v1,
-                Vector3.up);
+            if (!omitClosedLoopTopDeck)
+            {
+                AddQuadOriented(verts, uvs, tris,
+                    outT[i], inT[i], inT[n], outT[n],
+                    0f, v0, uThickness, v1,
+                    Vector3.up);
+            }
 
             if (addBottom)
             {

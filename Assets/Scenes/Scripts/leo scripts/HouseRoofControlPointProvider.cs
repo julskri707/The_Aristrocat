@@ -1,9 +1,28 @@
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using UnityEngine;
 
 /// <summary>
-/// Faîtage · quatre arrondis (milieu de face entre bord décalé et faîtage) · quatre débords (bord extérieur).
-/// Fil gris : contour extérieur + cadre intérieur (arrondi).
+/// Points éditables du toit (composant sur l’enfant <c>__HouseRoof</c>). Le mesh est généré dans <see cref="HouseRoofSystem.RebuildNow"/>.
+///
+/// <para><b>Indices (<see cref="ControlPointCount"/> = 1 + pics_or + e + e, avec e = <see cref="EdgeCount"/>)</b></para>
+/// <list type="bullet">
+/// <item><b>0</b> — <see cref="IdxHeight"/> : au-dessus du hub (jaune), règle <see cref="HouseRoofSystem.roofHeightMeters"/>.</item>
+/// <item><b>1 … pics_or</b> — <see cref="IdxExtraRidgePeakFirst"/>+ : pics additionnels (or), <see cref="HouseRoofSystem.extraRidgePeakOffsetsXZ"/> si faîtage secondaire activé.</item>
+/// <item><b><see cref="IdxRoundnessFirst"/> … +e−1</b> : une poignée d’« arrondi » par arête du footprint (<see cref="HouseRoofSystem.roundness"/>).</item>
+/// <item><b><see cref="IdxOverhangFirst"/> … +e−1</b> : milieu du débord par arête (<see cref="HouseRoofSystem.overhangMeters"/>).</item>
+/// </list>
+///
+/// <para><b>Chemins de prévisualisation (pas des indices séparés)</b></para>
+/// <list type="bullet">
+/// <item><see cref="GetPreviewPathWorld"/> : contour extérieur au débord.</item>
+/// <item><see cref="GetSecondaryPreviewPathWorld"/> : fil gris / cadre via les milieux d’arrondi (rectangle → <see cref="TryBuildOrthogonalInnerFrameThroughHandles"/>).</item>
+/// </list>
+///
+/// <para><b>Superposition</b> : plusieurs pics (or) peuvent partager la même position XZ, y compris avec le hub — ce n’est pas une erreur ; le snap inclut explicitement le hub comme cible.</para>
+///
+/// Entrées principales : <see cref="GetControlPointWorld"/>, <see cref="SetControlPointWorld"/>, <see cref="TryGetDragPlane"/>.
 /// </summary>
 [DisallowMultipleComponent]
 public class HouseRoofControlPointProvider : MonoBehaviour,
@@ -13,8 +32,20 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
     IControlPointDragPlaneProvider
 {
     public const int IdxHeight = 0;
+
+    /// <summary>Premier sommet de faîtage additionnel (or). Indice 2, 3… pour les suivants (clic droit répété sur le jaune).</summary>
+    public const int IdxExtraRidgePeakFirst = 1;
+
+    /// <summary>Rétrocompat : premier sommet or = indice 1.</summary>
+    public const int IdxSecondaryRidgePeak = IdxExtraRidgePeakFirst;
+
+    /// <summary>Nombre de sommets or (hors jaune centroïde).</summary>
+    public int ExtraRidgePeakCount =>
+        _roof != null && _roof.secondaryRidgePeakEnabled ? _roof.GetExtraRidgePeakCount() : 0;
+
     /// <summary>Premier index des poignées d’arrondi (une par face / arête).</summary>
-    public const int IdxRoundnessFirst = 1;
+    public int IdxRoundnessFirst => 1 + ExtraRidgePeakCount;
+
     const float RoundnessHandleRadial01 = 0.55f;
 
     HouseRoofSystem _roof;
@@ -22,7 +53,143 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
     public WallObject HostWall => _roof != null ? _roof.GetComponent<WallObject>() : null;
 
     /// <summary>Après les arrondis : poignées de débord (une par arête).</summary>
-    public int IdxOverhangFirst => 1 + EdgeCount;
+    public int IdxOverhangFirst => IdxRoundnessFirst + EdgeCount;
+
+    public bool IsExtraRidgePeakIndex(int index) =>
+        _roof != null &&
+        _roof.secondaryRidgePeakEnabled &&
+        index >= IdxExtraRidgePeakFirst &&
+        index < IdxExtraRidgePeakFirst + ExtraRidgePeakCount;
+
+    /// <summary>Rétrocompat.</summary>
+    public bool IsSecondaryRidgePeakIndex(int index) => IsExtraRidgePeakIndex(index);
+
+    /// <summary>Clic droit sur le sommet jaune : ajoute un sommet de faîtage or déplaçable (répétable).</summary>
+    public bool TryAddSecondaryRidgePeakFromContextMenu()
+    {
+        CacheRoof();
+        if (_roof == null || HostWall == null)
+            return false;
+        WallEditShape edit = HostWall.GetComponent<WallEditShape>();
+        if (edit == null || !TryComputeCentroidXZ(edit, out Vector2 c))
+            return false;
+        if (!TryGetClosedFootprintVerts(edit, out List<Vector3> verts))
+            return false;
+
+        float maxD = 0f;
+        for (int i = 0; i < verts.Count; i++)
+        {
+            Vector2 d = new Vector2(verts[i].x - c.x, verts[i].z - c.y);
+            maxD = Mathf.Max(maxD, d.magnitude);
+        }
+
+        float suggested = Mathf.Clamp(maxD * 0.45f, 0.2f, 2.5f);
+        _roof.MigrateLegacyRidgePeaks();
+        if (_roof.GetExtraRidgePeakCount() == 0)
+            _roof.EnableSecondaryRidgePeak(suggested);
+        else
+            _roof.AppendExtraRidgePeak();
+
+        if (TryGetVerticalBasis(out WallEditShape edSnap, out _, out Vector3 centroidSnap, out float basePlateSnap, out _))
+        {
+            _roof.MigrateLegacyRidgePeaks();
+            var list = _roof.extraRidgePeakOffsetsXZ;
+            if (list == null || list.Count == 0)
+                return true;
+            Vector2 last = list[list.Count - 1];
+            Vector2 probe = new Vector2(centroidSnap.x + last.x, centroidSnap.z + last.y);
+            list[list.Count - 1] = ComputeSecondaryRidgeSnapOffsetXZ(
+                edSnap, centroidSnap, basePlateSnap, _roof.overhangMeters, probe);
+            _roof.secondaryPeakHeightMeters = _roof.roofHeightMeters;
+            _roof.SyncLegacySecondaryOffsetFromList();
+            _roof.RebuildNow();
+        }
+
+        return true;
+    }
+
+    const int SecondaryRidgeEdgeSnapDivisions = 4;
+    /// <summary>
+    /// Rayons le long de hub→débord : pas de 0.5 (milieu) pour limiter les snaps accidentels ; le hub seul est ajouté pour la superposition volontaire.
+    /// </summary>
+    static readonly float[] SecondaryRidgeRadialSnapFractions = { 0.82f, 0.94f, 1f };
+
+    /// <summary>
+    /// Grille du second faîte : périmètre décalé + <b>hub</b> (offset nul possible → superposition avec le jaune / entre pics).
+    /// </summary>
+    Vector2 ComputeSecondaryRidgeSnapOffsetXZ(
+        WallEditShape edit,
+        Vector3 centroidXZ,
+        float basePlateY,
+        float overhangMeters,
+        Vector2 worldXZProbe)
+    {
+        if (!TryGetClosedFootprintVerts(edit, out List<Vector3> verts))
+            return Vector2.zero;
+
+        Vector2 cent = new Vector2(centroidXZ.x, centroidXZ.z);
+        int n = verts.Count;
+
+        // Carré / formes symétriques : sans zone de tolérance au hub, le curseur rarement tombe exactement sur le centre
+        // et la grille discrète peut « gagner » avant le hub. On autorise la superposition comme pour les autres empreintes.
+        float footprintSpan = 0f;
+        for (int vi = 0; vi < n; vi++)
+        {
+            Vector2 vx = new Vector2(verts[vi].x, verts[vi].z);
+            footprintSpan = Mathf.Max(footprintSpan, (vx - cent).magnitude);
+        }
+
+        float stickyHubRad = Mathf.Max(0.02f, footprintSpan * 0.055f);
+        if ((worldXZProbe - cent).sqrMagnitude <= stickyHubRad * stickyHubRad)
+            return Vector2.zero;
+
+        var candidates = new List<Vector2>(n * SecondaryRidgeEdgeSnapDivisions * SecondaryRidgeRadialSnapFractions.Length);
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 oi = OffsetFootprintCornerWorld(verts[i], cent, overhangMeters, basePlateY);
+            int j = (i + 1) % n;
+            Vector3 oj = OffsetFootprintCornerWorld(verts[j], cent, overhangMeters, basePlateY);
+            for (int step = 0; step < SecondaryRidgeEdgeSnapDivisions; step++)
+            {
+                float edgeT = step / (float)SecondaryRidgeEdgeSnapDivisions;
+                Vector3 edgePoint = Vector3.Lerp(oi, oj, edgeT);
+                Vector2 edgeXZ = new Vector2(edgePoint.x, edgePoint.z);
+                for (int r = 0; r < SecondaryRidgeRadialSnapFractions.Length; r++)
+                {
+                    float radialT = SecondaryRidgeRadialSnapFractions[r];
+                    candidates.Add(Vector2.Lerp(cent, edgeXZ, radialT));
+                }
+            }
+        }
+
+        // Règle produit : superposition autorisée — le hub est une cible de snap explicite (offset retourné peut être ~0).
+        candidates.Add(cent);
+
+        float tieDsqEps = Mathf.Max(1e-12f, 1e-7f * footprintSpan * footprintSpan);
+        float hubCandEpsSq = Mathf.Max(1e-14f, (footprintSpan * 1e-9f) * (footprintSpan * 1e-9f));
+
+        Vector2 best = candidates[0];
+        float bestSq = (best - worldXZProbe).sqrMagnitude;
+        for (int i = 1; i < candidates.Count; i++)
+        {
+            Vector2 cand = candidates[i];
+            float dsq = (cand - worldXZProbe).sqrMagnitude;
+            bool candAtHub = (cand - cent).sqrMagnitude <= hubCandEpsSq;
+            bool bestAtHub = (best - cent).sqrMagnitude <= hubCandEpsSq;
+            if (dsq < bestSq - tieDsqEps)
+            {
+                bestSq = dsq;
+                best = cand;
+            }
+            else if (Mathf.Abs(dsq - bestSq) <= tieDsqEps && candAtHub && !bestAtHub)
+                best = cand;
+        }
+
+        Vector2 off = best - cent;
+        if (off.sqrMagnitude <= hubCandEpsSq)
+            return Vector2.zero;
+        return off;
+    }
 
     void Awake() => CacheRoof();
     void OnEnable() => CacheRoof();
@@ -49,7 +216,10 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
         get
         {
             int e = EdgeCount;
-            return e <= 0 ? 0 : 1 + e + e;
+            if (e <= 0)
+                return 0;
+            int extraPeak = _roof != null && _roof.secondaryRidgePeakEnabled ? _roof.GetExtraRidgePeakCount() : 0;
+            return 1 + extraPeak + e + e;
         }
     }
 
@@ -66,19 +236,38 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
             return transform.position;
 
         if (index == IdxHeight)
-            return new Vector3(centroidXZ.x, apexY, centroidXZ.z);
+        {
+            float hp = Mathf.Clamp(_roof.roofHeightMeters, HouseRoofSystem.MinRoofHeightMeters, HouseRoofSystem.MaxRoofHeightMeters);
+            return new Vector3(centroidXZ.x, basePlateY + hp, centroidXZ.z);
+        }
+
+        if (_roof.secondaryRidgePeakEnabled && IsExtraRidgePeakIndex(index))
+        {
+            int ei = index - IdxExtraRidgePeakFirst;
+            var offs = _roof.extraRidgePeakOffsetsXZ;
+            if (offs != null && ei >= 0 && ei < offs.Count)
+            {
+                Vector2 off = offs[ei];
+                float hp = Mathf.Clamp(_roof.roofHeightMeters, HouseRoofSystem.MinRoofHeightMeters, HouseRoofSystem.MaxRoofHeightMeters);
+                return new Vector3(
+                    centroidXZ.x + off.x,
+                    basePlateY + hp,
+                    centroidXZ.z + off.y);
+            }
+        }
 
         int e = EdgeCount;
-        if (index >= IdxRoundnessFirst && index < IdxRoundnessFirst + e)
-            return GetRoundnessHandleWorldForEdge(edit, centroidXZ, basePlateY, apexY, index - IdxRoundnessFirst);
+        int rf = IdxRoundnessFirst;
+        if (index >= rf && index < rf + e)
+            return GetRoundnessHandleWorldForEdge(edit, centroidXZ, basePlateY, apexY, index - rf);
 
-        int ei = index - IdxOverhangFirst;
-        if (ei >= 0 && ei < e && TryGetClosedFootprintVerts(edit, out List<Vector3> verts))
+        int overhangIdx = index - IdxOverhangFirst;
+        if (overhangIdx >= 0 && overhangIdx < e && TryGetClosedFootprintVerts(edit, out List<Vector3> verts))
         {
             Vector2 c = new Vector2(centroidXZ.x, centroidXZ.z);
             int n = verts.Count;
-            int ej = (ei + 1) % n;
-            Vector3 oi = OffsetFootprintCornerWorld(verts[ei], c, _roof.overhangMeters, basePlateY);
+            int ej = (overhangIdx + 1) % n;
+            Vector3 oi = OffsetFootprintCornerWorld(verts[overhangIdx], c, _roof.overhangMeters, basePlateY);
             Vector3 oj = OffsetFootprintCornerWorld(verts[ej], c, _roof.overhangMeters, basePlateY);
             Vector3 mid = (oi + oj) * 0.5f;
             mid.y = basePlateY;
@@ -111,8 +300,29 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
         Vector3 oj = OffsetFootprintCornerWorld(verts[ej], c, overhangMeters, basePlateY);
         outerMid = (oi + oj) * 0.5f;
         outerMid.y = basePlateY;
-        centerBase = new Vector3(centroidXZ.x, basePlateY, centroidXZ.z);
+
+        // Aligné sur HouseRoofSystem : rayons centroïde → chaque pic (hub central), pas une polyligne qui peut relier deux pics entre eux.
+        Vector2 innerXZ = c;
+        if (_roof != null && _roof.secondaryRidgePeakEnabled && _roof.GetExtraRidgePeakCount() > 0)
+        {
+            innerXZ = HouseRoofSystem.RidgeTargetXZThroughCentralHub(
+                new Vector2(outerMid.x, outerMid.z),
+                c,
+                _roof.extraRidgePeakOffsetsXZ);
+        }
+
+        centerBase = new Vector3(innerXZ.x, basePlateY, innerXZ.y);
         return true;
+    }
+
+    static Vector2 ClosestPointOnSegmentXZ(Vector2 p, Vector2 a, Vector2 b)
+    {
+        Vector2 ab = b - a;
+        float lenSq = ab.sqrMagnitude;
+        if (lenSq < 1e-12f)
+            return a;
+        float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / lenSq);
+        return a + ab * t;
     }
 
     /// <summary>Point d'arrondi ancré sur la surface du dôme (rayon intermédiaire fixe).</summary>
@@ -128,7 +338,7 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
 
         float r = Mathf.Clamp01(RoundnessHandleRadial01);
         Vector3 onRadial = Vector3.Lerp(outerMid, centerBase, r);
-        float yNorm = HouseRoofSystem.EvaluateDomeProfile(r, Mathf.Clamp01(_roof.roundness));
+        float yNorm = _roof.RoofProfileYNormalized(r);
         onRadial.y = basePlateY + (apexY - basePlateY) * yNorm;
         return onRadial;
     }
@@ -149,7 +359,7 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
 
         float r = Mathf.Clamp01(RoundnessHandleRadial01);
         Vector3 onRadial = Vector3.Lerp(outerMid, centerBase, r);
-        float yNorm = HouseRoofSystem.EvaluateDomeProfile(r, Mathf.Clamp01(roundness01));
+        float yNorm = _roof.RoofProfileYNormalized(r, roundness01);
         float roofH = Mathf.Max(HouseRoofSystem.MinRoofHeightMeters, apexY - basePlateY);
         onRadial.y = basePlateY + roofH * yNorm;
         return onRadial;
@@ -192,10 +402,43 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
             return;
         }
 
-        int e = EdgeCount;
-        if (index >= IdxRoundnessFirst && index < IdxRoundnessFirst + e)
+        if (_roof.secondaryRidgePeakEnabled && IsExtraRidgePeakIndex(index))
         {
-            int ei = index - IdxRoundnessFirst;
+            int ei = index - IdxExtraRidgePeakFirst;
+            var offs = _roof.extraRidgePeakOffsetsXZ;
+            if (offs != null && ei >= 0 && ei < offs.Count)
+            {
+                Vector2 probe = new Vector2(worldPos.x, worldPos.z);
+                offs[ei] = ComputeSecondaryRidgeSnapOffsetXZ(
+                    edit, centroidXZ, basePlateY, _roof.overhangMeters, probe);
+                #region agent log
+                DebugLog(
+                    "post-fix",
+                    "H4",
+                    "HouseRoofControlPointProvider.SetControlPointWorld:363",
+                    "Extra ridge point moved",
+                    "{"
+                    + "\"index\":" + index + ","
+                    + "\"extraIndex\":" + ei + ","
+                    + "\"extraCount\":" + offs.Count + ","
+                    + "\"secondaryRidgePeakEnabled\":" + BoolJson(_roof.secondaryRidgePeakEnabled) + ","
+                    + "\"planarHipRoof\":" + BoolJson(_roof.planarHipRoof) + ","
+                    + "\"newOffsetX\":" + FloatJson(offs[ei].x) + ","
+                    + "\"newOffsetZ\":" + FloatJson(offs[ei].y)
+                    + "}");
+                #endregion
+                _roof.secondaryPeakHeightMeters = _roof.roofHeightMeters;
+                _roof.SyncLegacySecondaryOffsetFromList();
+                _roof.RebuildNow();
+            }
+            return;
+        }
+
+        int e = EdgeCount;
+        int rf = IdxRoundnessFirst;
+        if (index >= rf && index < rf + e)
+        {
+            int ei = index - rf;
             if (!TryGetRoundnessEdgeOuterMid(edit, centroidXZ, basePlateY, _roof.overhangMeters, ei, out Vector3 outerMid, out Vector3 centerBase))
                 return;
 
@@ -288,9 +531,10 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
         for (int i = 0; i < e; i++)
             mids.Add(GetRoundnessHandleWorldForEdge(edit, centroidXZ, basePlateY, apexY, i));
 
-        // Cas toiture 4 côtés : les 4 points d'arrondi restent des milieux de côtés,
-        // et le fil gris forme un cadre orthogonal (angles droits) qui passe par ces milieux.
-        if (e == 4 && TryBuildOrthogonalInnerFrameFromMidpoints(mids, out List<Vector3> frame))
+        if (e == 4 &&
+            TryGetClosedFootprintVerts(edit, out List<Vector3> footprint) &&
+            footprint.Count == 4 &&
+            TryBuildOrthogonalInnerFrameThroughHandles(footprint, centroidXZ, basePlateY, mids, out List<Vector3> frame))
         {
             path.AddRange(frame);
             path.Add(frame[0]);
@@ -310,6 +554,8 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
         plane = default;
         if (cam == null)
             return false;
+        if (_roof == null)
+            CacheRoof();
 
         if (index == IdxHeight)
         {
@@ -321,10 +567,17 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
             return true;
         }
 
-        int e = EdgeCount;
-        if (index >= IdxRoundnessFirst && index < IdxRoundnessFirst + e)
+        if (_roof != null && _roof.secondaryRidgePeakEnabled && IsExtraRidgePeakIndex(index))
         {
-            int ei = index - IdxRoundnessFirst;
+            plane = new Plane(Vector3.up, startWorld);
+            return true;
+        }
+
+        int e = EdgeCount;
+        int rf = IdxRoundnessFirst;
+        if (index >= rf && index < rf + e)
+        {
+            int ei = index - rf;
             if (_roof == null)
                 CacheRoof();
             WallEditShape wEdit = HostWall != null ? HostWall.GetComponent<WallEditShape>() : null;
@@ -390,7 +643,11 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
         wallTopY = edit.shapeY + HostWall.height;
         float lift = HouseRoofSystem.RoofBuiltInVerticalLiftMeters;
         basePlateY = wallTopY + _roof.yOffsetAboveWallTop + lift;
-        apexY = basePlateY + Mathf.Clamp(_roof.roofHeightMeters, HouseRoofSystem.MinRoofHeightMeters, HouseRoofSystem.MaxRoofHeightMeters);
+        float hp = Mathf.Clamp(_roof.roofHeightMeters, HouseRoofSystem.MinRoofHeightMeters, HouseRoofSystem.MaxRoofHeightMeters);
+        float hs = _roof.secondaryRidgePeakEnabled
+            ? Mathf.Clamp(_roof.secondaryPeakHeightMeters, HouseRoofSystem.MinRoofHeightMeters, HouseRoofSystem.MaxRoofHeightMeters)
+            : hp;
+        apexY = basePlateY + Mathf.Max(hp, hs);
         return true;
     }
 
@@ -399,15 +656,10 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
         c = default;
         if (!TryGetClosedFootprintVerts(edit, out List<Vector3> verts))
             return false;
-        float sx = 0f, sz = 0f;
-        int n = verts.Count;
-        for (int i = 0; i < n; i++)
-        {
-            sx += verts[i].x;
-            sz += verts[i].z;
-        }
-        float inv = 1f / Mathf.Max(1, n);
-        c = new Vector2(sx * inv, sz * inv);
+        var xz = new List<Vector2>(verts.Count);
+        for (int i = 0; i < verts.Count; i++)
+            xz.Add(new Vector2(verts[i].x, verts[i].z));
+        c = HouseRoofSystem.ComputeFootprintHubXZ(xz);
         return true;
     }
 
@@ -443,52 +695,111 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
         return d.normalized;
     }
 
-    static bool TryBuildOrthogonalInnerFrameFromMidpoints(List<Vector3> mids, out List<Vector3> frame)
+    /// <summary>
+    /// Cadre rectangulaire en plan dont chaque cote passe par la poignee d'arrondi correspondante.
+    /// Le chemin insere les poignees entre les coins (coin -> poignee -> coin), ce qui garde l'aspect
+    /// orthogonal sans faire flotter le fil hors des points reels sur le dome.
+    /// </summary>
+    bool TryBuildOrthogonalInnerFrameThroughHandles(
+        List<Vector3> footprint,
+        Vector3 centroidXZ,
+        float basePlateY,
+        List<Vector3> mids,
+        out List<Vector3> frame)
     {
         frame = null;
-        if (mids == null || mids.Count != 4)
+        if (footprint == null || footprint.Count != 4 || mids == null || mids.Count != 4 || _roof == null)
             return false;
 
-        Vector3 m0 = mids[0];
-        Vector3 m1 = mids[1];
-        Vector3 m2 = mids[2];
-        Vector3 m3 = mids[3];
-
-        Vector3 center = (m0 + m1 + m2 + m3) * 0.25f;
-        float y = center.y;
-
-        Vector3 xDir3 = m1 - m3;
-        Vector3 zDir3 = m0 - m2;
-        Vector2 xDir = new Vector2(xDir3.x, xDir3.z);
-        Vector2 zDir = new Vector2(zDir3.x, zDir3.z);
-        if (xDir.sqrMagnitude < 1e-8f || zDir.sqrMagnitude < 1e-8f)
+        Vector2 centroid = new Vector2(centroidXZ.x, centroidXZ.z);
+        Vector3 o0 = OffsetFootprintCornerWorld(footprint[0], centroid, _roof.overhangMeters, basePlateY);
+        Vector3 o1 = OffsetFootprintCornerWorld(footprint[1], centroid, _roof.overhangMeters, basePlateY);
+        Vector2 u = new Vector2(o1.x - o0.x, o1.z - o0.z);
+        if (u.sqrMagnitude < 1e-8f)
             return false;
+        u.Normalize();
 
-        xDir.Normalize();
-        // Force l'orthogonalite explicite pour avoir des angles droits.
-        Vector2 zPerp = new Vector2(-xDir.y, xDir.x);
-        if (Vector2.Dot(zPerp, zDir) < 0f)
-            zPerp = -zPerp;
-        zDir = zPerp;
-
-        Vector2 c2 = new Vector2(center.x, center.z);
-        float halfX = 0.5f * Mathf.Abs(Vector2.Dot(new Vector2(m1.x, m1.z) - new Vector2(m3.x, m3.z), xDir));
-        float halfZ = 0.5f * Mathf.Abs(Vector2.Dot(new Vector2(m0.x, m0.z) - new Vector2(m2.x, m2.z), zDir));
-        if (halfX < 1e-5f || halfZ < 1e-5f)
-            return false;
-
-        Vector2 c0 = c2 + xDir * halfX + zDir * halfZ;
-        Vector2 c1 = c2 - xDir * halfX + zDir * halfZ;
-        Vector2 c2b = c2 - xDir * halfX - zDir * halfZ;
-        Vector2 c3 = c2 + xDir * halfX - zDir * halfZ;
-
-        frame = new List<Vector3>(4)
+        Vector2 v = new Vector2(-u.y, u.x);
+        Vector2 footCent = Vector2.zero;
+        for (int i = 0; i < 4; i++)
         {
-            new Vector3(c0.x, y, c0.y),
-            new Vector3(c1.x, y, c1.y),
-            new Vector3(c2b.x, y, c2b.y),
-            new Vector3(c3.x, y, c3.y)
+            Vector3 oi = OffsetFootprintCornerWorld(footprint[i], centroid, _roof.overhangMeters, basePlateY);
+            footCent += new Vector2(oi.x, oi.z);
+        }
+        footCent *= 0.25f;
+
+        Vector2 edgeMid01 = new Vector2((o0.x + o1.x) * 0.5f, (o0.z + o1.z) * 0.5f);
+        Vector2 inward = footCent - edgeMid01;
+        if (inward.sqrMagnitude > 1e-10f && Vector2.Dot(v, inward) < 0f)
+            v = -v;
+
+        float[] sideU = new float[4];
+        float[] sideV = new float[4];
+        for (int i = 0; i < 4; i++)
+        {
+            Vector2 p = new Vector2(mids[i].x, mids[i].z);
+            sideU[i] = Vector2.Dot(p, u);
+            sideV[i] = Vector2.Dot(p, v);
+        }
+
+        Vector3 c30 = FromUv(sideU[3], sideV[0], u, v, (mids[3].y + mids[0].y) * 0.5f);
+        Vector3 c01 = FromUv(sideU[1], sideV[0], u, v, (mids[0].y + mids[1].y) * 0.5f);
+        Vector3 c12 = FromUv(sideU[1], sideV[2], u, v, (mids[1].y + mids[2].y) * 0.5f);
+        Vector3 c23 = FromUv(sideU[3], sideV[2], u, v, (mids[2].y + mids[3].y) * 0.5f);
+
+        frame = new List<Vector3>(8)
+        {
+            c30, mids[0],
+            c01, mids[1],
+            c12, mids[2],
+            c23, mids[3]
         };
         return true;
     }
+
+    static Vector3 FromUv(float uCoord, float vCoord, Vector2 u, Vector2 v, float y)
+    {
+        Vector2 xz = u * uCoord + v * vCoord;
+        return new Vector3(xz.x, y, xz.y);
+    }
+
+    #region agent log
+    static void DebugLog(string runId, string hypothesisId, string location, string message, string dataJson)
+    {
+        try
+        {
+            string line =
+                "{"
+                + "\"sessionId\":\"243ebf\","
+                + "\"runId\":\"" + JsonEscape(runId) + "\","
+                + "\"hypothesisId\":\"" + JsonEscape(hypothesisId) + "\","
+                + "\"location\":\"" + JsonEscape(location) + "\","
+                + "\"message\":\"" + JsonEscape(message) + "\","
+                + "\"data\":" + dataJson + ","
+                + "\"timestamp\":" + System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                + "}";
+            File.AppendAllText("debug-243ebf.log", line + System.Environment.NewLine);
+        }
+        catch
+        {
+            // Debug logging must never break control handles.
+        }
+    }
+
+    static string FloatJson(float value)
+    {
+        if (float.IsNaN(value) || float.IsInfinity(value))
+            return "0";
+        return value.ToString("0.######", CultureInfo.InvariantCulture);
+    }
+
+    static string BoolJson(bool value) => value ? "true" : "false";
+
+    static string JsonEscape(string s)
+    {
+        if (string.IsNullOrEmpty(s))
+            return string.Empty;
+        return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+    #endregion
 }
