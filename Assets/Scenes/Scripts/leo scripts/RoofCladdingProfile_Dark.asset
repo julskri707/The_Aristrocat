@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ffb7b9a650c78f14fbd08574c0f4a200, type: 3}
+  m_Name: RoofCladdingProfile_Dark
+  m_EditorClassIdentifier: Assembly-CSharp::RoofCladdingProfile
+  profileId: roof_cladding_profile
+  displayName: Roof Cladding
+  claddingMaterial: {fileID: 0}
+  tileMaterial: {fileID: 2100000, guid: 2ed361ddf96292a4fa6275db3cde6d31, type: 2}
+  wallProfileForMaterials: {fileID: 0}
+  baseTileColor: {r: 0.34117648, g: 0.34117648, b: 0.34117648, a: 1}
+  tileWidthMeters: 0.42
+  tileHeightMeters: 0.28
+  tileOverlapMeters: 0.012
+  tileThicknessMeters: 0.022
+  tileEmbedDepthMeters: 0.02
+  normalSurfaceOffsetMeters: 0.003
+  rowStaggerFraction: 0.5
+  solidTileMesh: 0
+  uniformScaleJitter: 0.04
+  hueJitter: 0.028
+  saturationJitter: 0.065
+  valueJitter: 0.1
+  enablePerTileVertexColor: 1
+  maxGeneratedTiles: 4000

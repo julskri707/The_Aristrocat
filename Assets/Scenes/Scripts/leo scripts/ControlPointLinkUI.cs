@@ -204,6 +204,9 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
         // Ctrl + clic gauche sur l’arête : insertion explicite (nouveau point).
         if (eventData.button == PointerEventData.InputButton.Left && ctrlHeld)
         {
+#region agent log
+            DebugSessionAgentLog.Write("H4", "ControlPointLinkUI.OnPointerDown", "insert_ctrl_left", "{}");
+#endregion
             selectionManager.TryInsertPointAtScreenPosition(eventData.position, providerBehaviour);
             eventData.Use();
             return;
@@ -213,7 +216,12 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
             return;
 
         if (!requireCtrlForInsert || ctrlHeld)
+        {
+#region agent log
+            DebugSessionAgentLog.Write("H4", "ControlPointLinkUI.OnPointerDown", "insert_right_try", "{}");
+#endregion
             selectionManager.TryInsertPointAtScreenPosition(eventData.position, providerBehaviour);
+        }
         else
             selectionManager.TryOpenContextMenuAtScreenPosition(eventData.position, providerBehaviour);
 

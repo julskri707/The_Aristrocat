@@ -1,0 +1,13 @@
+fileFormatVersion: 2
+guid: ffb7b9a650c78f14fbd08574c0f4a200
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - tileMaterial: {fileID: 2100000, guid: 2ed361ddf96292a4fa6275db3cde6d31, type: 2}
+  - wallProfileForMaterials: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

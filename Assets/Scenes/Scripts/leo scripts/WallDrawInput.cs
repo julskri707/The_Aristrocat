@@ -1037,6 +1037,36 @@ public class WallDrawInput : MonoBehaviour
     }
 
     /// <summary>
+    /// Insertion de sommet (clic droit sur arête) : coin de cellule feuille le plus proche — intersections « principales »
+    /// du quadtree, pas les 9 sous-positions des poignées (<see cref="SnapWorldPointForEditing"/>).
+    /// </summary>
+    public Vector3 SnapWorldPointForVertexInsert(Vector3 world)
+    {
+        if (!enableGridSnap)
+            return world;
+
+        Vector3 result;
+        if (!snapToHierarchicalVisualGrid)
+            result = SnapWorldToHierarchicalLeafCenter(world);
+        else
+            result = SnapWorldToNearestLeafCorner(world);
+
+#region agent log
+        bool xzSame =
+            Mathf.Abs(result.x - world.x) < 1e-5f && Mathf.Abs(result.z - world.z) < 1e-5f;
+        var mgr = ResolveHierarchicalGrid();
+        DebugSessionAgentLog.Write(
+            "H2",
+            "WallDrawInput.SnapWorldPointForVertexInsert",
+            "result",
+            "{\"xzUnchanged\":" + (xzSame ? "true" : "false") +
+            ",\"mgrNull\":" + (mgr == null ? "true" : "false") +
+            ",\"visualGrid\":" + (snapToHierarchicalVisualGrid ? "true" : "false") + "}");
+#endregion
+        return result;
+    }
+
+    /// <summary>
     /// Coin de cellule feuille le plus proche (XZ).
     /// </summary>
     Vector3 SnapWorldToNearestLeafCorner(Vector3 world)

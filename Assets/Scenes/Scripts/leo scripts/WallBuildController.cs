@@ -37,6 +37,11 @@ public class WallBuildController : MonoBehaviour
     [Header("Default Style")]
     public WallStyleDefinition defaultWallStyle;
 
+    [Header("Building Scale Override")]
+    [SerializeField] private bool enableBuildingScaleOverride = false;
+    [SerializeField, Min(0.01f)] private float buildingScaleMultiplier = 2f;
+    [SerializeField] private Transform scaleReferenceObject;
+
     [Header("Selection")]
     public LayerMask wallRaycastMask = ~0;
     public float rayDistance = 5000f;
@@ -85,6 +90,12 @@ public class WallBuildController : MonoBehaviour
     public bool enableClipboardDuplicate = true;
     [Tooltip("Décalage monde XZ appliqué au mur dupliqué (évite la superposition exacte).")]
     public Vector2 pasteOffsetXZ = new Vector2(1f, 1f);
+
+    [Header("Nouveau lot — anti-superposition après snap grille")]
+    [Tooltip("Après alignement sur la grille, décale un lot fermé d’une cellule sur +X lorsque son centre XZ coïncide avec un autre lot fermé au même niveau (évite plusieurs maisons / toits au même carreau).")]
+    [SerializeField] bool nudgeNewClosedLotsWhenCenterCoincides = true;
+    [Tooltip("Nombre maximum de décalages (+X, une cellule à la fois) avant d’abandonner.")]
+    [SerializeField, Range(1, 256)] int nudgeClosedLotMaxStepsOnX = 64;
     [Tooltip("Plancher par défaut au collage d’une maison multi-sources si la copie n’a pas de matériau (enveloppe sans parquet, etc.). Sinon le premier LotBuildMenuUI.defaultParquetMaterial dans la scène.")]
     [SerializeField] Material defaultHouseParquetMaterialForPaste;
 
@@ -100,6 +111,9 @@ public class WallBuildController : MonoBehaviour
     [SerializeField, Min(0.01f)] float roofHeightScrollStep = 0.25f;
     [SerializeField, Min(0.005f)] float roofOverhangScrollStep = 0.05f;
     [SerializeField, Min(0.01f)] float roofRoundnessScrollStep = 0.08f;
+    [Header("Toit — profil cladding (Add Roof)")]
+    [Tooltip("Transmis au HouseRoofSystem ajouté par « Add Roof » (runtime / générateur cladding si profils vides).")]
+    [SerializeField] RoofCladdingProfile defaultRoofCladdingProfile;
     [Header("Perf — drag interactif maisons multi-etages")]
     [Tooltip("Intervalle mini (s) entre refresh cladding interactifs forcés pendant le drag d'une source d'enveloppe.")]
     [SerializeField, Min(0.01f)] float interactiveEnvelopeCladdingRefreshInterval = 0.08f;
@@ -146,7 +160,15 @@ public class WallBuildController : MonoBehaviour
     public WallObject SelectedWall { get; private set; }
 
     /// <summary>Hauteur d’un étage (m) pour dalles empilées / murs intérieurs par niveau — aligner <see cref="HouseParquetFloor.storeyHeightMeters"/>.</summary>
-    public float AddFloorHeightMeters => addFloorHeightMeters;
+    public float AddFloorHeightMeters => ScaleBuildingMeters(addFloorHeightMeters);
+
+    float BuildingScale => enableBuildingScaleOverride ? Mathf.Max(0.01f, buildingScaleMultiplier) : 1f;
+
+    public float GetEffectiveBuildingScale() => BuildingScale;
+
+    float ScaleBuildingMeters(float meters) => meters * BuildingScale;
+
+    bool IsBuildingScaleActive => !Mathf.Approximately(BuildingScale, 1f);
 
     static void RunWithCladdingRebuildSuspended(Action action)
     {
@@ -161,6 +183,450 @@ public class WallBuildController : MonoBehaviour
         }
     }
 
+    private List<Vector3> ApplyBuildingScaleToPathIfNeeded(List<Vector3> path)
+    {
+        if (path == null)
+            return null;
+
+        float multiplier = BuildingScale;
+        if (Mathf.Approximately(multiplier, 1f))
+            return new List<Vector3>(path);
+
+        Bounds originalBounds = BuildPathBounds(path);
+        Vector2 centerXZ = ComputePathCenterXZ(path);
+        var scaled = new List<Vector3>(path.Count);
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector3 p = path[i];
+            Vector2 offsetXZ = new Vector2(p.x - centerXZ.x, p.z - centerXZ.y);
+            scaled.Add(new Vector3(
+                centerXZ.x + offsetXZ.x * multiplier,
+                p.y,
+                centerXZ.y + offsetXZ.y * multiplier));
+        }
+
+        Bounds scaledBounds = BuildPathBounds(scaled);
+        Debug.Log($"[BuildingScale] effectiveScale={multiplier:F3}");
+        Debug.Log("[BuildingScale] path scaled");
+        Debug.Log($"[BuildingScale] originalBounds={FormatBounds(originalBounds)}");
+        Debug.Log($"[BuildingScale] scaledBounds={FormatBounds(scaledBounds)}");
+        return scaled;
+    }
+
+    static Vector2 ComputePathCenterXZ(IReadOnlyList<Vector3> path)
+    {
+        if (path == null || path.Count == 0)
+            return Vector2.zero;
+
+        int n = path.Count;
+        if (n > 1 && Vector3.Distance(path[0], path[n - 1]) < 0.0001f)
+            n--;
+        if (n <= 0)
+            return Vector2.zero;
+
+        double sx = 0.0;
+        double sz = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            sx += path[i].x;
+            sz += path[i].z;
+        }
+
+        float inv = 1f / n;
+        return new Vector2((float)(sx * inv), (float)(sz * inv));
+    }
+
+    static Bounds BuildPathBounds(IReadOnlyList<Vector3> path)
+    {
+        if (path == null || path.Count == 0)
+            return new Bounds(Vector3.zero, Vector3.zero);
+
+        Bounds b = new Bounds(path[0], Vector3.zero);
+        for (int i = 1; i < path.Count; i++)
+            b.Encapsulate(path[i]);
+
+        return b;
+    }
+
+    void LogScaleDiagnostic(WallObject generatedWall, string context)
+    {
+        Transform bett = ResolveBettForScaleDiagnostic(out Bounds bettDiagnosticBounds, out bool hasBettDiagnosticBounds);
+        if (bett != null)
+        {
+            if (hasBettDiagnosticBounds)
+                Debug.Log($"[ScaleDiagnostic] Bett bounds = {FormatBounds(bettDiagnosticBounds)} | transform={GetHierarchyPath(bett)} | localScale={FormatVector(bett.localScale)} | lossyScale={FormatVector(bett.lossyScale)}");
+            else
+                Debug.Log($"[ScaleDiagnostic] Bett bounds = <no renderer/collider bounds> | transform={GetHierarchyPath(bett)} | position={FormatVector(bett.position)} | localScale={FormatVector(bett.localScale)} | lossyScale={FormatVector(bett.lossyScale)}");
+
+            LogParentScales("Bett parent scale", bett);
+        }
+        else
+        {
+            Debug.Log("[ScaleDiagnostic] Bett bounds = <Bett not found in loaded scene>");
+        }
+
+        LogGridCellSize();
+
+        if (wallPrefab != null)
+        {
+            Debug.Log($"[ScaleDiagnostic] Wall prefab scale = prefabName={wallPrefab.name} | localScale={FormatVector(wallPrefab.transform.localScale)} | lossyScale={FormatVector(wallPrefab.transform.lossyScale)} | height={wallPrefab.height:F3} | thickness={wallPrefab.thickness:F3}");
+            LogParentScales("Wall prefab parent scale", wallPrefab.transform);
+        }
+        else
+        {
+            Debug.Log("[ScaleDiagnostic] Wall prefab scale = <wallPrefab is null>");
+        }
+
+        if (generatedWall != null)
+        {
+            Debug.Log($"[ScaleDiagnostic] Wall height = name={generatedWall.name} | height={generatedWall.height:F3} | worldUpHeightApprox={generatedWall.height * generatedWall.transform.lossyScale.y:F3} | localScale={FormatVector(generatedWall.transform.localScale)} | lossyScale={FormatVector(generatedWall.transform.lossyScale)}");
+            Debug.Log($"[ScaleDiagnostic] Building root scale = context={context} | wall={GetHierarchyPath(generatedWall.transform)} | root={GetHierarchyPath(generatedWall.transform.root)} | rootLocalScale={FormatVector(generatedWall.transform.root.localScale)} | rootLossyScale={FormatVector(generatedWall.transform.root.lossyScale)}");
+            LogParentScales("Building parent scale", generatedWall.transform);
+
+            if (TryGetWorldBounds(generatedWall.gameObject, out Bounds houseBounds))
+            {
+                Debug.Log($"[ScaleDiagnostic] Generated house bounds = context={context} | name={generatedWall.name} | closedLoop={generatedWall.closedLoop} | {FormatBounds(houseBounds)}");
+                LogHouseToBettScaleRecommendation(houseBounds, bett, bettDiagnosticBounds, hasBettDiagnosticBounds);
+            }
+            else
+            {
+                Debug.Log($"[ScaleDiagnostic] Generated house bounds = context={context} | name={generatedWall.name} | <no renderer/collider bounds>");
+            }
+        }
+        else
+        {
+            Debug.Log($"[ScaleDiagnostic] Wall height = <no generated WallObject> | context={context}");
+            Debug.Log($"[ScaleDiagnostic] Building root scale = context={context} | controller={GetHierarchyPath(transform)} | localScale={FormatVector(transform.localScale)} | lossyScale={FormatVector(transform.lossyScale)} | root={GetHierarchyPath(transform.root)} | rootLocalScale={FormatVector(transform.root.localScale)} | rootLossyScale={FormatVector(transform.root.lossyScale)}");
+            Debug.Log($"[ScaleDiagnostic] Generated house bounds = <no generated WallObject> | context={context}");
+            LogParentScales("Building parent scale", transform);
+        }
+    }
+
+    void LogHouseToBettScaleRecommendation(Bounds houseBounds, Transform bett, Bounds bettBounds, bool hasBettBounds)
+    {
+        Debug.Log($"[ScaleDiagnostic] After scale override house bounds = {FormatBounds(houseBounds)}");
+
+        if (bett == null || !hasBettBounds)
+        {
+            Debug.Log("[ScaleDiagnostic] Bett bounds = <unavailable for house comparison>");
+            Debug.Log("[ScaleDiagnostic] houseToBettLengthRatio = <unavailable>");
+            Debug.Log("[ScaleDiagnostic] recommendedBuildingScaleMultiplier = <unavailable>");
+            return;
+        }
+
+        Debug.Log($"[ScaleDiagnostic] Bett bounds = {FormatBounds(bettBounds)}");
+
+        float houseLengthZ = houseBounds.size.z;
+        float bettLengthZ = bettBounds.size.z;
+        if (houseLengthZ <= 1e-5f || bettLengthZ <= 1e-5f)
+        {
+            Debug.Log("[ScaleDiagnostic] houseToBettLengthRatio = <unavailable>");
+            Debug.Log("[ScaleDiagnostic] recommendedBuildingScaleMultiplier = <unavailable>");
+            return;
+        }
+
+        float houseToBettLengthRatio = houseLengthZ / bettLengthZ;
+        float recommendedBuildingScaleMultiplier = bettLengthZ * 2.5f / houseLengthZ;
+        Debug.Log($"[ScaleDiagnostic] houseToBettLengthRatio = {houseToBettLengthRatio:F3}");
+        Debug.Log($"[ScaleDiagnostic] recommendedBuildingScaleMultiplier = {recommendedBuildingScaleMultiplier:F3}");
+    }
+
+    void LogGridCellSize()
+    {
+        WallDrawInput di = drawInput != null ? drawInput : FindFirstObjectByType<WallDrawInput>(FindObjectsInactive.Include);
+        float latticeStep = -1f;
+        Vector2 originXZ = default;
+        bool hasUniformLattice = di != null && di.TryGetMainGridLatticeStepXZ(out latticeStep, out originXZ);
+
+        HierarchicalGridManager mgr = di != null && di.hierarchicalGrid != null
+            ? di.hierarchicalGrid
+            : FindFirstObjectByType<HierarchicalGridManager>(FindObjectsInactive.Include);
+
+        if (mgr == null || mgr.settings == null)
+        {
+            Debug.Log($"[ScaleDiagnostic] Grid cell size = <no HierarchicalGridManager/settings> | drawInput={(di != null ? di.name : "null")} | uniformLattice={(hasUniformLattice ? latticeStep.ToString("F3") : "none")}");
+            return;
+        }
+
+        float minLeaf = float.MaxValue;
+        float maxLeaf = 0f;
+        int leafCount = 0;
+        IReadOnlyList<HierarchicalGridNode> leaves = mgr.LeafNodes;
+        if (leaves != null)
+        {
+            leafCount = leaves.Count;
+            for (int i = 0; i < leaves.Count; i++)
+            {
+                HierarchicalGridNode leaf = leaves[i];
+                if (leaf == null)
+                    continue;
+                minLeaf = Mathf.Min(minLeaf, leaf.size);
+                maxLeaf = Mathf.Max(maxLeaf, leaf.size);
+            }
+        }
+
+        string leafSize = leafCount > 0
+            ? $"leafMin={minLeaf:F3} | leafMax={maxLeaf:F3} | leafCount={leafCount}"
+            : "leafMin=<none> | leafMax=<none> | leafCount=0";
+        string lattice = hasUniformLattice
+            ? $"{latticeStep:F3} | originXZ=({originXZ.x:F3}, {originXZ.y:F3})"
+            : "none";
+
+        Debug.Log($"[ScaleDiagnostic] Grid cell size = settings.minCellSize={mgr.settings.minCellSize:F3} | rootCellSize={mgr.settings.rootCellSize:F3} | {leafSize} | uniformMainLattice={lattice} | gridTransformScale={FormatVector(mgr.transform.localScale)} | gridLossyScale={FormatVector(mgr.transform.lossyScale)}");
+        LogParentScales("Grid parent scale", mgr.transform);
+    }
+
+    Transform ResolveBettForScaleDiagnostic(out Bounds bounds, out bool hasBounds)
+    {
+        bounds = default;
+        hasBounds = false;
+
+        Transform reference = ResolveScaleReferenceObjectForDiagnostic();
+        if (reference != null)
+        {
+            Debug.Log("[ScaleDiagnostic] Scale reference object = " + reference.name, this);
+            if (TryGetRendererBounds(reference.gameObject, out bounds))
+            {
+                hasBounds = true;
+                Debug.Log($"[ScaleDiagnostic] Scale reference bounds = {FormatBounds(bounds)}");
+                Debug.Log($"[ScaleDiagnostic] Bett bounds = name={reference.name} {FormatBounds(bounds)}");
+            }
+            else
+            {
+                Debug.Log("[ScaleDiagnostic] Scale reference object has no renderers");
+            }
+
+            return reference;
+        }
+
+        Transform bett = FindBettForScaleDiagnostic();
+        hasBounds = bett != null && TryGetWorldBounds(bett.gameObject, out bounds);
+        return bett;
+    }
+
+    Transform ResolveScaleReferenceObjectForDiagnostic()
+    {
+        if (scaleReferenceObject != null)
+            return scaleReferenceObject;
+
+        WallBuildController[] controllers = FindObjectsByType<WallBuildController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < controllers.Length; i++)
+        {
+            WallBuildController controller = controllers[i];
+            if (controller != null && controller.scaleReferenceObject != null)
+                return controller.scaleReferenceObject;
+        }
+
+        return null;
+    }
+
+    static Transform FindBettForScaleDiagnostic()
+    {
+        var candidates = new Dictionary<Transform, Bounds>();
+
+        Transform[] transforms = FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform t = transforms[i];
+            if (t == null || !t.gameObject.scene.IsValid())
+                continue;
+            if (IsBettNameForScaleDiagnostic(t.name))
+                TryAddBettCandidate(candidates, t);
+        }
+
+        HomeSite[] homeSites = FindObjectsByType<HomeSite>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < homeSites.Length; i++)
+        {
+            HomeSite site = homeSites[i];
+            if (site == null)
+                continue;
+
+            TryAddBettCandidate(candidates, site.BedPoint);
+            TryAddBettCandidate(candidates, site.transform);
+        }
+
+        Renderer[] renderers = FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer r = renderers[i];
+            if (r == null)
+                continue;
+
+            Transform root = r.transform.root;
+            if (IsBettNameForScaleDiagnostic(r.gameObject.name) ||
+                (root != null && IsBettNameForScaleDiagnostic(root.name)))
+                TryAddBettCandidate(candidates, r.transform);
+        }
+
+        if (candidates.Count == 0)
+        {
+            Debug.Log("[ScaleDiagnostic] Bett candidates = none");
+            return null;
+        }
+
+        Transform best = null;
+        Bounds bestBounds = default;
+        float bestZ = -1f;
+        foreach (KeyValuePair<Transform, Bounds> pair in candidates)
+        {
+            Transform t = pair.Key;
+            Bounds b = pair.Value;
+            Transform root = t != null ? t.root : null;
+            Debug.Log($"[ScaleDiagnostic] Bett candidate = name={(t != null ? t.name : "null")} root={(root != null ? root.name : "null")} size={FormatVector(b.size)} active={(t != null && t.gameObject.activeInHierarchy)}");
+            if (b.size.z > bestZ)
+            {
+                best = t;
+                bestBounds = b;
+                bestZ = b.size.z;
+            }
+        }
+
+        return best;
+    }
+
+    static bool IsBettNameForScaleDiagnostic(string objectName)
+    {
+        if (string.IsNullOrEmpty(objectName))
+            return false;
+
+        return objectName.IndexOf("Bett", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               objectName.IndexOf("Bed", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               objectName.IndexOf("tripo_convert", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    static void TryAddBettCandidate(Dictionary<Transform, Bounds> candidates, Transform t)
+    {
+        if (candidates == null || t == null || !t.gameObject.scene.IsValid())
+            return;
+        if (!TryGetRendererBounds(t.gameObject, out Bounds b))
+            return;
+        if (b.size.z <= 1e-5f)
+            return;
+
+        if (!candidates.ContainsKey(t))
+            candidates.Add(t, b);
+    }
+
+    static bool TryGetRendererBounds(GameObject root, out Bounds bounds)
+    {
+        bounds = default;
+        bool hasBounds = false;
+        if (root == null)
+            return false;
+
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer r = renderers[i];
+            if (r == null)
+                continue;
+            if (!hasBounds)
+            {
+                bounds = r.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(r.bounds);
+            }
+        }
+
+        return hasBounds;
+    }
+
+    static bool TryGetWorldBounds(GameObject root, out Bounds bounds)
+    {
+        bounds = default;
+        bool hasBounds = false;
+        if (root == null)
+            return false;
+
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer r = renderers[i];
+            if (r == null)
+                continue;
+            if (!hasBounds)
+            {
+                bounds = r.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(r.bounds);
+            }
+        }
+
+        if (hasBounds)
+            return true;
+
+        Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider c = colliders[i];
+            if (c == null)
+                continue;
+            if (!hasBounds)
+            {
+                bounds = c.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(c.bounds);
+            }
+        }
+
+        return hasBounds;
+    }
+
+    static string FormatBounds(Bounds b)
+    {
+        return $"center={FormatVector(b.center)} | size={FormatVector(b.size)} | min={FormatVector(b.min)} | max={FormatVector(b.max)}";
+    }
+
+    static string FormatVector(Vector3 v)
+    {
+        return $"({v.x:F3}, {v.y:F3}, {v.z:F3})";
+    }
+
+    static string GetHierarchyPath(Transform t)
+    {
+        if (t == null)
+            return "<null>";
+
+        string path = t.name;
+        Transform p = t.parent;
+        while (p != null)
+        {
+            path = p.name + "/" + path;
+            p = p.parent;
+        }
+        return path;
+    }
+
+    static void LogParentScales(string label, Transform child)
+    {
+        if (child == null)
+            return;
+
+        Transform p = child.parent;
+        if (p == null)
+        {
+            Debug.Log($"[ScaleDiagnostic] {label} = {child.name} has no parent");
+            return;
+        }
+
+        int depth = 0;
+        while (p != null && depth < 32)
+        {
+            Debug.Log($"[ScaleDiagnostic] {label} = parentDepth={depth} | path={GetHierarchyPath(p)} | localScale={FormatVector(p.localScale)} | lossyScale={FormatVector(p.lossyScale)}");
+            p = p.parent;
+            depth++;
+        }
+    }
+
     void Awake()
     {
         if (cam == null)
@@ -171,6 +637,13 @@ public class WallBuildController : MonoBehaviour
 
         if (undoManager == null)
             undoManager = FindFirstObjectByType<WallUndoManager>();
+    }
+
+    IEnumerator Start()
+    {
+        // Wait one frame so the hierarchical grid has a chance to build its leaf list.
+        yield return null;
+        LogScaleDiagnostic(null, "startup");
     }
 
     void OnEnable()
@@ -250,7 +723,7 @@ public class WallBuildController : MonoBehaviour
             _verticalScrollElevationUndoArmed = false;
         }
 
-        float delta = scroll * verticalScrollElevationMetersPerWheelUnit;
+        float delta = scroll * ScaleBuildingMeters(verticalScrollElevationMetersPerWheelUnit);
         edit.OffsetShapeWorldY(delta);
         ControlPointHandleUI.BlockCameraZoomFromWallShapeScroll = true;
     }
@@ -277,11 +750,11 @@ public class WallBuildController : MonoBehaviour
         bool alt = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
 
         if (alt)
-            roof.AdjustHeight(scroll * roofHeightScrollStep * 10f);
+            roof.AdjustHeight(scroll * ScaleBuildingMeters(roofHeightScrollStep) * 10f);
         else if (ctrl)
             roof.AdjustRoundness(scroll * roofRoundnessScrollStep * 10f);
         else if (shift)
-            roof.AdjustOverhang(scroll * roofOverhangScrollStep * 10f);
+            roof.AdjustOverhang(scroll * ScaleBuildingMeters(roofOverhangScrollStep) * 10f);
         else
             return;
 
@@ -302,15 +775,40 @@ public class WallBuildController : MonoBehaviour
         if (undoManager != null)
             undoManager.RecordSnapshot("Add roof from house menu");
 
+        bool roofAlreadyExisted = referenceLot.GetComponent<HouseRoofSystem>() != null;
         HouseRoofSystem roof = HouseRoofSystem.EnsureOnWall(referenceLot);
         if (roof == null)
             return;
+        if (!roofAlreadyExisted)
+            ApplyBuildingScaleToNewRoof(roof);
+        roof.SetDefaultRoofCladdingProfile(defaultRoofCladdingProfile);
+        Debug.Log("[RoofAutoCreate] AddRoof button clicked: roof added", referenceLot);
         HouseRoofControlPointProvider roofUi =
             referenceLot.GetComponentInChildren<HouseRoofControlPointProvider>(true);
         if (roofUi != null)
             ForceSelectWall(referenceLot, null, null, roofUi);
         else
             ForceSelectWall(referenceLot);
+    }
+
+    void ApplyBuildingScaleToNewRoof(HouseRoofSystem roof)
+    {
+        if (roof == null || !IsBuildingScaleActive)
+            return;
+
+        float scale = BuildingScale;
+        float oldHeight = roof.roofHeightMeters;
+        float oldOverhang = roof.overhangMeters;
+        float oldThickness = roof.roofThicknessMeters;
+        float oldYOffset = roof.yOffsetAboveWallTop;
+
+        roof.roofHeightMeters = oldHeight * scale;
+        roof.overhangMeters = oldOverhang * scale;
+        roof.roofThicknessMeters = oldThickness * scale;
+        roof.yOffsetAboveWallTop = oldYOffset * scale;
+        roof.RebuildNow();
+
+        Debug.Log($"[BuildingScale] roof values scaled height {oldHeight:F3}->{roof.roofHeightMeters:F3} overhang {oldOverhang:F3}->{roof.overhangMeters:F3} thickness {oldThickness:F3}->{roof.roofThicknessMeters:F3}");
     }
 
     /// <summary>
@@ -331,7 +829,7 @@ public class WallBuildController : MonoBehaviour
         if (undoManager != null)
             undoManager.RecordSnapshot("Add wall from house menu");
 
-        float story = Mathf.Max(0.1f, addFloorHeightMeters);
+        float story = Mathf.Max(0.1f, AddFloorHeightMeters);
         int floorCount = Mathf.Max(1, Mathf.RoundToInt(referenceLot.height / story));
         const int maxFloorCountForSingleAction = 24;
         if (floorCount > maxFloorCountForSingleAction)
@@ -351,7 +849,7 @@ public class WallBuildController : MonoBehaviour
                 Vector3 b;
                 if (!TryBuildOpenSegmentAcrossReferenceLot(refEdit, centerK, out a, out b))
                 {
-                    float half = Mathf.Max(0.05f, houseMenuSpawnWallHalfLengthM);
+                    float half = Mathf.Max(0.05f, ScaleBuildingMeters(houseMenuSpawnWallHalfLengthM));
                     float y = refEdit.shapeY + k * story;
                     a = new Vector3(center.x - half, y, center.z);
                     b = new Vector3(center.x + half, y, center.z);
@@ -396,6 +894,7 @@ public class WallBuildController : MonoBehaviour
                 EnsureWallStoneCladdingEnabled(wall);
                 RegisterExistingWall(wall);
                 RequestDeferredCladdingRefresh(wall);
+                LogScaleDiagnostic(wall, "SpawnOpenWallFromHouseMenu");
                 lastWall = wall;
             }
         });
@@ -447,7 +946,7 @@ public class WallBuildController : MonoBehaviour
         if (undoManager != null)
             undoManager.RecordSnapshot("Add floor from house menu");
 
-        float story = Mathf.Max(0.1f, addFloorHeightMeters);
+        float story = Mathf.Max(0.1f, AddFloorHeightMeters);
 
         RunWithCladdingRebuildSuspended(() => ApplyAddFloorToSingleClosedLot(referenceLot, story));
 
@@ -554,7 +1053,7 @@ public class WallBuildController : MonoBehaviour
                 }
             }
 
-            envelopeFloor.storeyHeightMeters = addFloorHeightMeters;
+            envelopeFloor.storeyHeightMeters = AddFloorHeightMeters;
             if (envelopeFloor.parquetMaterial != null)
                 ApplyHouseParquetForDesignatedClosedLot(envelopeFloor, envelopeWall, envelopeEdit);
         }
@@ -645,7 +1144,7 @@ public class WallBuildController : MonoBehaviour
                 }
             }
 
-            envelopeFloor.storeyHeightMeters = addFloorHeightMeters;
+            envelopeFloor.storeyHeightMeters = AddFloorHeightMeters;
             if (envelopeFloor.parquetMaterial != null)
                 ApplyHouseParquetForDesignatedClosedLot(envelopeFloor, envelopeWall, envelopeEdit);
 
@@ -663,7 +1162,7 @@ public class WallBuildController : MonoBehaviour
                 HouseParquetFloor spf = sw.GetComponent<HouseParquetFloor>();
                 if (sed == null || spf == null || !sed.IsClosedLoopPath || spf.parquetMaterial == null)
                     continue;
-                spf.storeyHeightMeters = addFloorHeightMeters;
+                spf.storeyHeightMeters = AddFloorHeightMeters;
                 ApplyHouseParquetForDesignatedClosedLot(spf, sw, sed);
             }
         }
@@ -790,7 +1289,7 @@ public class WallBuildController : MonoBehaviour
         if (undoManager != null)
             undoManager.RecordSnapshot("Add floor (toute la maison liée)");
 
-        float story = Mathf.Max(0.1f, addFloorHeightMeters);
+        float story = Mathf.Max(0.1f, AddFloorHeightMeters);
 
         var targets = new HashSet<WallObject> { envelopeWall };
         IReadOnlyList<GameObject> srcGos = hes.SourceLotObjects;
@@ -863,7 +1362,7 @@ public class WallBuildController : MonoBehaviour
             if (edit == null || floor == null || floor.parquetMaterial == null || !edit.IsClosedLoopPath)
                 continue;
 
-            floor.storeyHeightMeters = addFloorHeightMeters;
+            floor.storeyHeightMeters = AddFloorHeightMeters;
             if (!floor.HasFloorMesh || i == checks - 1)
                 ApplyHouseParquetForDesignatedClosedLot(floor, wall, edit);
         }
@@ -1016,7 +1515,7 @@ public class WallBuildController : MonoBehaviour
 
         WallObject wall = Instantiate(wallPrefab);
         wall.transform.position = Vector3.zero;
-        wall.height = Mathf.Max(0.1f, addFloorHeightMeters);
+        wall.height = Mathf.Max(0.1f, AddFloorHeightMeters);
         wall.thickness = sourceWall.thickness;
 
         WallEditShape editShape = wall.GetComponent<WallEditShape>();
@@ -1191,7 +1690,7 @@ public class WallBuildController : MonoBehaviour
             return true;
         }
 
-        float half = Mathf.Max(0.05f, houseMenuSpawnWallHalfLengthM);
+        float half = Mathf.Max(0.05f, ScaleBuildingMeters(houseMenuSpawnWallHalfLengthM));
         Vector3 fa = new Vector3(center.x - half, y, center.z);
         Vector3 fb = new Vector3(center.x + half, y, center.z);
         if (WallEditShape.TryClipOpenWorldSegmentToLotRingXZ(fa, fb, _lotFootprintRingScratch, out a, out b, clipInset))
@@ -1462,8 +1961,8 @@ public class WallBuildController : MonoBehaviour
             if (srcWall == null)
                 continue;
 
-            srcWall.SetHeight(snap.height);
-            srcWall.thickness = snap.thickness;
+            srcWall.SetHeight(ScaleBuildingMeters(snap.height));
+            srcWall.thickness = ScaleBuildingMeters(snap.thickness);
             WallEditShape srcEdit = srcWall.GetComponent<WallEditShape>();
             if (srcEdit != null)
                 srcEdit.ApplyToWall();
@@ -1476,7 +1975,7 @@ public class WallBuildController : MonoBehaviour
                 srcFloor.parquetMaterial = parquetMat;
                 srcFloor.uvMetersPerTile = parquetUv;
                 srcFloor.yOffsetAboveBase = parquetY;
-                srcFloor.storeyHeightMeters = addFloorHeightMeters;
+                srcFloor.storeyHeightMeters = AddFloorHeightMeters;
                 ApplyHouseParquetForDesignatedClosedLot(srcFloor, srcWall, srcEdit);
             }
 
@@ -1493,8 +1992,8 @@ public class WallBuildController : MonoBehaviour
 
         WallObject envelope = Instantiate(wallPrefab);
         envelope.transform.position = Vector3.zero;
-        envelope.SetHeight(_clipboardHouseEnvelopeHeight);
-        envelope.thickness = _clipboardThickness;
+        envelope.SetHeight(ScaleBuildingMeters(_clipboardHouseEnvelopeHeight));
+        envelope.thickness = ScaleBuildingMeters(_clipboardThickness);
 
         WallEditShape envEdit = envelope.GetComponent<WallEditShape>();
         if (envEdit == null)
@@ -1523,6 +2022,7 @@ public class WallBuildController : MonoBehaviour
             recordUndoSnapshotWhenAutoSplit: false,
             immediateFullCladdingRefresh: true,
             preferSelectSourceWallAfterSplit: null);
+        LogScaleDiagnostic(envelope, "PasteMultiSourceHouseEnvelope");
 
         envEdit = envelope.GetComponent<WallEditShape>();
         envMeta = envelope.GetComponent<HouseExteriorEnvelopeSources>();
@@ -1556,7 +2056,7 @@ public class WallBuildController : MonoBehaviour
             floor.parquetMaterial = parquetMat;
             floor.uvMetersPerTile = parquetUv;
             floor.yOffsetAboveBase = parquetY;
-            floor.storeyHeightMeters = addFloorHeightMeters;
+            floor.storeyHeightMeters = AddFloorHeightMeters;
             ApplyHouseParquetForDesignatedClosedLot(floor, envelope, envEdit);
         }
 
@@ -1608,7 +2108,7 @@ public class WallBuildController : MonoBehaviour
             f.parquetMaterial = mat;
             f.uvMetersPerTile = parquetUv;
             f.yOffsetAboveBase = parquetY;
-            f.storeyHeightMeters = addFloorHeightMeters;
+            f.storeyHeightMeters = AddFloorHeightMeters;
             ApplyHouseParquetForDesignatedClosedLot(f, w, ed);
         }
 
@@ -1665,7 +2165,7 @@ public class WallBuildController : MonoBehaviour
             f.parquetMaterial = mat;
         f.uvMetersPerTile = parquetUv;
         f.yOffsetAboveBase = parquetY;
-        f.storeyHeightMeters = addFloorHeightMeters;
+        f.storeyHeightMeters = AddFloorHeightMeters;
         ApplyHouseParquetForDesignatedClosedLot(f, wall, ed);
         MergedLotShapePivotHandleUI.RefreshAllPivotVisualStates();
     }
@@ -1697,11 +2197,17 @@ public class WallBuildController : MonoBehaviour
             Vector3 p = _clipboardPath[i];
             pasted.Add(new Vector3(p.x + ox, p.y, p.z + oz));
         }
+        pasted = ApplyBuildingScaleToPathIfNeeded(pasted);
 
         WallObject wall = Instantiate(wallPrefab);
         wall.transform.position = Vector3.zero;
-        wall.height = _clipboardHeight;
-        wall.thickness = _clipboardThickness;
+        wall.height = ScaleBuildingMeters(_clipboardHeight);
+        wall.thickness = ScaleBuildingMeters(_clipboardThickness);
+        if (IsBuildingScaleActive)
+        {
+            Debug.Log($"[BuildingScale] wall height scaled from {_clipboardHeight:F3} to {wall.height:F3}");
+            Debug.Log($"[BuildingScale] wall thickness scaled from {_clipboardThickness:F3} to {wall.thickness:F3}");
+        }
 
         WallEditShape editShape = wall.GetComponent<WallEditShape>();
         if (editShape == null)
@@ -1785,6 +2291,12 @@ public class WallBuildController : MonoBehaviour
 
         EnsureWallStoneCladdingEnabled(wall);
         RequestDeferredCladdingRefresh(wall);
+        if (IsBuildingScaleActive)
+        {
+            Debug.Log($"[BuildingScale] cladding will use scale={BuildingScale:F3}");
+            Debug.Log($"[BuildingScale] root localScale remains={FormatVector(wall.transform.localScale)}");
+        }
+        LogScaleDiagnostic(wall, "TryPasteWallFromClipboard");
         RegisterExistingWall(wall);
         ForceSelectWall(wall);
 
@@ -1813,25 +2325,31 @@ public class WallBuildController : MonoBehaviour
         if (wallPrefab == null || points == null || points.Count < 2)
             return null;
 
+        List<Vector3> scaledPoints = ApplyBuildingScaleToPathIfNeeded(points);
+
         WallObject wall = Instantiate(wallPrefab);
         wall.transform.position = Vector3.zero;
-        wall.SetPath(points);
+        ApplyBuildingScaleToNewWallDimensions(wall);
+        wall.SetPath(scaledPoints);
 
         WallEditShape editShape = wall.GetComponent<WallEditShape>();
         if (editShape == null)
             editShape = wall.gameObject.AddComponent<WallEditShape>();
 
         editShape.wall = wall;
-        editShape.InitFromDetectedPath(points, detectedKind);
+        editShape.InitFromDetectedPath(scaledPoints, detectedKind);
 
+        var workingPath = new List<Vector3>(wall.Points);
         if (drawInput != null)
         {
-            var pathForMainGrid = new List<Vector3>(wall.Points);
             bool loopClosed = wall.closedLoop;
-            drawInput.SnapCommittedPathToMainGridInPlace(pathForMainGrid, loopClosed);
-            wall.SetPath(pathForMainGrid);
-            editShape.InitFromDetectedPath(pathForMainGrid, detectedKind);
+            drawInput.SnapCommittedPathToMainGridInPlace(workingPath, loopClosed);
         }
+
+        TryNudgeClosedPathAwayFromCoincidentLotCenters(workingPath, editShape, wall);
+
+        wall.SetPath(workingPath);
+        editShape.InitFromDetectedPath(workingPath, detectedKind);
 
         WallSelectable selectable = wall.GetComponent<WallSelectable>();
         if (selectable == null)
@@ -1842,9 +2360,14 @@ public class WallBuildController : MonoBehaviour
             WallStyleApplier.Apply(wall, defaultWallStyle);
 
         EnsureWallStoneCladdingEnabled(wall);
+        if (IsBuildingScaleActive)
+            Debug.Log($"[BuildingScale] cladding will use scale={BuildingScale:F3}");
         // Même hors RunWithCladdingRebuildSuspended : budget global / intervalle min peuvent repousser
         // le 1er ForceRebuild en LateUpdate — une 2e passe frame suivante stabilise pierres + teintes.
         RequestDeferredCladdingRefresh(wall);
+        if (IsBuildingScaleActive)
+            Debug.Log($"[BuildingScale] root localScale remains={FormatVector(wall.transform.localScale)}");
+        LogScaleDiagnostic(wall, "CreateWallFromShapePathInternal");
 
         if (registerAndSelect)
         {
@@ -1853,6 +2376,118 @@ public class WallBuildController : MonoBehaviour
         }
 
         return wall;
+    }
+
+    void ApplyBuildingScaleToNewWallDimensions(WallObject wall)
+    {
+        if (wall == null || !IsBuildingScaleActive)
+            return;
+
+        float scale = BuildingScale;
+        float oldHeight = wall.height;
+        float oldThickness = wall.thickness;
+        wall.height = oldHeight * scale;
+        wall.thickness = oldThickness * scale;
+
+        Debug.Log($"[BuildingScale] wall height scaled from {oldHeight:F3} to {wall.height:F3}");
+        Debug.Log($"[BuildingScale] wall thickness scaled from {oldThickness:F3} to {wall.thickness:F3}");
+    }
+
+    static Vector2 ComputeClosedPathCentroidXZ(IReadOnlyList<Vector3> path, bool closed)
+    {
+        if (path == null || path.Count == 0)
+            return Vector2.zero;
+
+        int n = path.Count;
+        if (closed && n > 1 && Vector3.Distance(path[0], path[n - 1]) < 0.0001f)
+            n--;
+        if (n <= 0)
+            return Vector2.zero;
+
+        double sx = 0.0, sz = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            sx += path[i].x;
+            sz += path[i].z;
+        }
+
+        float inv = 1f / n;
+        return new Vector2((float)(sx * inv), (float)(sz * inv));
+    }
+
+    static Vector2 ComputeWallClosedCentroidXZ(WallObject w)
+    {
+        if (w == null || !w.closedLoop || w.Points == null || w.Points.Count < 3)
+            return new Vector2(float.NaN, float.NaN);
+
+        return ComputeClosedPathCentroidXZ(w.Points, true);
+    }
+
+    bool IsClosedLotCenterOccupiedByOther(Vector2 candidateXZ, float shapeY, float yTol, float cellStep, WallObject excludeWall)
+    {
+        float distTol = Mathf.Max(0.02f, cellStep * 0.45f);
+        WallObject[] all = FindObjectsByType<WallObject>(FindObjectsSortMode.None);
+
+        for (int i = 0; i < all.Length; i++)
+        {
+            WallObject w = all[i];
+            if (w == null || w == excludeWall)
+                continue;
+            if (!w.closedLoop)
+                continue;
+
+            WallEditShape ed = w.GetComponent<WallEditShape>();
+            if (ed == null)
+                continue;
+            if (Mathf.Abs(ed.shapeY - shapeY) > yTol)
+                continue;
+
+            Vector2 c = ComputeWallClosedCentroidXZ(w);
+            if (float.IsNaN(c.x))
+                continue;
+            if (Vector2.Distance(candidateXZ, c) < distTol)
+                return true;
+        }
+
+        return false;
+    }
+
+    void TryNudgeClosedPathAwayFromCoincidentLotCenters(List<Vector3> workingPath, WallEditShape editShape, WallObject newWall)
+    {
+        if (!nudgeNewClosedLotsWhenCenterCoincides || workingPath == null || editShape == null || newWall == null)
+            return;
+        if (!newWall.closedLoop || workingPath.Count < 3)
+            return;
+
+        float cellStep;
+        if (drawInput != null && drawInput.TryGetMainGridLatticeStepXZ(out cellStep, out _))
+        {
+            // use drawInput
+        }
+        else
+        {
+            WallDrawInput di = FindFirstObjectByType<WallDrawInput>(FindObjectsInactive.Include);
+            if (di == null || !di.TryGetMainGridLatticeStepXZ(out cellStep, out _))
+                return;
+        }
+
+        cellStep = Mathf.Max(0.05f, cellStep);
+        float yRef = editShape.shapeY;
+        const float yTol = 0.08f;
+        int maxSteps = Mathf.Clamp(nudgeClosedLotMaxStepsOnX, 1, 256);
+
+        for (int step = 0; step < maxSteps; step++)
+        {
+            Vector2 c = ComputeClosedPathCentroidXZ(workingPath, true);
+            if (!IsClosedLotCenterOccupiedByOther(c, yRef, yTol, cellStep, newWall))
+                return;
+
+            for (int i = 0; i < workingPath.Count; i++)
+            {
+                Vector3 p = workingPath[i];
+                workingPath[i] = new Vector3(p.x + cellStep, p.y, p.z);
+            }
+        }
     }
 
     void CommitNewWallFromShapePath(List<Vector3> points, WallDrawInput.DetectedShapeKind detectedKind, string detectedName)
@@ -1868,6 +2503,9 @@ public class WallBuildController : MonoBehaviour
         WallObject wall = CreateWallFromShapePathInternal(points, detectedKind, registerAndSelect: true);
         if (wall == null)
             return;
+
+        if (wall.closedLoop)
+            Debug.Log("[RoofAutoCreate] closed shape created: no roof added (use Add Roof on the lot menu)", this);
 
         if (logDebug)
             Debug.Log($"[WallBuildController] Spawned wall '{wall.name}' from detected shape '{detectedName}'.");
@@ -1934,6 +2572,9 @@ public class WallBuildController : MonoBehaviour
         if (newWall == null)
             return false;
 
+        if (newWall.closedLoop)
+            Debug.Log("[RoofAutoCreate] closed shape created: no roof added (use Add Roof on the lot menu)", this);
+
         CopyDesignatedHouseAppearanceFromReference(referenceLot, newWall);
         RegisterExistingWall(newWall);
 
@@ -1986,7 +2627,7 @@ public class WallBuildController : MonoBehaviour
         dstPf.uvMetersPerTile = srcPf.uvMetersPerTile;
         dstPf.yOffsetAboveBase = srcPf.yOffsetAboveBase;
         dstPf.storeyHeightMeters = Mathf.Approximately(0f, srcPf.storeyHeightMeters)
-            ? addFloorHeightMeters
+            ? AddFloorHeightMeters
             : srcPf.storeyHeightMeters;
 
         WallEditShape ed = target.GetComponent<WallEditShape>();

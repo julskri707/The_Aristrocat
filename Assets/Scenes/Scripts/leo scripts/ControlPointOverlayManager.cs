@@ -344,6 +344,11 @@ public class ControlPointOverlayManager : MonoBehaviour
         if (handlesRoot == null || cam == null || mergedLotShapePivotPrefab == null)
             return;
 
+        // Pivot « lot entier » : toujours au-dessus des poignées blanches (raycast prioritaire). Si la cible overlay
+        // est le toit, il recouvrait le faîtage et le clic droit (second sommet) n’atteignait pas ControlPointHandleUI.
+        if (targetProviderBehaviour is HouseRoofControlPointProvider)
+            return;
+
         WallEditShape wes = ResolveWallEditShapeForOverlayTarget();
         if (wes == null)
             return;

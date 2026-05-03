@@ -626,6 +626,7 @@ public sealed partial class WallCladdingGenerator : MonoBehaviour
 
         runtime.SetProfile(profile, runtime.CurrentSeed != 0 ? runtime.CurrentSeed : ComputeStableSeed(profile));
         ApplyFallbackMaterial(profile);
+        profile = CreateRuntimeScaledProfileIfNeeded(profile);
 
         List<Vector3> path = GetWallPath();
         if (path == null || path.Count < 2)
@@ -776,6 +777,163 @@ public sealed partial class WallCladdingGenerator : MonoBehaviour
             return;
 
         ForceRebuild();
+    }
+
+    float GetEffectiveBuildingScale()
+    {
+        WallBuildController controller = FindFirstObjectByType<WallBuildController>(FindObjectsInactive.Include);
+        return controller != null ? Mathf.Max(0.01f, controller.GetEffectiveBuildingScale()) : 1f;
+    }
+
+    WallCladdingProfile CreateRuntimeScaledProfileIfNeeded(WallCladdingProfile source)
+    {
+        float scale = GetEffectiveBuildingScale();
+        if (source == null || Mathf.Approximately(scale, 1f))
+            return source;
+
+        WallCladdingProfile p = ScriptableObject.CreateInstance<WallCladdingProfile>();
+        p.hideFlags = HideFlags.DontSave;
+        p.profileId = source.profileId;
+        p.displayName = source.displayName + " (BuildingScale)";
+        p.icon = source.icon;
+        p.mode = source.mode;
+        p.fallbackWallMaterial = source.fallbackWallMaterial;
+        p.stoneMaterial = source.stoneMaterial;
+        p.general = CopyScaledGeneral(source.general, scale);
+        p.stone = CopyScaledStone(source.stone, scale);
+        p.brick = source.brick;
+        CopyScaledModules(source.stoneLargeModules, p.stoneLargeModules, scale);
+        CopyScaledModules(source.stoneMediumModules, p.stoneMediumModules, scale);
+        CopyScaledModules(source.stoneSmallModules, p.stoneSmallModules, scale);
+        Debug.Log($"[BuildingScale] wall cladding will use scale={scale:F3}", this);
+        return p;
+    }
+
+    static WallCladdingGeneralSettings CopyScaledGeneral(WallCladdingGeneralSettings s, float scale)
+    {
+        if (s == null)
+            return new WallCladdingGeneralSettings();
+        return new WallCladdingGeneralSettings
+        {
+            sideInset = s.sideInset * scale,
+            depthOffset = s.depthOffset * scale,
+            randomSeedOffset = s.randomSeedOffset
+        };
+    }
+
+    static StoneCladdingSettings CopyScaledStone(StoneCladdingSettings s, float scale)
+    {
+        if (s == null)
+            return new StoneCladdingSettings();
+
+        StoneCladdingSettings d = new StoneCladdingSettings
+        {
+            targetRowHeight = s.targetRowHeight * scale,
+            rowHeightJitter = s.rowHeightJitter,
+            horizontalSpacing = s.horizontalSpacing * scale,
+            verticalSpacing = s.verticalSpacing * scale,
+            staggerFraction = s.staggerFraction,
+            minStoneWidth = s.minStoneWidth * scale,
+            maxStoneWidth = s.maxStoneWidth * scale,
+            minStoneHeight = s.minStoneHeight * scale,
+            maxStoneHeight = s.maxStoneHeight * scale,
+            minWidthVsHeight = s.minWidthVsHeight,
+            maxWidthVsHeight = s.maxWidthVsHeight,
+            nearCornerMaxWidthVsHeight = s.nearCornerMaxWidthVsHeight,
+            embedDepth = s.embedDepth * scale,
+            surfaceProtrusion = s.surfaceProtrusion * scale,
+            minStoneDepth = s.minStoneDepth * scale,
+            maxStoneDepth = s.maxStoneDepth * scale,
+            widthJitter = s.widthJitter,
+            heightJitter = s.heightJitter,
+            depthJitter = s.depthJitter,
+            scaleJitter = s.scaleJitter,
+            minWidthScale = s.minWidthScale,
+            maxWidthScale = s.maxWidthScale,
+            minHeightScale = s.minHeightScale,
+            maxHeightScale = s.maxHeightScale,
+            minDepthScale = s.minDepthScale,
+            maxDepthScale = s.maxDepthScale,
+            maxScaleAspectRatio = s.maxScaleAspectRatio,
+            positionJitter = s.positionJitter * scale,
+            randomYaw = s.randomYaw,
+            randomPitch = s.randomPitch,
+            randomRoll = s.randomRoll,
+            smallStoneFillChance = s.smallStoneFillChance,
+            preferSmallModulesNearCorners = s.preferSmallModulesNearCorners,
+            cornerSmallModuleZone = s.cornerSmallModuleZone * scale,
+            minRowUsableWidth = s.minRowUsableWidth * scale,
+            endGapTolerance = s.endGapTolerance * scale,
+            rejectSliverGapBelow = s.rejectSliverGapBelow * scale,
+            facePlaneJitter = s.facePlaneJitter * scale,
+            uvMetersPerUnit = s.uvMetersPerUnit * scale,
+            enablePerStoneColorVariation = s.enablePerStoneColorVariation,
+            hueJitter = s.hueJitter,
+            saturationJitter = s.saturationJitter,
+            valueJitter = s.valueJitter,
+            uvOffsetJitter = s.uvOffsetJitter,
+            baseTint = s.baseTint,
+            useSeparateTintForQuoins = s.useSeparateTintForQuoins,
+            quoinBaseTint = s.quoinBaseTint,
+            endQuoins = CopyScaledEndQuoins(s.endQuoins, scale)
+        };
+        return d;
+    }
+
+    static EndQuoinSettings CopyScaledEndQuoins(EndQuoinSettings s, float scale)
+    {
+        if (s == null)
+            return new EndQuoinSettings();
+        return new EndQuoinSettings
+        {
+            enabled = s.enabled,
+            reserveWidth = s.reserveWidth * scale,
+            targetHeight = s.targetHeight * scale,
+            rowHeightJitter = s.rowHeightJitter,
+            minLength = s.minLength * scale,
+            maxLength = s.maxLength * scale,
+            lengthJitter = s.lengthJitter,
+            extraOutsideDepth = s.extraOutsideDepth * scale,
+            alternateShortScale = s.alternateShortScale,
+            alternateLongScale = s.alternateLongScale,
+            edgeInset = s.edgeInset * scale,
+            verticalSpacing = s.verticalSpacing * scale,
+            cornerLDepthMul = s.cornerLDepthMul,
+            cornerQuoinOutwardOffsetMeters = s.cornerQuoinOutwardOffsetMeters * scale,
+            cornerQuoinLocalOffsetMeters = s.cornerQuoinLocalOffsetMeters * scale,
+            reflexCornerQuoinOutwardOffsetMeters = s.reflexCornerQuoinOutwardOffsetMeters * scale,
+            reflexCornerQuoinLocalOffsetMeters = s.reflexCornerQuoinLocalOffsetMeters * scale,
+            useGridRightAngleCornerQuoins = s.useGridRightAngleCornerQuoins
+        };
+    }
+
+    static void CopyScaledModules(List<WallStoneModuleDefinition> source, List<WallStoneModuleDefinition> dest, float scale)
+    {
+        if (source == null || dest == null)
+            return;
+        for (int i = 0; i < source.Count; i++)
+        {
+            WallStoneModuleDefinition s = source[i];
+            if (s == null)
+                continue;
+            WallStoneModuleDefinition d = ScriptableObject.CreateInstance<WallStoneModuleDefinition>();
+            d.hideFlags = HideFlags.DontSave;
+            d.displayName = s.displayName;
+            d.sizeClass = s.sizeClass;
+            d.weight = s.weight;
+            d.probability = s.probability;
+            d.canUseNearCorners = s.canUseNearCorners;
+            d.preferAsGapFiller = s.preferAsGapFiller;
+            d.minWidthToHeight = s.minWidthToHeight;
+            d.maxWidthToHeight = s.maxWidthToHeight;
+            d.minCornerCut = s.minCornerCut;
+            d.maxCornerCut = s.maxCornerCut;
+            d.frontRelief = s.frontRelief * scale;
+            d.depthMultiplier = s.depthMultiplier;
+            d.verticalEdgeLean = s.verticalEdgeLean;
+            d.horizontalEdgeLean = s.horizontalEdgeLean;
+            dest.Add(d);
+        }
     }
 
     /// <summary>
@@ -1142,6 +1300,16 @@ public sealed partial class WallCladdingGenerator : MonoBehaviour
     {
         float wallHeight = Mathf.Max(0.1f, wall != null ? wall.height : 2.5f);
         float yMax = Mathf.Max(yMin + 0.05f, wallHeight - profile.general.sideInset);
+
+        // Toit : la semelle du maillage commence au-dessus du « haut mur » (lift + offset). Sans prolonger la pierre,
+        // un vide horizontal reste visible entre la dernière assise et la sous-face du toit.
+        if (!IsInteriorDecorativeWall() && wall != null)
+        {
+            HouseRoofSystem roof = wall.GetComponent<HouseRoofSystem>();
+            if (roof != null)
+                yMax += HouseRoofSystem.RoofBuiltInVerticalLiftMeters + Mathf.Max(0f, roof.yOffsetAboveWallTop);
+        }
+
         if (IsInteriorDecorativeWall())
             yMax = Mathf.Max(yMin + 0.05f, yMax - Mathf.Max(0f, interiorDecorativeStoneTopClearance));
         return yMax;
@@ -4304,6 +4472,7 @@ public sealed partial class WallCladdingGenerator : MonoBehaviour
             hash = hash * 31 + (useSimpleRectangularFieldStones ? 1 : 0);
             hash = hash * 31 + Mathf.RoundToInt(fieldStoneUvTilingBoost * 1000f);
             hash = hash * 31 + maxCladdingClosedLoopPathVertices;
+            hash = hash * 31 + Mathf.RoundToInt(GetEffectiveBuildingScale() * 1000f);
 
             return hash;
         }

@@ -138,6 +138,9 @@ MonoBehaviour:
   uvMetersPerU: 0.5
   miterLimit: 3
   sharpCornerThreshold: 0.35
+  closedLoopCornerBevel: 0.035
+  maxClosedLoopMeshVertices: 56
+  recalculateTangents: 0
   logWarnings: 0
   drawGizmos: 0
 --- !u!114 &8640142375998368458
@@ -159,7 +162,83 @@ MonoBehaviour:
   applyFallbackWallMaterial: 1
   clearWhenProfileMissing: 0
   logDebug: 1
-  connectorRightShift: 10
+  deferFirstCladdingRebuildInPlayMode: 1
+  deferFirstRebuildExtraFrames: 2
+  deferFirstRebuildExtraSeconds: 0.08
+  minRebuildInterval: 0.18
+  geometryHashPollInterval: 0.18
+  rebuildAfterDragDelay: 0.08
+  rebuildCladdingDuringHandleDrag: 1
+  throttleHandleDragCladdingRebuild: 0
+  minRebuildIntervalDuringHandleDrag: 0.08
+  deferCombineMeshesDuringHandleDrag: 1
+  globalRebuildBudgetPerFrame: 2
+  uploadGeneratedStoneMeshesToGpu: 1
+  combineGeneratedStonesPerSide: 1
+  preferGpuDrivenVisibility: 1
+  pushShaderGraphGpuGlobals: 1
+  enableCameraStoneOptimization: 1
+  cullOffscreenStones: 0
+  stoneMaxGenerationDistance: 120
+  useFarLodMesh: 1
+  stoneFarLodDistance: 7
+  enableDynamicRenderDistance: 1
+  renderDistance: 140
+  renderDistanceHysteresis: 10
+  horizonStartDistance: 10
+  horizonDecimationStep: 3
+  renderDistanceUseFrustum: 1
+  preserveWallFrustumWithinDistance: 42
+  renderDistanceUpdateInterval: 0.35
+  useDistanceLodInsteadOfDisabling: 1
+  lodFullDetailDistance: 6
+  lodLowDetailBeyondDistance: 10
+  hideWallSideFacingAwayFromCamera: 1
+  hardMaxStoneRenderDistance: 0
+  keepFullStoneGeometryBothSides: 1
+  fullDetailOmitBackCap: 0
+  lowDetailStoneFrontFaceOnly: 0
+  forceDoubleSidedStoneMaterials: 1
+  stoneMeshTriangleRetention: 0.52
+  stoneReliefFaceGrid: 4
+  useSimpleRectangularFieldStones: 0
+  fieldStoneUvTilingBoost: 0.78
+  maxGeneratedStonesPerSide: 3000
+  maxRowsPerSide: 120
+  maxStonesPerRow: 128
+  maxTailGapFillStonesPerRow: 48
+  maxCladdingClosedLoopPathVertices: 64
+  interiorDecorativeStoneFloorClearance: 0.035
+  interiorDecorativeStoneTopClearance: 0.02
+  interiorDecorativeTopRowHeightScale: 0.82
+  interiorDecorativeTopRowWidthScale: 1.26
+  interiorDecorativeRemoveTopRow: 1
+  interiorDecorativeCompensationRowWidthScale: 1.45
+  exteriorCladMinYFromWallBaseMeters: 0
+  connectorRightShift: 0.1
+  cornerSideExtensionMultiplier: 0
+  cornerFaceReferenceShift: 0.03
+  alignExteriorCornerColumn: 1
+  alignCornerLateralStack: 1
+  invertOtherWallCornerColumn: 1
+  growOppositeVoidLateralFace: 0
+  cornerStackColumnOffset: -0.18
+  randomizeSingleCornerLateralFace: 1
+  cornerSingleFaceExtraMin: 0.02
+  cornerSingleFaceExtraMax: 0.6
+  cornerSingleFaceExtraHardCap: 0.85
+  cornerQuoinExtraLocalMeters: {x: 0, y: 0, z: 0}
+  cornerQuoinExtraWorldMeters: {x: 0, y: 0, z: 0}
+  reflexCornerQuoinFreeLocalMeters: {x: 0, y: 0, z: 0}
+  reflexCornerQuoinFreeWorldMeters: {x: 0, y: 0, z: 0}
+  triangleBollardMinWallParallelLeg: 0.45
+  triangleBollardMaxWallParallelLeg: 0.85
+  triangleBollardColumnCompStartAngleDeg: 25
+  triangleBollardColumnCompEndAngleDeg: 5
+  triangleBollardColumnSmallAngleScale: 2.1
+  triangleBollardLateralClampMinAngleDeg: 8
+  triangleBollardLateralFollowMinAngleDeg: 8
+  debugColorizeTriangleBollardFaces: 0
 --- !u!114 &-7829102596514257101
 MonoBehaviour:
   m_ObjectHideFlags: 0

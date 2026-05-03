@@ -603,16 +603,37 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
         if (eventData.button == PointerEventData.InputButton.Right)
         {
-            if (provider is HouseRoofControlPointProvider roofPv &&
-                index == HouseRoofControlPointProvider.IdxHeight &&
-                roofPv.TryAddSecondaryRidgePeakFromContextMenu())
+            // Clic droit : cycle sommet central ou toutes les poignées latérales (liste jusqu'à 4).
+            int roofLateralSlot = provider is HouseRoofControlPointProvider rp ? index - rp.IdxHorizontalApexMove : -1;
+            if (provider is HouseRoofControlPointProvider roofProvider &&
+                (index == HouseRoofControlPointProvider.IdxHeight ||
+                 (roofLateralSlot >= 0 && roofLateralSlot < roofProvider.LateralApexControlCount)))
             {
-                WallUndoManager undoRoof = GetUndoManager();
-                if (undoRoof != null)
-                    undoRoof.RecordSnapshot("Roof ridge peak");
-                ControlPointOverlayManager om = GetOverlayManager();
-                if (om != null)
-                    om.RebuildOverlay();
+                bool ctrl =
+                    Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+                Vector3 worldHit = transform.position;
+                Plane hp = new Plane(Vector3.up, new Vector3(0f, transform.position.y, 0f));
+                Ray rr = cam.ScreenPointToRay(eventData.position);
+                if (hp.Raycast(rr, out float hh))
+                    worldHit = rr.GetPoint(hh);
+
+                HouseRoofSystem roofSys = roofProvider.GetComponentInParent<HouseRoofSystem>();
+                bool changed = false;
+                if (roofSys != null)
+                    roofSys.ApplyRoofHeightHandleRightClickCycle(worldHit, roofProvider, ctrl, out changed);
+
+                WallUndoManager undoRight = GetUndoManager();
+                if (undoRight != null && changed)
+                    undoRight.RecordSnapshot("Roof Horizontal Apex Handle Mode");
+
+                SelectedProvider = provider;
+                SelectedIndex = index;
+                SelectAllOnProvider = false;
+
+                // Rebuild à chaque clic : le cycle toit met parfois à jour sans changement de hash (re-snap, etc.) — l’UI doit toujours suivre.
+                ControlPointOverlayManager overlay = GetOverlayManager();
+                if (overlay != null)
+                    overlay.RebuildOverlay();
                 return;
             }
 
@@ -946,20 +967,67 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
     private void ApplySelectionColor()
     {
+        // Sommet haut : toujours jaune. Poignées faîtage horizontal : ambre entre jaune et orange (fixes).
+        const float roofAmberA = 1f;
+        const float roofAmberAG = 0.82f;
+        const float roofAmberAB = 0.28f;
+        const float roofAmberB = 1f;
+        const float roofAmberBG = 0.68f;
+        const float roofAmberBB = 0.22f;
+
+        if (provider is HouseRoofControlPointProvider roofCp)
+        {
+            Color roofTint = default;
+            bool roofTintSet = false;
+            if (index == HouseRoofControlPointProvider.IdxHeight)
+            {
+                roofTint = Color.yellow;
+                roofTintSet = true;
+            }
+            else if (roofCp.IsHorizontalApexHandleEnabled)
+            {
+                int ls = index - roofCp.IdxHorizontalApexMove;
+                if (ls >= 0 && ls < roofCp.LateralApexControlCount)
+                {
+                    roofTint = (ls % 2 == 0)
+                        ? new Color(roofAmberA, roofAmberAG, roofAmberAB, 1f)
+                        : new Color(roofAmberB, roofAmberBG, roofAmberBB, 1f);
+                    roofTintSet = true;
+                }
+            }
+
+            if (roofTintSet)
+            {
+                if (_graphic != null)
+                    _graphic.color = roofTint;
+                if (_graphics != null)
+                {
+                    for (int i = 0; i < _graphics.Length; i++)
+                    {
+                        if (_graphics[i] != null)
+                            _graphics[i].color = roofTint;
+                    }
+                }
+
+                if (_spriteRenderer != null)
+                    _spriteRenderer.color = roofTint;
+                if (_spriteRenderers != null)
+                {
+                    for (int i = 0; i < _spriteRenderers.Length; i++)
+                    {
+                        if (_spriteRenderers[i] != null)
+                            _spriteRenderers[i].color = roofTint;
+                    }
+                }
+
+                return;
+            }
+        }
+
         bool selected = provider != null &&
                         provider == SelectedProvider &&
                         (SelectAllOnProvider || index == SelectedIndex);
-
-        Color baseNormal = normalColor;
-        if (provider is HouseRoofControlPointProvider roofPv)
-        {
-            if (index == HouseRoofControlPointProvider.IdxHeight)
-                baseNormal = new Color(1f, 0.92f, 0.2f, 1f);
-            else if (roofPv.IsSecondaryRidgePeakIndex(index))
-                baseNormal = new Color(0.72f, 0.62f, 0.12f, 1f);
-        }
-
-        Color c = selected ? selectedColor : baseNormal;
+        Color c = selected ? selectedColor : normalColor;
 
         if (_graphic != null)
             _graphic.color = c;

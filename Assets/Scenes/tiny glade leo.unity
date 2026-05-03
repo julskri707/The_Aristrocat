@@ -119,6 +119,55 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &51199000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 51199002}
+  - component: {fileID: 51199001}
+  m_Layer: 0
+  m_Name: RoofDiagOverlay
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &51199001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 51199000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d24ea2b616d7164d80878c67270a94e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RoofCrossDiagnosticOverlayUI
+  allowGameViewRoofDebugOverlay: 0
+  showOverlay: 0
+  toggleKey: 290
+  roofOverride: {fileID: 0}
+  wallBuildController: {fileID: 0}
+--- !u!4 &51199002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 51199000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 2.42261, y: -4.2805, z: 7.07957}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &59179866
 GameObject:
   m_ObjectHideFlags: 0
@@ -727,6 +776,9 @@ MonoBehaviour:
   undoManager: {fileID: 436511028}
   wallPrefab: {fileID: 8026581915882693225, guid: c6a832b4372fea346a4999bcd5e52029, type: 3}
   defaultWallStyle: {fileID: 0}
+  enableBuildingScaleOverride: 1
+  buildingScaleMultiplier: 2
+  scaleReferenceObject: {fileID: 0}
   wallRaycastMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -739,16 +791,25 @@ MonoBehaviour:
   mergeLotsWhenCommitSnappedToWallCorner: 1
   mergeAdjacentLotsOnlyWhenOrthogonalHandleSnappedToForeignCorner: 1
   mergeContactTolerance: 0.15
+  designatedHouseAutoMergeMaxDistance: 45
   flushMergeMaxGapFractionOfCell: 0.012
   flushMergeMaxGapAbsoluteM: 0.0025
   designatedHouseLotsUseOuterEnvelopeOnly: 1
+  detachDisconnectedSourceImmediatelyDuringDrag: 1
   mergeDrawnOrPresetShapesWithAdjacentDesignatedHouseOnCommit: 1
   enableClipboardDuplicate: 1
   pasteOffsetXZ: {x: 1, y: 1}
+  nudgeNewClosedLotsWhenCenterCoincides: 1
+  nudgeClosedLotMaxStepsOnX: 64
   defaultHouseParquetMaterialForPaste: {fileID: 0}
   houseMenuSpawnWallHalfLengthM: 1.25
   verticalScrollElevationMetersPerWheelUnit: 5
   addFloorHeightMeters: 2.5
+  roofHeightScrollStep: 0.25
+  roofOverhangScrollStep: 0.05
+  roofRoundnessScrollStep: 0.08
+  defaultRoofCladdingProfile: {fileID: 11400000, guid: 17e1160f5bed035489afd725560cc008, type: 2}
+  interactiveEnvelopeCladdingRefreshInterval: 0.08
 --- !u!4 &436511024
 Transform:
   m_ObjectHideFlags: 0
@@ -3202,3 +3263,4 @@ SceneRoots:
   - {fileID: 650654226}
   - {fileID: 1195328561}
   - {fileID: 2133287161}
+  - {fileID: 51199002}

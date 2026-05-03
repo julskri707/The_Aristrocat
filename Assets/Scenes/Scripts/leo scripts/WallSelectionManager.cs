@@ -221,23 +221,42 @@ public class WallSelectionManager : MonoBehaviour
         if (providerBehaviour is not WallEditShape editShape)
             return false;
 
+        Vector3 insertPos = SnapInsertWorldXZBeforeWallInsert(editShape, worldPosition);
+#region agent log
+        DebugSessionAgentLog.Write(
+            "H1",
+            "WallSelectionManager.TryInsertPointAtWorldPosition",
+            "after_snap",
+            "{\"wx\":" + worldPosition.x.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            ",\"wz\":" + worldPosition.z.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            ",\"sx\":" + insertPos.x.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            ",\"sz\":" + insertPos.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}");
+#endregion
+
         if (undoManager == null)
             undoManager = FindFirstObjectByType<WallUndoManager>();
 
         if (undoManager != null)
             undoManager.RecordSnapshot("Insert Control Point");
 
-        bool inserted = editShape.InsertFreeControlPointAtWorld(worldPosition);
+        bool inserted = editShape.InsertFreeControlPointAtWorld(insertPos);
+#region agent log
+        DebugSessionAgentLog.Write(
+            "H3",
+            "WallSelectionManager.TryInsertPointAtWorldPosition",
+            inserted ? "insert_ok" : "insert_failed",
+            "{\"inserted\":" + (inserted ? "true" : "false") + "}");
+#endregion
         if (!inserted)
             return false;
 
-        SelectWallInternal(wall, editShape, worldPosition);
+        SelectWallInternal(wall, editShape, insertPos);
 
         if (contextMenu != null && contextMenu.IsOpen)
             contextMenu.RefreshCurrentWall();
 
         if (logDebug)
-            Debug.Log($"[WallSelectionManager] Inserted point on {wall.name} at {worldPosition}");
+            Debug.Log($"[WallSelectionManager] Inserted point on {wall.name} at {insertPos}");
 
         return true;
     }
@@ -254,6 +273,52 @@ public class WallSelectionManager : MonoBehaviour
 
         if (logDebug)
             Debug.Log($"[WallSelectionManager] Selected {wall.name} with {providerBehaviour.GetType().Name}");
+    }
+
+    /// <summary>
+    /// Même référentiel que les poignées : grille 9 pts / centre feuille avant insert (meilleur choix d’arête).
+    /// </summary>
+    Vector3 SnapInsertWorldXZBeforeWallInsert(WallEditShape editShape, Vector3 worldPosition)
+    {
+        WallDrawInput di = null;
+        if (buildController != null && buildController.drawInput != null)
+            di = buildController.drawInput;
+        if (di == null)
+        {
+            WallBuildController bc = FindFirstObjectByType<WallBuildController>(FindObjectsInactive.Include);
+            if (bc != null && bc.drawInput != null)
+                di = bc.drawInput;
+        }
+
+        if (di == null)
+            di = FindFirstObjectByType<WallDrawInput>(FindObjectsInactive.Include);
+
+        if (di == null || !di.enableGridSnap)
+        {
+#region agent log
+            DebugSessionAgentLog.Write(
+                "H1",
+                "WallSelectionManager.SnapInsertWorldXZBeforeWallInsert",
+                "snap_skipped",
+                "{\"diNull\":" + (di == null ? "true" : "false") +
+                ",\"enableGridSnap\":" + (di != null && di.enableGridSnap ? "true" : "false") + "}");
+#endregion
+            return worldPosition;
+        }
+
+        Vector3 p = di.SnapWorldPointForVertexInsert(worldPosition);
+        p.y = editShape.shapeY;
+#region agent log
+        DebugSessionAgentLog.Write(
+            "H5",
+            "WallSelectionManager.SnapInsertWorldXZBeforeWallInsert",
+            "snap_applied",
+            "{\"inx\":" + worldPosition.x.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            ",\"inz\":" + worldPosition.z.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            ",\"outx\":" + p.x.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            ",\"outz\":" + p.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}");
+#endregion
+        return p;
     }
 
     Vector3 GetInsertWorldPosition(Ray ray, WallObject wall)

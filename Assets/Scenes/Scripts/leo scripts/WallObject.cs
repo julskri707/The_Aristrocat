@@ -61,6 +61,7 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
     private Mesh _mesh;
     private WallCladdingGenerator _claddingGenerator;
     private static float s_NextClosedLoopAreaWarningUnscaledTime = -999f;
+    readonly List<WallOpeningEntry> _scratchOpeningsForSegment = new List<WallOpeningEntry>();
 
     public IReadOnlyList<Vector3> Points => _points;
 
@@ -103,6 +104,15 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
                 _points[_points.Count - 1] = _points[0];
         }
 
+        RebuildMesh();
+        MarkCladdingDirty();
+    }
+
+    /// <summary>
+    /// Reconstruit le mesh (et marque le bardage) après ouvertures runtime (<see cref="WallOpeningRegistry"/>).
+    /// </summary>
+    public void ForceRebuildMesh()
+    {
         RebuildMesh();
         MarkCladdingDirty();
     }
@@ -339,14 +349,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         float uHeight = height / Mathf.Max(0.01f, uvMetersPerU);
         float uThickness = thickness / Mathf.Max(0.01f, uvMetersPerU);
 
-        // Boucle fermée + toit paramétrique : le plateau horizontal au sommet du mur (quad « deck » intérieur/extérieur)
-        // reste sous le HouseRoofSystem et se superpose / Z-fight avec la nouvelle géométrie du toit (bande « plate » grise).
-        HouseRoofSystem houseRoof = GetComponent<HouseRoofSystem>();
-        bool omitClosedLoopTopDeck =
-            isClosed &&
-            houseRoof != null &&
-            houseRoof.enabled;
-
         for (int i = 0; i < segCount; i++)
         {
             int n = isClosed ? (i + 1) % count : i + 1;
@@ -361,23 +363,34 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
                 expectedOuterNormal = segRight[i];
             expectedOuterNormal.Normalize();
 
-            AddQuadTwoSided(verts, uvs, tris,
-                outB[i], outT[i], outT[n], outB[n],
-                0f, v0, uHeight, v1,
-                expectedOuterNormal);
-
-            AddQuadTwoSided(verts, uvs, tris,
-                inB[n], inT[n], inT[i], inB[i],
-                0f, v1, uHeight, v0,
-                -expectedOuterNormal);
-
-            if (!omitClosedLoopTopDeck)
+            WallOpeningRegistry openingRegistry = GetComponent<WallOpeningRegistry>();
+            if (openingRegistry != null)
             {
-                AddQuadOriented(verts, uvs, tris,
-                    outT[i], inT[i], inT[n], outT[n],
-                    0f, v0, uThickness, v1,
-                    Vector3.up);
+                openingRegistry.GetOpeningsForSegment(i, _scratchOpeningsForSegment);
+                WallOpeningMeshBuilder.AppendSegmentWallFacesWithHoles(
+                    verts, uvs, tris,
+                    outB[i], outT[i], outT[n], outB[n],
+                    inB[i], inT[i], inT[n], inB[n],
+                    v0, v1, uHeight, expectedOuterNormal,
+                    _scratchOpeningsForSegment.Count > 0 ? _scratchOpeningsForSegment : null);
             }
+            else
+            {
+                AddQuadTwoSided(verts, uvs, tris,
+                    outB[i], outT[i], outT[n], outB[n],
+                    0f, v0, uHeight, v1,
+                    expectedOuterNormal);
+
+                AddQuadTwoSided(verts, uvs, tris,
+                    inB[n], inT[n], inT[i], inB[i],
+                    0f, v1, uHeight, v0,
+                    -expectedOuterNormal);
+            }
+
+            AddQuadOriented(verts, uvs, tris,
+                outT[i], inT[i], inT[n], outT[n],
+                0f, v0, uThickness, v1,
+                Vector3.up);
 
             if (addBottom)
             {

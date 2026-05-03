@@ -859,6 +859,141 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
         _straightClosedPreviewDirty = true;
     }
 
+    /// <summary>
+    /// Quatre coins du contour pour un quadrilatère : rectangle paramétrique, poly libre à 4 poignées,
+    /// chemin prévisualisé fermé à 4 sommets après retrait du doublon fermant, ou lot orthogonal dont on détecte
+    /// exactement quatre angles droits (XZ).
+    /// </summary>
+    public bool TryGetFootprintQuadCornersWorld(out Vector3 c0, out Vector3 c1, out Vector3 c2, out Vector3 c3)
+    {
+        c0 = c1 = c2 = c3 = default;
+        if (!IsClosedLoopPath)
+            return false;
+
+        if (shapeKind == ShapeKind.Rectangle)
+        {
+            List<Vector3> path = BuildRectanglePath();
+            if (path == null || path.Count < 5)
+                return false;
+            c0 = path[0];
+            c1 = path[1];
+            c2 = path[2];
+            c3 = path[3];
+            return true;
+        }
+
+        if (shapeKind == ShapeKind.Free && freeControlPoints != null && freeControlPoints.Count == 4)
+        {
+            c0 = new Vector3(freeControlPoints[0].x, shapeY, freeControlPoints[0].z);
+            c1 = new Vector3(freeControlPoints[1].x, shapeY, freeControlPoints[1].z);
+            c2 = new Vector3(freeControlPoints[2].x, shapeY, freeControlPoints[2].z);
+            c3 = new Vector3(freeControlPoints[3].x, shapeY, freeControlPoints[3].z);
+            return true;
+        }
+
+        List<Vector3> preview = GetPreviewPathWorld();
+        bool hasPrep = TryDedupeClosedRingVertices(preview, out List<Vector3> prep);
+        if (hasPrep && prep.Count == 4)
+        {
+            c0 = new Vector3(prep[0].x, shapeY, prep[0].z);
+            c1 = new Vector3(prep[1].x, shapeY, prep[1].z);
+            c2 = new Vector3(prep[2].x, shapeY, prep[2].z);
+            c3 = new Vector3(prep[3].x, shapeY, prep[3].z);
+            return true;
+        }
+
+        if (UsesMergedLotOrthogonalHandles &&
+            hasPrep &&
+            TryOrthogonalQuadFourCornersFromRing(prep, shapeY, out c0, out c1, out c2, out c3))
+            return true;
+
+        return false;
+    }
+
+    static bool TryDedupeClosedRingVertices(List<Vector3> ring, out List<Vector3> prepared)
+    {
+        prepared = null;
+        if (ring == null || ring.Count < 3)
+            return false;
+        prepared = new List<Vector3>(ring);
+        if (prepared.Count >= 2 && Vector3.Distance(prepared[0], prepared[prepared.Count - 1]) < 0.001f)
+            prepared.RemoveAt(prepared.Count - 1);
+        return prepared.Count >= 3;
+    }
+
+    /// <summary>
+    /// Polygone orthogonal dans XZ : sommets où l’arête entrante et sortante ne sont pas toutes deux « horizontales »
+    /// ou toutes deux « verticales » en monde — attend exactement 4 coins (rectangle).
+    /// </summary>
+    static bool TryOrthogonalQuadFourCornersFromRing(
+        List<Vector3> ring,
+        float y,
+        out Vector3 c0,
+        out Vector3 c1,
+        out Vector3 c2,
+        out Vector3 c3)
+    {
+        c0 = c1 = c2 = c3 = default;
+        int n = ring != null ? ring.Count : 0;
+        if (n < 4)
+            return false;
+
+        var corners = new List<Vector3>(8);
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 prev = ring[(i + n - 1) % n];
+            Vector3 cur = ring[i];
+            Vector3 next = ring[(i + 1) % n];
+            Vector2 eIn = new Vector2(cur.x - prev.x, cur.z - prev.z);
+            Vector2 eOut = new Vector2(next.x - cur.x, next.z - cur.z);
+            if (eIn.sqrMagnitude < 1e-10f || eOut.sqrMagnitude < 1e-10f)
+                continue;
+            bool inHoriz = Mathf.Abs(eIn.x) >= Mathf.Abs(eIn.y);
+            bool outHoriz = Mathf.Abs(eOut.x) >= Mathf.Abs(eOut.y);
+            if (inHoriz != outHoriz)
+                corners.Add(new Vector3(cur.x, y, cur.z));
+        }
+
+        if (corners.Count != 4)
+            return false;
+
+        c0 = corners[0];
+        c1 = corners[1];
+        c2 = corners[2];
+        c3 = corners[3];
+        return true;
+    }
+
+    /// <summary>
+    /// Points du pourtour (coins + milieux d’arête sur le débord réel du toit si présent) + centre — même géométrie que <see cref="HouseRoofSystem"/>.
+    /// Sans toit : repli sur quadrilatère (8 + centre).
+    /// </summary>
+    public bool TryGetFootprintGridNinePointsAtY(float y, out Vector3[] ninePoints)
+    {
+        ninePoints = null;
+        HouseRoofSystem roofSys = wall != null ? wall.GetComponent<HouseRoofSystem>() : GetComponent<HouseRoofSystem>();
+        if (roofSys != null && roofSys.TryGetFootprintSnapPointsWorld(y, out ninePoints))
+            return true;
+
+        if (!TryGetFootprintQuadCornersWorld(out Vector3 c0, out Vector3 c1, out Vector3 c2, out Vector3 c3))
+            return false;
+
+        ninePoints = new Vector3[9];
+        Vector3[] c = { c0, c1, c2, c3 };
+        for (int i = 0; i < 4; i++)
+        {
+            ninePoints[i * 2] = new Vector3(c[i].x, y, c[i].z);
+            ninePoints[i * 2 + 1] = new Vector3(
+                (c[i].x + c[(i + 1) % 4].x) * 0.5f,
+                y,
+                (c[i].z + c[(i + 1) % 4].z) * 0.5f);
+        }
+
+        Vector3 cen = (c0 + c1 + c2 + c3) * 0.25f;
+        ninePoints[8] = new Vector3(cen.x, y, cen.z);
+        return true;
+    }
+
     void Awake()
     {
         if (wall == null)
@@ -1312,6 +1447,18 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
             ringOut.Add(new Vector2(path[i].x, path[i].z));
 
         return ringOut.Count >= 3;
+    }
+
+    /// <summary>
+    /// True si le point (XZ) tombe dans le polygone du lot fermé (bord inclus), pour placement runtime, etc.
+    /// </summary>
+    public bool ContainsWorldPointInClosedLotFootprintXZ(Vector3 world, float insetFromBoundary = 0f)
+    {
+        var ring = new List<Vector2>(64);
+        if (!TryGetClosedLotFootprintRingXZ(ring))
+            return false;
+
+        return PointInsideLotConstraintXZ(new Vector2(world.x, world.z), ring, insetFromBoundary);
     }
 
     /// <summary>
@@ -1953,6 +2100,14 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
 
     public bool InsertFreeControlPointAtWorld(Vector3 worldPos)
     {
+#region agent log
+        DebugSessionAgentLog.Write(
+            "H3",
+            "WallEditShape.InsertFreeControlPointAtWorld",
+            "enter",
+            "{\"kind\":" + (int)shapeKind +
+            ",\"ortho\":" + (_closedLoop && _closedFreeOrthogonalPolylineMode ? "true" : "false") + "}");
+#endregion
         if (shapeKind != ShapeKind.Free)
             return false;
 
@@ -1978,6 +2133,16 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
                 return false;
         }
 
+        ApplyHierarchicalGridSnapToInsertedFreePoint(ref insertPos, bestInsertIndex);
+#region agent log
+        DebugSessionAgentLog.Write(
+            "H5",
+            "WallEditShape.InsertFreeControlPointAtWorld",
+            "after_inner_snap",
+            "{\"ix\":" + insertPos.x.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            ",\"iz\":" + insertPos.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}");
+#endregion
+
         if (_closedLoop && _closedFreeOrthogonalPolylineMode)
             CopyOrthogonalFreeRingToBackup();
 
@@ -2001,7 +2166,105 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
             ClampOpenFreeVerticesToInteriorLotConstraint();
 
         ApplyToWall();
+#region agent log
+        if (freeControlPoints != null && bestInsertIndex >= 0 && bestInsertIndex < freeControlPoints.Count)
+        {
+            Vector3 fp = freeControlPoints[bestInsertIndex];
+            DebugSessionAgentLog.Write(
+                "H3",
+                "WallEditShape.InsertFreeControlPointAtWorld",
+                "final_after_finalize",
+                "{\"fx\":" + fp.x.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                ",\"fz\":" + fp.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}");
+        }
+#endregion
         return true;
+    }
+
+    /// <summary>
+    /// Même référence que les poignées : <see cref="WallBuildController.drawInput"/> en priorité.
+    /// </summary>
+    WallDrawInput ResolveWallDrawInputForEditingGridSnap()
+    {
+        if (wall != null)
+        {
+            WallBuildController bc = wall.GetComponentInParent<WallBuildController>();
+            if (bc != null && bc.drawInput != null)
+                return bc.drawInput;
+        }
+
+        WallBuildController bcScene = FindFirstObjectByType<WallBuildController>(FindObjectsInactive.Include);
+        if (bcScene != null && bcScene.drawInput != null)
+            return bcScene.drawInput;
+
+        return FindFirstObjectByType<WallDrawInput>(FindObjectsInactive.Include);
+    }
+
+    /// <summary>
+    /// Insert : coins de mailles feuilles (<see cref="WallDrawInput.SnapWorldPointForVertexInsert"/>), pas la grille 9 pts des poignées.
+    /// </summary>
+    Vector3 SnapWorldXZForInsertedVertex(WallDrawInput di, Vector3 worldAtShapeY)
+    {
+        Vector3 w = new Vector3(worldAtShapeY.x, worldAtShapeY.y, worldAtShapeY.z);
+        Vector3 s = di.SnapWorldPointForVertexInsert(w);
+        return new Vector3(s.x, shapeY, s.z);
+    }
+
+    /// <summary>
+    /// Snap puis, en contour orthogonal fermé, projection sur l’arête jusqu’à stabilité (coins grille pour insert).
+    /// </summary>
+    void ApplyHierarchicalGridSnapToInsertedFreePoint(ref Vector3 insertPos, int bestInsertIndex)
+    {
+        WallDrawInput di = ResolveWallDrawInputForEditingGridSnap();
+        if (di == null || !di.enableGridSnap)
+            return;
+
+        bool orthoSeg =
+            _closedLoop && _closedFreeOrthogonalPolylineMode && freeControlPoints != null &&
+            freeControlPoints.Count >= 2;
+
+        if (!orthoSeg)
+        {
+            insertPos = SnapWorldXZForInsertedVertex(di, insertPos);
+            return;
+        }
+
+        int n = freeControlPoints.Count;
+        int iSeg = bestInsertIndex - 1;
+        if (iSeg < 0)
+            iSeg += n;
+        int next = (iSeg + 1) % n;
+        Vector3 segA = freeControlPoints[iSeg];
+        Vector3 segB = freeControlPoints[next];
+
+        Vector3 cur = insertPos;
+        for (int iter = 0; iter < 22; iter++)
+        {
+            Vector3 snapped = SnapWorldXZForInsertedVertex(di, cur);
+
+            if (!TryProjectAndClampOnSegmentXZ(snapped, segA, segB, minClosedSegmentLength, out Vector3 onSeg))
+            {
+                insertPos = snapped;
+                return;
+            }
+
+            float offSq = (new Vector2(snapped.x - onSeg.x, snapped.z - onSeg.z)).sqrMagnitude;
+            if (offSq < 1e-12f)
+            {
+                insertPos = onSeg;
+                return;
+            }
+
+            float stepSq = (new Vector2(onSeg.x - cur.x, onSeg.z - cur.z)).sqrMagnitude;
+            cur = onSeg;
+            if (stepSq < 1e-16f)
+            {
+                insertPos = cur;
+                return;
+            }
+        }
+
+        insertPos = cur;
     }
 
     public bool RemoveFreeControlPointAt(int index)
