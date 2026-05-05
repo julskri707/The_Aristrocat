@@ -57,6 +57,17 @@ public class WallSelectionManager : MonoBehaviour
 
     void HandleLeftClick(Vector2 screenPosition)
     {
+        if (TrySelectCatalogPlacedOverlayAtScreen(screenPosition))
+        {
+            if (contextMenu != null && contextMenu.IsOpen)
+                contextMenu.Close();
+
+            if (lotMenu != null && lotMenu.IsOpen)
+                lotMenu.Close();
+
+            return;
+        }
+
         if (TrySelectWallAtScreenPosition(screenPosition, out _, out _))
         {
             if (contextMenu != null && contextMenu.IsOpen)
@@ -79,6 +90,39 @@ public class WallSelectionManager : MonoBehaviour
 
         if (clearSelectionOnEmptyLeftClick && buildController != null)
             buildController.ForceSelectWall(null);
+    }
+
+    bool TrySelectCatalogPlacedOverlayAtScreen(Vector2 screenPosition)
+    {
+        if (cam == null || buildController == null)
+            return false;
+
+        Ray ray = cam.ScreenPointToRay(screenPosition);
+        if (!Physics.Raycast(ray, out RaycastHit hit, maxDistance, wallLayerMask, QueryTriggerInteraction.Ignore))
+            return false;
+
+        PlacedStairManipulator stair = hit.collider.GetComponentInParent<PlacedStairManipulator>();
+        if (stair != null)
+        {
+            buildController.ForceSelectOverlayOnly(stair);
+            return true;
+        }
+
+        CatalogPlacedObjectDraggable placed = hit.collider.GetComponentInParent<CatalogPlacedObjectDraggable>();
+        if (placed != null)
+        {
+            buildController.ForceSelectOverlayOnly(placed);
+            return true;
+        }
+
+        PlacedWallOpeningManipulator opening = hit.collider.GetComponentInParent<PlacedWallOpeningManipulator>();
+        if (opening != null)
+        {
+            buildController.ForceSelectOverlayOnly(opening);
+            return true;
+        }
+
+        return false;
     }
 
     void HandleRightClick(Vector2 screenPosition)
@@ -338,6 +382,10 @@ public class WallSelectionManager : MonoBehaviour
         return wall != null ? wall.transform.position : Vector3.zero;
     }
 
+    /// <summary>
+    /// Choix du provider de poignées : <see cref="WallEditShape"/> si présent, sinon <see cref="WallSelectable"/>, sinon premier <see cref="IControlPointProvider"/>.
+    /// Voir aussi <see cref="ControlPointShapeMembership.BelongsToWallShape"/>.
+    /// </summary>
     MonoBehaviour ResolveProvider(WallObject wall)
     {
         if (wall == null)

@@ -27,8 +27,8 @@ public static class WallOpeningMeshBuilder
     {
         if (holes == null || holes.Count == 0)
         {
-            AddQuadTwoSided(verts, uvs, tris, outBi, outTi, outTn, outBn, 0f, vSeg0, uHeight, vSeg1, expectedOuterNormal);
-            AddQuadTwoSided(verts, uvs, tris, inBn, inTn, inTi, inBi, 0f, vSeg1, uHeight, vSeg0, -expectedOuterNormal);
+            AddQuadOriented(verts, uvs, tris, outBi, outTi, outTn, outBn, 0f, vSeg0, uHeight, vSeg1, expectedOuterNormal);
+            AddQuadOriented(verts, uvs, tris, inBn, inTn, inTi, inBi, 0f, vSeg1, uHeight, vSeg0, -expectedOuterNormal);
             return;
         }
 
@@ -51,8 +51,8 @@ public static class WallOpeningMeshBuilder
         h1 = Mathf.Clamp01(h1);
         if (f1 - f0 < 1e-4f || h1 - h0 < 1e-4f)
         {
-            AddQuadTwoSided(verts, uvs, tris, outBi, outTi, outTn, outBn, 0f, vSeg0, uHeight, vSeg1, expectedOuterNormal);
-            AddQuadTwoSided(verts, uvs, tris, inBn, inTn, inTi, inBi, 0f, vSeg1, uHeight, vSeg0, -expectedOuterNormal);
+            AddQuadOriented(verts, uvs, tris, outBi, outTi, outTn, outBn, 0f, vSeg0, uHeight, vSeg1, expectedOuterNormal);
+            AddQuadOriented(verts, uvs, tris, inBn, inTn, inTi, inBi, 0f, vSeg1, uHeight, vSeg0, -expectedOuterNormal);
             return;
         }
 
@@ -129,7 +129,7 @@ public static class WallOpeningMeshBuilder
         float u1 = hB * uHeight;
         float v0 = Mathf.Lerp(vSeg0, vSeg1, fA);
         float v1 = Mathf.Lerp(vSeg0, vSeg1, fB);
-        AddQuadTwoSided(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, expectedOuterNormal);
+        AddQuadOriented(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, expectedOuterNormal);
     }
 
     static void TryEmitInnerRect(
@@ -162,7 +162,7 @@ public static class WallOpeningMeshBuilder
         float u1 = hB * uHeight;
         float v0 = Mathf.Lerp(vSeg0, vSeg1, fA);
         float v1 = Mathf.Lerp(vSeg0, vSeg1, fB);
-        AddQuadTwoSided(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, expectedInnerNormal);
+        AddQuadOriented(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, expectedInnerNormal);
     }
 
     static Vector3 EvalFace(Vector3 bi, Vector3 ti, Vector3 tn, Vector3 bn, float f, float h)
@@ -243,7 +243,6 @@ public static class WallOpeningMeshBuilder
         float uu0 = h0 * uHeight;
         float uu1 = h1 * uHeight;
         AddQuadOriented(verts, uvs, tris, o0, o1, i1, i0, uu0, vu0, uu1, vu0 + 0.01f, n);
-        AddQuadOriented(verts, uvs, tris, o0, o1, i1, i0, uu0, vu0, uu1, vu0 + 0.01f, -n);
     }
 
     static void EmitSillQuad(
@@ -285,25 +284,6 @@ public static class WallOpeningMeshBuilder
         float v1 = Mathf.Lerp(vSeg0, vSeg1, f1);
         float uu = h * uHeight;
         AddQuadOriented(verts, uvs, tris, o0, o1, i1, i0, uu, v0, uu + 0.01f, v1, n);
-        AddQuadOriented(verts, uvs, tris, o0, o1, i1, i0, uu, v0, uu + 0.01f, v1, -n);
-    }
-
-    static void AddQuadTwoSided(
-        List<Vector3> verts,
-        List<Vector2> uvs,
-        List<int> tris,
-        Vector3 a,
-        Vector3 b,
-        Vector3 c,
-        Vector3 d,
-        float u0,
-        float v0,
-        float u1,
-        float v1,
-        Vector3 expectedNormal)
-    {
-        AddQuadOriented(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, expectedNormal);
-        AddQuadOriented(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, -expectedNormal);
     }
 
     static void AddQuadOriented(

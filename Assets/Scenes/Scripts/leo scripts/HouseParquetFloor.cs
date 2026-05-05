@@ -19,6 +19,18 @@ public class HouseParquetFloor : MonoBehaviour
     [Tooltip("Hauteur d’un étage (m) : doit correspondre à WallBuildController.addFloorHeightMeters. Sert à empiler une dalle par niveau selon WallObject.height.")]
     [Min(0.1f)] public float storeyHeightMeters = 2.5f;
 
+    /// <summary>Découpe rectangles XZ sur les faces horizontales d’une dalle donnée (ex. trémie escalier sous l’étage du dessus).</summary>
+    [SerializeField] List<SlabHorizontalCutout> slabHorizontalCutouts = new List<SlabHorizontalCutout>();
+
+    [System.Serializable]
+    public struct SlabHorizontalCutout
+    {
+        [Tooltip("Indice de dalle comme dans la boucle de construction : 0 = rez-de-chaussée, 1 = premier étage, …")]
+        public int slabIndex;
+        public Vector2 centerXZ;
+        public Vector2 halfExtentsXZ;
+    }
+
     MeshFilter _mf;
     MeshRenderer _mr;
     Mesh _mesh;
@@ -31,6 +43,44 @@ public class HouseParquetFloor : MonoBehaviour
     /// Utilisé pour la fusion de lots adjacents.
     /// </summary>
     public bool IsDesignatedHouseLot => parquetMaterial != null || HasFloorMesh;
+
+    public void AddSlabHorizontalCutout(int slabIndex, Vector2 centerWorldXZ, Vector2 halfExtentsWorldXZ)
+    {
+        if (slabIndex < 0 || halfExtentsWorldXZ.x <= 0.01f || halfExtentsWorldXZ.y <= 0.01f)
+            return;
+
+        slabHorizontalCutouts.Add(new SlabHorizontalCutout
+        {
+            slabIndex = slabIndex,
+            centerXZ = centerWorldXZ,
+            halfExtentsXZ = halfExtentsWorldXZ
+        });
+
+        WallObject w = GetComponent<WallObject>();
+        WallEditShape ed = w != null ? w.GetComponent<WallEditShape>() : null;
+        if (w != null && ed != null && ed.IsClosedLoopPath)
+            ApplyOrRefreshFromClosedPreviewPath(w, ed);
+    }
+
+    bool SlabCutoutContainsCentroid(int slabIndex, Vector2 centroidXZ)
+    {
+        if (slabHorizontalCutouts == null || slabHorizontalCutouts.Count == 0)
+            return false;
+
+        for (int i = 0; i < slabHorizontalCutouts.Count; i++)
+        {
+            SlabHorizontalCutout c = slabHorizontalCutouts[i];
+            if (c.slabIndex != slabIndex)
+                continue;
+
+            float dx = Mathf.Abs(centroidXZ.x - c.centerXZ.x);
+            float dz = Mathf.Abs(centroidXZ.y - c.centerXZ.y);
+            if (dx <= c.halfExtentsXZ.x && dz <= c.halfExtentsXZ.y)
+                return true;
+        }
+
+        return false;
+    }
 
     public void ApplyOrRefresh(WallObject wall, WallEditShape editShape)
     {
@@ -293,7 +343,7 @@ public class HouseParquetFloor : MonoBehaviour
         for (int k = 0; k < floorCount; k++)
         {
             float topY = firstSlabTopY + k * story;
-            AppendExtrudedSlabForPolygon(wall, poly2, topIndices, topY, verts, uvs, tris);
+            AppendExtrudedSlabForPolygon(wall, poly2, topIndices, topY, k, verts, uvs, tris);
         }
 
         _mesh.Clear();
@@ -315,6 +365,7 @@ public class HouseParquetFloor : MonoBehaviour
         List<Vector2> poly2,
         List<int> topIndices,
         float topY,
+        int slabStoreyIndex,
         List<Vector3> verts,
         List<Vector2> uvs,
         List<int> tris)
@@ -335,9 +386,16 @@ public class HouseParquetFloor : MonoBehaviour
 
         for (int i = 0; i < topIndices.Count; i += 3)
         {
-            tris.Add(baseV + topIndices[i]);
-            tris.Add(baseV + topIndices[i + 1]);
-            tris.Add(baseV + topIndices[i + 2]);
+            int ia = topIndices[i];
+            int ib = topIndices[i + 1];
+            int ic = topIndices[i + 2];
+            Vector2 centroid = (poly2[ia] + poly2[ib] + poly2[ic]) * (1f / 3f);
+            if (SlabCutoutContainsCentroid(slabStoreyIndex, centroid))
+                continue;
+
+            tris.Add(baseV + ia);
+            tris.Add(baseV + ib);
+            tris.Add(baseV + ic);
         }
 
         int bottomStart = verts.Count;
@@ -350,9 +408,16 @@ public class HouseParquetFloor : MonoBehaviour
 
         for (int i = 0; i < topIndices.Count; i += 3)
         {
-            tris.Add(bottomStart + topIndices[i + 2]);
-            tris.Add(bottomStart + topIndices[i + 1]);
-            tris.Add(bottomStart + topIndices[i]);
+            int ia = topIndices[i];
+            int ib = topIndices[i + 1];
+            int ic = topIndices[i + 2];
+            Vector2 centroid = (poly2[ia] + poly2[ib] + poly2[ic]) * (1f / 3f);
+            if (SlabCutoutContainsCentroid(slabStoreyIndex, centroid))
+                continue;
+
+            tris.Add(bottomStart + ic);
+            tris.Add(bottomStart + ib);
+            tris.Add(bottomStart + ia);
         }
 
         float sideVMax = Mathf.Max(0.01f, slabThickness) / uvDen;
@@ -416,6 +481,16 @@ public class HouseParquetFloor : MonoBehaviour
         _mr = go.GetComponent<MeshRenderer>();
         if (_mr == null)
             _mr = go.AddComponent<MeshRenderer>();
+
+        // Ancienne variante avec MeshCollider sur tout le mesh extrudé : pouvait perturber la physique / les fusions.
+        MeshCollider legacyCollider = go.GetComponent<MeshCollider>();
+        if (legacyCollider != null)
+        {
+            if (Application.isPlaying)
+                Destroy(legacyCollider);
+            else
+                DestroyImmediate(legacyCollider);
+        }
 
         if (_mesh == null)
         {

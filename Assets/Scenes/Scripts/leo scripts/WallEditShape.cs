@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
-public partial class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPointPathProvider
+public partial class WallEditShape : MonoBehaviour, IControlPointProvider, IControlPointPathProvider, IControlPointWallShapeBinding
 {
     public enum ShapeKind
     {
@@ -397,6 +397,23 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
                index >= 0 &&
                index < freeControlPoints.Count &&
                IsRingVertexStraightMidXZ(index);
+    }
+
+    /// <summary>
+    /// Poignée réservée au déplacement (mur entier, milieux d’arête rectangle, milieux de mur orthogonal…), pas à la suppression comme un sommet.
+    /// </summary>
+    public bool IsNonDeletableMovementHandleIndex(int index)
+    {
+        if (IsShapeBulkMovePivotControlIndex(index))
+            return true;
+
+        if (shapeKind == ShapeKind.Rectangle && index >= 1 && index <= 7 && (index & 1) == 1)
+            return true;
+
+        if (UsesMergedLotOrthogonalHandles && IsOrthogonalWallMidHandleIndex(index))
+            return true;
+
+        return false;
     }
 
     /// <summary>
@@ -1254,6 +1271,8 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
         SetupFree(srcOpenRing);
     }
 
+    public bool ControlPointsBelongToWallShape => true;
+
     public int ControlPointCount
     {
         get
@@ -1372,6 +1391,25 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// Indice réservé au déplacement global (poignée centre / pivot équivalent) — ne doit pas être traité comme un sommet supprimable.
+    /// Doit rester aligné avec <see cref="TryGetShapeBulkMovePivotInfo"/> et la poignée milieu des murs libres ouverts.
+    /// </summary>
+    public bool IsShapeBulkMovePivotControlIndex(int index)
+    {
+        if (TryGetShapeBulkMovePivotInfo(out int sk, out bool useMergedCentroid))
+        {
+            if (useMergedCentroid)
+                return TryGetClosedFreeBulkCentroidVirtualIndex(out int vi) && index == vi;
+            return sk >= 0 && index == sk;
+        }
+
+        if (IsOpenFreeVerticalCenterHandleIndex(index))
+            return true;
+
+        return false;
     }
 
     public Vector3 GetMergedOrthogonalShapeCentroidWorld() => GetClosedFreeLotCentroidWorld();
@@ -2292,6 +2330,9 @@ public partial class WallEditShape : MonoBehaviour, IControlPointProvider, ICont
 
     public bool RemoveControlPointAt(int index)
     {
+        if (IsNonDeletableMovementHandleIndex(index))
+            return false;
+
         if (shapeKind == ShapeKind.Free)
         {
             if (_closedLoop && _closedFreeOrthogonalPolylineMode && freeControlPoints != null &&

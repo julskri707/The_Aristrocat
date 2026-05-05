@@ -7,7 +7,8 @@ using UnityEngine;
 /// Toit sur empreinte fermée :
 /// - sommet central réglable en hauteur
 /// - profil arrondi (dôme) via <see cref="useDomeProfile"/> + <see cref="roundness"/>
-/// - débord via <see cref="overhangMeters"/>.
+/// - débord via <see cref="overhangMeters"/>
+/// - surélévation du socle au-dessus du mur via <see cref="yOffsetAboveWallTop"/> (borne <see cref="MaxYOffsetAboveWallTopMeters"/>).
 /// </summary>
 [DisallowMultipleComponent]
 public class HouseRoofSystem : MonoBehaviour
@@ -25,11 +26,14 @@ public class HouseRoofSystem : MonoBehaviour
     /// <summary>Décalage vertical fixe de la semelle du toit au-dessus du mur.</summary>
     public const float RoofBuiltInVerticalLiftMeters = 0.15f;
 
+    /// <summary>Plafond pour <see cref="yOffsetAboveWallTop"/> (surélévation réglable au-delà du haut du mur).</summary>
+    public const float MaxYOffsetAboveWallTopMeters = 2.5f;
+
     /// <summary>Raccord rentré dans le mur : distance perpendiculaire aux façades.</summary>
     public const float EaveInsetPerpendicularToWallMeters = 0.2f;
 
     [Header("Arrondi — profil dôme")]
-    [Tooltip("Active le système d’arrondi : plusieurs bandes radiales + courbe de dôme (Roundness).")]
+    [Tooltip("Active le système d’arrondi : plusieurs bandes radiales + courbe de dôme (Roundness). Réactivé aussi automatiquement dès qu’on règle l’arrondi (molette Ctrl ou poignées).")]
     public bool useDomeProfile = false;
     [Tooltip("Forme de la courbe du dôme (0 = plus plat vers le faîtage, 1 = plus bombé).")]
     [Range(0f, 1f)] public float roundness = 0.45f;
@@ -43,6 +47,15 @@ public class HouseRoofSystem : MonoBehaviour
     public bool useLateralFaceSystem = true;
     [Tooltip("Decalage XZ du sommet de chaque pan, relatif au centroide de l'empreinte (meme index que l'arete correspondante).")]
     public Vector2[] lateralFaceOffsetsXZ = new Vector2[4];
+
+    [Tooltip("Désactivé = comportement d’origine (diagonale faîtage central ↔ poignée, covents mesh sur cette noue). Activé = après avoir généré ce maillage classique, une passe enlève uniquement l’arête centre↔poignée et reconnecte en quad triangulé le long du bas du pan (b0–b1).")]
+    [SerializeField] bool lateralExtensionStructuralQuadAlongBaseEdge = false;
+
+    [Tooltip("Tolérance monde (m) pour retrouver les deux triangles structurels si les découpes locales ont dupliqué ou réindexé des sommets. 0 = correspondance stricte par indices uniquement.")]
+    [SerializeField] float lateralExtensionStructuralMergeVertexEpsilonMeters = 0.005f;
+
+    /// <summary>Lu par <see cref="RoofCladdingGenerator"/> pour savoir si une noue mesh centre↔ancre peut manquer (couvre-joint synthétique).</summary>
+    public bool LateralExtensionStructuralQuadAlongBaseEdge => lateralExtensionStructuralQuadAlongBaseEdge;
     /// <summary>Offsets XZ des poignées latérales (snap grille), jusqu’à <see cref="MaxLateralApexPoints"/> entrées — utilisées par le générateur de mesh.</summary>
     [SerializeField]
     List<Vector2> lateralApexOffsetsXZ = new List<Vector2>();
@@ -83,7 +96,9 @@ public class HouseRoofSystem : MonoBehaviour
     [SerializeField] bool logRoofApexHeightLock;
 
     [Min(0.02f)] public float roofThicknessMeters = 0.16f;
-    [Min(0f)] public float yOffsetAboveWallTop = 0f;
+    [Tooltip("Surélévation de la semelle du toit au-dessus du haut du mur (m), en plus du décalage fixe intégré. Plafonné à MaxYOffsetAboveWallTopMeters.")]
+    [Range(0f, MaxYOffsetAboveWallTopMeters)]
+    public float yOffsetAboveWallTop = 0f;
 
     [Header("Runtime")]
     public bool autoRebuild = true;
@@ -340,6 +355,41 @@ public class HouseRoofSystem : MonoBehaviour
         roof.EnsureComponents();
         roof.RebuildNow();
         return roof;
+    }
+
+    /// <summary>
+    /// Copie les réglages de forme du toit (pas les flags debug / coupe expérimentale), typiquement depuis un lot source
+    /// vers le mur enveloppe après agrandissement : un seul toit pour l’empreinte fusionnée.
+    /// </summary>
+    public void CopyShallowGenerationSettingsFrom(HouseRoofSystem donor)
+    {
+        if (donor == null || donor == this)
+            return;
+
+        useDomeProfile = donor.useDomeProfile;
+        roundness = donor.roundness;
+        preserveControlPointDrivenTopology = donor.preserveControlPointDrivenTopology;
+        roofHeightMeters = donor.roofHeightMeters;
+        overhangMeters = donor.overhangMeters;
+        useLateralFaceSystem = donor.useLateralFaceSystem;
+
+        if (donor.lateralFaceOffsetsXZ != null && donor.lateralFaceOffsetsXZ.Length > 0)
+            lateralFaceOffsetsXZ = (Vector2[])donor.lateralFaceOffsetsXZ.Clone();
+
+        lateralApexOffsetsXZ = donor.lateralApexOffsetsXZ != null
+            ? new List<Vector2>(donor.lateralApexOffsetsXZ)
+            : new List<Vector2>();
+        SyncLegacyLateralFieldsFromList();
+
+        disableRoofCornerAnchorsTemporary = donor.disableRoofCornerAnchorsTemporary;
+        roofCornerAnchorBlockRadius = donor.roofCornerAnchorBlockRadius;
+        roofCornerAnchorPushDistance = donor.roofCornerAnchorPushDistance;
+        roofThicknessMeters = donor.roofThicknessMeters;
+        yOffsetAboveWallTop = donor.yOffsetAboveWallTop;
+        ClampYOffsetAboveWallTopInPlace();
+        defaultRoofCladdingProfile = donor.defaultRoofCladdingProfile;
+        lateralExtensionStructuralQuadAlongBaseEdge = donor.lateralExtensionStructuralQuadAlongBaseEdge;
+        lateralExtensionStructuralMergeVertexEpsilonMeters = donor.lateralExtensionStructuralMergeVertexEpsilonMeters;
     }
 
     public void MigrateLegacyLateralAnchorsToListIfNeeded()
@@ -626,7 +676,8 @@ public class HouseRoofSystem : MonoBehaviour
         if (wall == null || edit == null || !edit.IsClosedLoopPath)
             return false;
 
-        List<Vector3> ring = edit.GetPreviewPathWorld();
+        // Même contour que l’overlay / le mesh affiché quand le preview analytique diverge (voir WallEditShape.GetOverlayPathWorld).
+        List<Vector3> ring = edit.GetOverlayPathWorld();
         if (!TryPrepareClosedRing(ring, out List<Vector3> prepared))
             return false;
 
@@ -887,9 +938,16 @@ public class HouseRoofSystem : MonoBehaviour
         return true;
     }
 
+    void OnValidate() => ClampYOffsetAboveWallTopInPlace();
+
+    /// <summary>Borne <see cref="yOffsetAboveWallTop"/> entre 0 et <see cref="MaxYOffsetAboveWallTopMeters"/>.</summary>
+    public void ClampYOffsetAboveWallTopInPlace() =>
+        yOffsetAboveWallTop = Mathf.Clamp(yOffsetAboveWallTop, 0f, MaxYOffsetAboveWallTopMeters);
+
     public void RebuildNow()
     {
         EnsureComponents();
+        ClampYOffsetAboveWallTopInPlace();
         MigrateLegacyLateralAnchorsToListIfNeeded();
         SyncLegacyLateralFieldsFromList();
         if (lateralApexOffsetsXZ != null && lateralApexOffsetsXZ.Count >= MaxLateralApexPoints)
@@ -1024,6 +1082,38 @@ public class HouseRoofSystem : MonoBehaviour
         public Vector3 anchorWorld;
     }
 
+    readonly struct PendingStructuralQuadDissolve
+    {
+        public readonly int anchorIdx;
+        public readonly int centerIdx;
+        public readonly int b0;
+        public readonly int b1;
+
+        public PendingStructuralQuadDissolve(int anchorIdx, int centerIdx, int b0, int b1)
+        {
+            this.anchorIdx = anchorIdx;
+            this.centerIdx = centerIdx;
+            this.b0 = b0;
+            this.b1 = b1;
+        }
+    }
+
+    void ApplyPendingStructuralQuadDissolves(List<Vector3> verts, List<int> roofTris, List<PendingStructuralQuadDissolve> pending)
+    {
+        if (pending == null || pending.Count == 0 || verts == null || roofTris == null)
+            return;
+
+        float eps = Mathf.Max(0f, lateralExtensionStructuralMergeVertexEpsilonMeters);
+        for (int i = 0; i < pending.Count; i++)
+        {
+            PendingStructuralQuadDissolve p = pending[i];
+            TrySwapStructuralTrianglesOffCenterAnchorEdge(
+                roofTris, verts,
+                p.anchorIdx, p.centerIdx, p.b0, p.b1,
+                eps);
+        }
+    }
+
     bool TryRebuildLateralFaceRoofMesh(
         Vector2 centroidXZ,
         float baseY,
@@ -1069,9 +1159,13 @@ public class HouseRoofSystem : MonoBehaviour
         var uvs = new List<Vector2>(verts.Capacity);
         var roofTris = new List<int>(n * 12);
         var connectorTris = new List<int>(n * 24);
+        List<PendingStructuralQuadDissolve> pendingStructuralQuadDissolves =
+            lateralExtensionStructuralQuadAlongBaseEdge ? new List<PendingStructuralQuadDissolve>(4) : null;
         if (!TryAppendLateralFaceRoofShell(
                 verts, uvs, roofTris, baseCorners, baseY, apexYTop, centroidXZ, lateralFaceOffsetsXZ, clampRadius,
                 anchorSlots,
+                lateralExtensionStructuralQuadAlongBaseEdge,
+                pendingStructuralQuadDissolves,
                 out bool[] connectorAllowedByEdge))
             return false;
 
@@ -1086,6 +1180,8 @@ public class HouseRoofSystem : MonoBehaviour
 
         if (applyRoofShellCrossLocalFix)
             TryApplyRoofShellCrossLocalFix(verts, uvs, roofTris, centroidXZ);
+
+        ApplyPendingStructuralQuadDissolves(verts, roofTris, pendingStructuralQuadDissolves);
 
         if (experimentalCutRawProblemTriangles)
             ApplyExperimentalRoofShellTriangleCuts(verts, uvs, roofTris, centroidXZ);
@@ -1381,6 +1477,8 @@ public class HouseRoofSystem : MonoBehaviour
         Vector2[] lateralOffsets,
         float clampRadius,
         ResolvedLateralAnchorSlot[] anchors,
+        bool structuralQuadAlongBaseEdge,
+        List<PendingStructuralQuadDissolve> structuralQuadDissolvesOut,
         out bool[] connectorAllowedByEdge)
     {
         int n = baseCorners != null ? baseCorners.Count : 0;
@@ -1547,6 +1645,21 @@ public class HouseRoofSystem : MonoBehaviour
                     AppendYellowTwoEdgeStructuralTriangles(verts, roofTris, baseStart, n, anchors[a].edgePrev, anchors[a].edgeMain, anchorIdx[a], centerIdx);
                 else
                     AppendYellowMainEdgeStructuralTriangles(verts, roofTris, baseStart, n, anchors[a].edgeMain, anchorIdx[a], centerIdx);
+            }
+
+            if (structuralQuadAlongBaseEdge && structuralQuadDissolvesOut != null)
+            {
+                for (int a = 0; a < 4; a++)
+                {
+                    if (!anchors[a].use || diagonalAnchor[a])
+                        continue;
+
+                    int em = anchors[a].edgeMain;
+                    int b0 = baseStart + em;
+                    int b1 = baseStart + ((em + 1) % n);
+                    structuralQuadDissolvesOut.Add(new PendingStructuralQuadDissolve(
+                        anchorIdx[a], centerIdx, b0, b1));
+                }
             }
         }
 
@@ -2015,7 +2128,16 @@ public class HouseRoofSystem : MonoBehaviour
 
     public void AdjustRoundness(float delta)
     {
+        if (Mathf.Abs(delta) > 1e-8f)
+            useDomeProfile = true;
         roundness = Mathf.Clamp01(roundness + delta);
+        RebuildNow();
+    }
+
+    /// <summary>Décale la base du toit verticalement au-dessus du mur (0 … <see cref="MaxYOffsetAboveWallTopMeters"/>).</summary>
+    public void AdjustYOffsetAboveWallTop(float delta)
+    {
+        yOffsetAboveWallTop = Mathf.Clamp(yOffsetAboveWallTop + delta, 0f, MaxYOffsetAboveWallTopMeters);
         RebuildNow();
     }
 
@@ -2028,7 +2150,8 @@ public class HouseRoofSystem : MonoBehaviour
     bool TryPrepareClosedRing(List<Vector3> path, out List<Vector3> ring)
     {
         ring = null;
-        if (path == null || path.Count < 4)
+        // Triangles et polygones fermés sans vertex de fermeture dupliqué : count == 3 est valide (< 4 ne doit pas bloquer).
+        if (path == null || path.Count < 3)
             return false;
         ring = new List<Vector3>(path);
         if (Vector3.Distance(ring[0], ring[ring.Count - 1]) < 0.001f)
@@ -2439,11 +2562,209 @@ public class HouseRoofSystem : MonoBehaviour
         int b0 = baseStart + edgeMain;
         int b1 = baseStart + ((edgeMain + 1) % n);
 
-        // Exact structural ridge support for the yellow's main face:
-        // anchor->center->B_edgeMain and anchor->B_edgeMain+1->center.
-        // Do not collect edgePrev/edgeNext here; those wider support triangles caused the interior parasite.
         AppendYellowRidgeTriangleIfNotVerticalWall(verts, roofTris, anchorIdx, centerIdx, b0);
         AppendYellowRidgeTriangleIfNotVerticalWall(verts, roofTris, anchorIdx, b1, centerIdx);
+    }
+
+    /// <summary>
+    /// Trouve les deux triangles structurels qui partagent l’arête poignée↔faîtage central et les remplace par une triangulation sur l’arête basse du pan (b0↔b1).
+    /// </summary>
+    static bool TrySwapStructuralTrianglesOffCenterAnchorEdge(
+        List<int> roofTris,
+        List<Vector3> verts,
+        int anchorIdx,
+        int centerIdx,
+        int b0,
+        int b1,
+        float mergeVertexEpsilonMeters)
+    {
+        float epsSq = Mathf.Max(0f, mergeVertexEpsilonMeters);
+        epsSq *= epsSq;
+        if (TrySwapStructuralTrianglesOffCenterAnchorEdgeStrict(roofTris, verts, anchorIdx, centerIdx, b0, b1))
+            return true;
+        if (epsSq <= 0f)
+            return false;
+        return TrySwapStructuralTrianglesOffCenterAnchorEdgeFuzzy(roofTris, verts, anchorIdx, centerIdx, b0, b1, epsSq);
+    }
+
+    static bool TrySwapStructuralTrianglesOffCenterAnchorEdgeStrict(
+        List<int> roofTris,
+        List<Vector3> verts,
+        int anchorIdx,
+        int centerIdx,
+        int b0,
+        int b1)
+    {
+        if (roofTris == null || verts == null || roofTris.Count < 6)
+            return false;
+
+        int nt = roofTris.Count / 3;
+        var matchSlots = new List<int>(2);
+        for (int t = 0; t < nt; t++)
+        {
+            int i0 = roofTris[t * 3];
+            int i1 = roofTris[t * 3 + 1];
+            int i2 = roofTris[t * 3 + 2];
+            if (!TriangleUsesUndirectedEdge(i0, i1, i2, anchorIdx, centerIdx))
+                continue;
+
+            int third = ThirdVertexOfTriangleOppositeEdge(i0, i1, i2, anchorIdx, centerIdx);
+            if (third == b0 || third == b1)
+                matchSlots.Add(t);
+        }
+
+        if (matchSlots.Count != 2)
+            return false;
+
+        var thirds = new HashSet<int>();
+        for (int mi = 0; mi < matchSlots.Count; mi++)
+        {
+            int t = matchSlots[mi];
+            int i0 = roofTris[t * 3];
+            int i1 = roofTris[t * 3 + 1];
+            int i2 = roofTris[t * 3 + 2];
+            thirds.Add(ThirdVertexOfTriangleOppositeEdge(i0, i1, i2, anchorIdx, centerIdx));
+        }
+
+        if (thirds.Count != 2 || !thirds.Contains(b0) || !thirds.Contains(b1))
+            return false;
+
+        RemoveRoofTrianglesBySlotIndicesAndAppendStructuralQuad(
+            roofTris, verts, nt, matchSlots, b0, anchorIdx, b1, centerIdx);
+        return true;
+    }
+
+    static bool TrySwapStructuralTrianglesOffCenterAnchorEdgeFuzzy(
+        List<int> roofTris,
+        List<Vector3> verts,
+        int anchorIdx,
+        int centerIdx,
+        int b0,
+        int b1,
+        float epsSq)
+    {
+        if (roofTris == null || verts == null || roofTris.Count < 6 || epsSq <= 0f)
+            return false;
+
+        bool VertMatch(int i, int j)
+        {
+            if ((uint)i >= (uint)verts.Count || (uint)j >= (uint)verts.Count)
+                return false;
+            if (i == j)
+                return true;
+            return (verts[i] - verts[j]).sqrMagnitude <= epsSq;
+        }
+
+        bool PairAnchorCenter(int ia, int ib) =>
+            (VertMatch(ia, anchorIdx) && VertMatch(ib, centerIdx)) ||
+            (VertMatch(ia, centerIdx) && VertMatch(ib, anchorIdx));
+
+        int ThirdOppositeAnchorCenterEdge(int i0, int i1, int i2)
+        {
+            if (PairAnchorCenter(i0, i1))
+                return i2;
+            if (PairAnchorCenter(i1, i2))
+                return i0;
+            if (PairAnchorCenter(i2, i0))
+                return i1;
+            return -1;
+        }
+
+        int nt = roofTris.Count / 3;
+        var candB0 = new List<int>();
+        var candB1 = new List<int>();
+
+        for (int t = 0; t < nt; t++)
+        {
+            int i0 = roofTris[t * 3];
+            int i1 = roofTris[t * 3 + 1];
+            int i2 = roofTris[t * 3 + 2];
+            int third = ThirdOppositeAnchorCenterEdge(i0, i1, i2);
+            if (third < 0)
+                continue;
+
+            bool m0 = VertMatch(third, b0);
+            bool m1 = VertMatch(third, b1);
+            if (m0 && m1)
+                continue;
+            if (m0 && !m1)
+                candB0.Add(t);
+            else if (m1 && !m0)
+                candB1.Add(t);
+        }
+
+        if (candB0.Count == 0 || candB1.Count == 0)
+            return false;
+
+        int PickPreferExactBase(List<int> cand, int baseIdx)
+        {
+            int pick = cand[0];
+            for (int c = 0; c < cand.Count; c++)
+            {
+                int t = cand[c];
+                int i0 = roofTris[t * 3];
+                int i1 = roofTris[t * 3 + 1];
+                int i2 = roofTris[t * 3 + 2];
+                int third = ThirdOppositeAnchorCenterEdge(i0, i1, i2);
+                if (third == baseIdx)
+                    return t;
+            }
+
+            return pick;
+        }
+
+        int pickB0 = PickPreferExactBase(candB0, b0);
+        int pickB1 = PickPreferExactBase(candB1, b1);
+        if (pickB0 == pickB1)
+            return false;
+
+        var matchSlots = new List<int>(2) { pickB0, pickB1 };
+        RemoveRoofTrianglesBySlotIndicesAndAppendStructuralQuad(
+            roofTris, verts, nt, matchSlots, b0, anchorIdx, b1, centerIdx);
+        return true;
+    }
+
+    static void RemoveRoofTrianglesBySlotIndicesAndAppendStructuralQuad(
+        List<int> roofTris,
+        List<Vector3> verts,
+        int triangleCount,
+        List<int> matchSlots,
+        int b0,
+        int anchorIdx,
+        int b1,
+        int centerIdx)
+    {
+        var matchSet = new HashSet<int>(matchSlots);
+        var kept = new List<int>(roofTris.Count - 6);
+        for (int t = 0; t < triangleCount; t++)
+        {
+            if (matchSet.Contains(t))
+                continue;
+            kept.Add(roofTris[t * 3]);
+            kept.Add(roofTris[t * 3 + 1]);
+            kept.Add(roofTris[t * 3 + 2]);
+        }
+
+        roofTris.Clear();
+        roofTris.AddRange(kept);
+
+        AppendRoofCapTriangleWorldUp(verts, roofTris, b0, anchorIdx, b1);
+        AppendRoofCapTriangleWorldUp(verts, roofTris, b0, b1, centerIdx);
+    }
+
+    static bool TriangleUsesUndirectedEdge(int i0, int i1, int i2, int e0, int e1)
+    {
+        bool Has(int a, int b) => (a == e0 && b == e1) || (a == e1 && b == e0);
+        return Has(i0, i1) || Has(i1, i2) || Has(i2, i0);
+    }
+
+    static int ThirdVertexOfTriangleOppositeEdge(int i0, int i1, int i2, int e0, int e1)
+    {
+        if (i0 != e0 && i0 != e1)
+            return i0;
+        if (i1 != e0 && i1 != e1)
+            return i1;
+        return i2;
     }
 
     static void AppendYellowTwoEdgeStructuralTriangles(
@@ -4671,6 +4992,8 @@ public class HouseRoofSystem : MonoBehaviour
             h = h * 31 + (disableRoofCornerAnchorsTemporary ? 1 : 0);
             h = h * 31 + Mathf.RoundToInt(roofCornerAnchorBlockRadius * 1000f);
             h = h * 31 + Mathf.RoundToInt(roofCornerAnchorPushDistance * 1000f);
+            h = h * 31 + (lateralExtensionStructuralQuadAlongBaseEdge ? 1 : 0);
+            h = h * 31 + Mathf.RoundToInt(lateralExtensionStructuralMergeVertexEpsilonMeters * 100000f);
             if (lateralFaceOffsetsXZ != null)
             {
                 for (int i = 0; i < lateralFaceOffsetsXZ.Length; i++)
@@ -4691,7 +5014,9 @@ public class HouseRoofSystem : MonoBehaviour
             h = h * 31 + (experimentalCutTriangleSlots != null ? experimentalCutTriangleSlots.GetHashCode() : 0);
             h = h * 31 + Mathf.RoundToInt(experimentalCutAmount * 1000f);
             h = h * 31 + (experimentalRemoveTrianglesInsteadOfShorten ? 1 : 0);
-            List<Vector3> ring = edit != null ? edit.GetPreviewPathWorld() : null;
+            List<Vector3> ring = edit != null
+                ? (edit.IsClosedLoopPath ? edit.GetOverlayPathWorld() : edit.GetPreviewPathWorld())
+                : null;
             if (ring != null)
             {
                 int n = ring.Count;

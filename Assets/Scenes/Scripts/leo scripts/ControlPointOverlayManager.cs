@@ -144,6 +144,32 @@ public class ControlPointOverlayManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Pivot violet : doit suivre le même <see cref="WallEditShape"/> que les poignées blanches affichées (lot source focal,
+    /// pas l’enveloppe — sinon Suppr détruit toute l’enveloppe au lieu d’un seul lot).
+    /// </summary>
+    WallEditShape ResolveBulkPivotTargetEditShape()
+    {
+        if (targetProviderBehaviour is WallEditShape envelopeWes && envelopeWes.wall != null)
+        {
+            HouseExteriorEnvelopeSources meta = envelopeWes.wall.GetComponent<HouseExteriorEnvelopeSources>();
+            if (meta != null && meta.HasMultipleSourceLots && meta.UseIndependentSourceHandlesForHouseEnvelope &&
+                _independentHouseEnvelopeFocusedSourceLot >= 0)
+            {
+                IReadOnlyList<GameObject> gos = meta.SourceLotObjects;
+                int f = _independentHouseEnvelopeFocusedSourceLot;
+                if (gos != null && f >= 0 && f < gos.Count && gos[f] != null)
+                {
+                    WallEditShape src = gos[f].GetComponent<WallEditShape>();
+                    if (src != null)
+                        return src;
+                }
+            }
+        }
+
+        return ResolveWallEditShapeForOverlayTarget();
+    }
+
+    /// <summary>
     /// Même contour que le plancher maison : <see cref="WallEditShape.GetOverlayPathWorld"/> évite le fil gris en « carré / L orthogonal »
     /// quand le mesh du mur suit encore l’ovale.
     /// </summary>
@@ -290,8 +316,17 @@ public class ControlPointOverlayManager : MonoBehaviour
             if (count <= 0)
                 continue;
 
+            int skipBulkPivot = -1;
+            if (mergedLotShapePivotPrefab != null &&
+                srcEdit.TryGetShapeBulkMovePivotInfo(out int skPivot, out _) &&
+                skPivot >= 0)
+                skipBulkPivot = skPivot;
+
             for (int i = 0; i < count; i++)
             {
+                if (i == skipBulkPivot)
+                    continue;
+
                 Vector3 w = srcProvider.GetControlPointWorld(i);
                 int qx = Mathf.RoundToInt(w.x * handlePositionQuant);
                 int qz = Mathf.RoundToInt(w.z * handlePositionQuant);
@@ -349,7 +384,7 @@ public class ControlPointOverlayManager : MonoBehaviour
         if (targetProviderBehaviour is HouseRoofControlPointProvider)
             return;
 
-        WallEditShape wes = ResolveWallEditShapeForOverlayTarget();
+        WallEditShape wes = ResolveBulkPivotTargetEditShape();
         if (wes == null)
             return;
 
@@ -438,6 +473,9 @@ public class ControlPointOverlayManager : MonoBehaviour
         _linksUsePreviewPath = false;
 
         if (!showLinks || linkPrefab == null || linksRoot == null || cam == null)
+            return;
+
+        if (targetProviderBehaviour is PlacedStairManipulator || targetProviderBehaviour is PlacedWallOpeningManipulator)
             return;
 
         if (TryRebuildLinksForIndependentHouseEnvelope())

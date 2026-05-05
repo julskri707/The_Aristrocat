@@ -43,6 +43,8 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
     Quaternion _lastCamRotForLayout;
     bool _hasLayoutCache;
 
+    bool _sceneCameraLayoutSuppressed;
+
     static WallUndoManager s_Undo;
     static WallDrawInput s_DrawInput;
     static WallBuildController s_Build;
@@ -135,6 +137,7 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
     void OnEnable()
     {
         CacheCanvas();
+        _sceneCameraLayoutSuppressed = false;
     }
 
     void CacheCanvas()
@@ -159,6 +162,28 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
         _rect.anchorMin = new Vector2(0.5f, 0.5f);
         _rect.anchorMax = new Vector2(0.5f, 0.5f);
         _rect.pivot = new Vector2(0.5f, 0.5f);
+    }
+
+    void SetEnvelopeSceneCameraSuppressed(bool suppressed)
+    {
+        if (_sceneCameraLayoutSuppressed == suppressed)
+            return;
+
+        _sceneCameraLayoutSuppressed = suppressed;
+
+        if (_graphics == null || _graphics.Length == 0)
+            _graphics = GetComponentsInChildren<Graphic>(true);
+        if (_graphics == null)
+            return;
+
+        for (int i = 0; i < _graphics.Length; i++)
+        {
+            if (_graphics[i] == null)
+                continue;
+            _graphics[i].enabled = !suppressed;
+            if (suppressed)
+                _graphics[i].raycastTarget = false;
+        }
     }
 
     WallEditShape TryResolveSourceEdit()
@@ -245,6 +270,12 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
             && (cam.transform.position - _lastCamPosForLayout).sqrMagnitude < 1e-10f
             && Quaternion.Angle(cam.transform.rotation, _lastCamRotForLayout) < 0.01f)
         {
+            if (_sceneCameraLayoutSuppressed)
+            {
+                SetEnvelopeSceneCameraSuppressed(true);
+                return;
+            }
+
             ApplyVisualState();
             ApplyRaycastTargets();
             _rect.SetAsLastSibling();
@@ -259,19 +290,17 @@ public class HouseEnvelopeSourceHandleUI : MonoBehaviour, IPointerDownHandler, I
         Vector3 screen = cam.WorldToScreenPoint(world);
         if (screen.z <= 0f)
         {
-            if (gameObject.activeSelf)
-                gameObject.SetActive(false);
-            _hasLayoutCache = false;
+            SetEnvelopeSceneCameraSuppressed(true);
             return;
         }
 
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, screen, _uiCamera, out Vector2 local))
         {
-            if (gameObject.activeSelf)
-                gameObject.SetActive(false);
-            _hasLayoutCache = false;
+            SetEnvelopeSceneCameraSuppressed(true);
             return;
         }
+
+        SetEnvelopeSceneCameraSuppressed(false);
 
         if (!gameObject.activeSelf)
             gameObject.SetActive(true);

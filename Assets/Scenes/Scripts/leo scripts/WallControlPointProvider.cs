@@ -4,8 +4,10 @@ using System.Reflection;
 using UnityEngine;
 
 [DisallowMultipleComponent]
-public class WallControlPointProvider : MonoBehaviour, IControlPointProvider
+public class WallControlPointProvider : MonoBehaviour, IControlPointProvider, IControlPointWallShapeBinding
 {
+    public bool ControlPointsBelongToWallShape => true;
+
     [Header("Target")]
     public WallObject wall;
 

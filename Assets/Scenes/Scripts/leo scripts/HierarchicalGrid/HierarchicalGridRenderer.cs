@@ -21,13 +21,17 @@ public class HierarchicalGridRenderer : MonoBehaviour
     public void Render(
         IReadOnlyList<HierarchicalGridNode> nodes,
         HierarchicalGridNode hoverCell,
-        HierarchicalGridSettings settings)
+        HierarchicalGridSettings settings,
+        float xzVisualScale = 1f)
     {
         if (settings == null || nodes == null)
         {
             DisableAll();
             return;
         }
+
+        Vector2 gridOrigin = settings.gridWorldCenterXZ;
+        xzVisualScale = Mathf.Max(0.01f, xzVisualScale);
 
         _usedLevels.Clear();
         _builders.Clear();
@@ -36,7 +40,7 @@ public class HierarchicalGridRenderer : MonoBehaviour
 
         if (settings.uniformSubdivision && nodes.Count > 0)
         {
-            RenderUniformHierarchy(nodes[0], maxDepth, settings);
+            RenderUniformHierarchy(nodes[0], maxDepth, settings, gridOrigin, xzVisualScale);
 
             if (settings.highlightCellUnderMouse && hoverCell != null)
             {
@@ -44,8 +48,8 @@ public class HierarchicalGridRenderer : MonoBehaviour
                 QuadMeshBuilder hb = GetBuilder(level);
                 Color hc = settings.highlightColor;
                 hc.a *= settings.globalOpacity;
-                float hw = settings.baseLineThickness * 1.3f;
-                AddCellOutlineXZ(hb, hoverCell, settings.gridPlaneY + settings.surfaceYOffset + 0.002f, hw, hc);
+                float hw = settings.baseLineThickness * 1.3f * Mathf.Max(1f, xzVisualScale);
+                AddCellOutlineXZ(hb, hoverCell, settings.gridPlaneY + settings.surfaceYOffset + 0.002f, hw, hc, gridOrigin, xzVisualScale);
             }
 
             FlushBuilders(settings);
@@ -68,9 +72,9 @@ public class HierarchicalGridRenderer : MonoBehaviour
                 settings.baseLineThickness,
                 settings.baseLineThickness * settings.deepLevelThicknessFactor,
                 t);
-            lineWidth = Mathf.Max(0.0005f, lineWidth);
+            lineWidth = Mathf.Max(0.0005f, lineWidth) * Mathf.Max(1f, xzVisualScale);
 
-            AddCellOutlineXZ(b, cell, settings.gridPlaneY + settings.surfaceYOffset, lineWidth, color);
+            AddCellOutlineXZ(b, cell, settings.gridPlaneY + settings.surfaceYOffset, lineWidth, color, gridOrigin, xzVisualScale);
         }
 
         if (settings.highlightCellUnderMouse && hoverCell != null)
@@ -79,8 +83,8 @@ public class HierarchicalGridRenderer : MonoBehaviour
             QuadMeshBuilder b = GetBuilder(level);
             Color hc = settings.highlightColor;
             hc.a *= settings.globalOpacity;
-            float hw = settings.baseLineThickness * 1.3f;
-            AddCellOutlineXZ(b, hoverCell, settings.gridPlaneY + settings.surfaceYOffset + 0.002f, hw, hc);
+            float hw = settings.baseLineThickness * 1.3f * Mathf.Max(1f, xzVisualScale);
+            AddCellOutlineXZ(b, hoverCell, settings.gridPlaneY + settings.surfaceYOffset + 0.002f, hw, hc, gridOrigin, xzVisualScale);
         }
 
         FlushBuilders(settings);
@@ -107,7 +111,12 @@ public class HierarchicalGridRenderer : MonoBehaviour
         DisableUnusedLevels();
     }
 
-    void RenderUniformHierarchy(HierarchicalGridNode root, int maxDepth, HierarchicalGridSettings settings)
+    void RenderUniformHierarchy(
+        HierarchicalGridNode root,
+        int maxDepth,
+        HierarchicalGridSettings settings,
+        Vector2 gridOriginXZ,
+        float xzVisualScale)
     {
         if (root == null)
             return;
@@ -128,7 +137,7 @@ public class HierarchicalGridRenderer : MonoBehaviour
                 settings.baseLineThickness,
                 settings.baseLineThickness * settings.deepLevelThicknessFactor,
                 t);
-            width = Mathf.Max(0.0005f, width);
+            width = Mathf.Max(0.0005f, width) * Mathf.Max(1f, xzVisualScale);
 
             int divisions = IntPow(3, level);
             int sampleStep = Mathf.Max(1, Mathf.CeilToInt((divisions + 1) / (float)maxLines));
@@ -137,27 +146,45 @@ public class HierarchicalGridRenderer : MonoBehaviour
             for (int i = 0; i <= divisions; i += sampleStep)
             {
                 float x = min.x + i * step;
-                b.AddLineQuad(new Vector3(x, y, min.y), new Vector3(x, y, max.y), width, color);
+                Vector3 a = ScaleOutlineXZ(new Vector3(x, y, min.y), gridOriginXZ, xzVisualScale);
+                Vector3 c = ScaleOutlineXZ(new Vector3(x, y, max.y), gridOriginXZ, xzVisualScale);
+                b.AddLineQuad(a, c, width, color);
             }
 
             if (divisions % sampleStep != 0)
             {
                 float x = max.x;
-                b.AddLineQuad(new Vector3(x, y, min.y), new Vector3(x, y, max.y), width, color);
+                Vector3 a = ScaleOutlineXZ(new Vector3(x, y, min.y), gridOriginXZ, xzVisualScale);
+                Vector3 c = ScaleOutlineXZ(new Vector3(x, y, max.y), gridOriginXZ, xzVisualScale);
+                b.AddLineQuad(a, c, width, color);
             }
 
             for (int i = 0; i <= divisions; i += sampleStep)
             {
                 float z = min.y + i * step;
-                b.AddLineQuad(new Vector3(min.x, y, z), new Vector3(max.x, y, z), width, color);
+                Vector3 a = ScaleOutlineXZ(new Vector3(min.x, y, z), gridOriginXZ, xzVisualScale);
+                Vector3 c = ScaleOutlineXZ(new Vector3(max.x, y, z), gridOriginXZ, xzVisualScale);
+                b.AddLineQuad(a, c, width, color);
             }
 
             if (divisions % sampleStep != 0)
             {
                 float z = max.y;
-                b.AddLineQuad(new Vector3(min.x, y, z), new Vector3(max.x, y, z), width, color);
+                Vector3 a = ScaleOutlineXZ(new Vector3(min.x, y, z), gridOriginXZ, xzVisualScale);
+                Vector3 c = ScaleOutlineXZ(new Vector3(max.x, y, z), gridOriginXZ, xzVisualScale);
+                b.AddLineQuad(a, c, width, color);
             }
         }
+    }
+
+    static Vector3 ScaleOutlineXZ(Vector3 v, Vector2 originXZ, float s)
+    {
+        if (Mathf.Approximately(s, 1f))
+            return v;
+        return new Vector3(
+            originXZ.x + (v.x - originXZ.x) * s,
+            v.y,
+            originXZ.y + (v.z - originXZ.y) * s);
     }
 
     static int IntPow(int b, int exp)
@@ -256,15 +283,22 @@ public class HierarchicalGridRenderer : MonoBehaviour
         }
     }
 
-    static void AddCellOutlineXZ(QuadMeshBuilder b, HierarchicalGridNode node, float y, float width, Color color)
+    static void AddCellOutlineXZ(
+        QuadMeshBuilder b,
+        HierarchicalGridNode node,
+        float y,
+        float width,
+        Color color,
+        Vector2 gridOriginXZ,
+        float xzVisualScale)
     {
         Vector2 min = node.Min;
         Vector2 max = node.Max;
 
-        Vector3 a = new Vector3(min.x, y, min.y);
-        Vector3 c = new Vector3(max.x, y, min.y);
-        Vector3 d = new Vector3(max.x, y, max.y);
-        Vector3 e = new Vector3(min.x, y, max.y);
+        Vector3 a = ScaleOutlineXZ(new Vector3(min.x, y, min.y), gridOriginXZ, xzVisualScale);
+        Vector3 c = ScaleOutlineXZ(new Vector3(max.x, y, min.y), gridOriginXZ, xzVisualScale);
+        Vector3 d = ScaleOutlineXZ(new Vector3(max.x, y, max.y), gridOriginXZ, xzVisualScale);
+        Vector3 e = ScaleOutlineXZ(new Vector3(min.x, y, max.y), gridOriginXZ, xzVisualScale);
 
         b.AddLineQuad(a, c, width, color);
         b.AddLineQuad(c, d, width, color);

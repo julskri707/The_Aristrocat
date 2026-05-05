@@ -93,6 +93,32 @@ public static class HouseEnvelopeBundledSourceVisuals
     }
 
     /// <summary>
+    /// Le toit et les mailles pignon sous-toit restent sur les lots sources pour undo / split, mais ne doivent pas
+    /// réapparaître quand on réactive les pierres en « bande haute » — sinon double faîtage à l’ancienne empreinte.
+    /// </summary>
+    public static void SuppressBundledSourceRoofAndGableRenderers(WallObject sourceWall)
+    {
+        if (sourceWall == null)
+            return;
+
+        void DisableUnderChildNamed(string childName)
+        {
+            Transform child = sourceWall.transform.Find(childName);
+            if (child == null)
+                return;
+            var renderers = child.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (renderers[i] != null)
+                    renderers[i].enabled = false;
+            }
+        }
+
+        DisableUnderChildNamed(HouseRoofSystem.RoofChildName);
+        DisableUnderChildNamed(HouseGableWallSystem.GableRootChildName);
+    }
+
+    /// <summary>
     /// Lot source plus haut que le <b>seuil</b> commun (en m depuis la base du prisme) : n’active que le habillage
     /// extérieur au-dessus de ce seuil (l’enveloppe couvre le bas sur tout le pourtour) ; prisme de base + colliders
     /// du source restent masqués côté interaction.
@@ -151,6 +177,8 @@ public static class HouseEnvelopeBundledSourceVisuals
             EnsureUpperBandBackingMesh(sourceWall, upperBandBackingStart);
         else
             SetUpperBandBackingVisible(sourceWall, false);
+
+        SuppressBundledSourceRoofAndGableRenderers(sourceWall);
     }
 
     static bool HasAdjacentUpperBandSourceLotInEnvelope(WallObject sourceWall, float commonShellMaxHeightMeters, float maxGap)

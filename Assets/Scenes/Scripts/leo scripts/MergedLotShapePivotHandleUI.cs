@@ -78,6 +78,8 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
     bool _hasLayoutCache;
     bool _lastActiveForTop;
 
+    bool _sceneCameraLayoutSuppressed;
+
     /// <summary>Après split d’enveloppe : la souris n’a pas refait un PointerDown sur le nouveau pivot — on suit le bouton en Update.</summary>
     bool _dragUsesRawMouseContinuation;
 
@@ -147,6 +149,19 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         if (s_ActiveBulkDragPivot != null)
             return;
         ActivePivotForScroll = null;
+    }
+
+    /// <summary>Évite un pivot « fantôme » après destruction du mur (Delete, undo, etc.).</summary>
+    public static void InvalidateActivePivotIfTargetsWall(WallObject wall)
+    {
+        if (wall == null)
+            return;
+
+        if (ActivePivotForScroll != null && ActivePivotForScroll.edit != null && ActivePivotForScroll.edit.wall == wall)
+            ActivePivotForScroll = null;
+
+        if (s_ActiveBulkDragPivot != null && s_ActiveBulkDragPivot.edit != null && s_ActiveBulkDragPivot.edit.wall == wall)
+            s_ActiveBulkDragPivot = null;
     }
 
     public static bool ApplySplitResumeToWallIfPresent(WallObject wall, EnvelopePinkDragCapture capture)
@@ -281,6 +296,7 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
     void OnEnable()
     {
         CacheCanvas();
+        _sceneCameraLayoutSuppressed = false;
     }
 
     /// <summary>
@@ -369,6 +385,8 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
             ProcessBulkDragAtScreen(PrimaryPointerPosition());
             return;
         }
+
+        // Pas de Suppr sur le pivot de déplacement de forme (évite suppressions involontaires / ambiguïtés multi-lots).
 
         // Rotation à la molette uniquement pendant un drag du pivot (pas après un simple clic de sélection).
         if (cam == null || edit == null || !_dragging || ActivePivotForScroll != this)
@@ -499,6 +517,12 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
             && (cam.transform.position - _lastCamPosForLayout).sqrMagnitude < 1e-10f
             && Quaternion.Angle(cam.transform.rotation, _lastCamRotForLayout) < 0.01f)
         {
+            if (_sceneCameraLayoutSuppressed)
+            {
+                SetMergedPivotSceneCameraSuppressed(true);
+                return;
+            }
+
             ApplyVisualState();
             SetAllGraphicsRaycastTarget(ShouldGraphicsReceiveRaycasts());
 
@@ -526,19 +550,17 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         Vector3 screen = cam.WorldToScreenPoint(world);
         if (screen.z <= 0f)
         {
-            if (gameObject.activeSelf)
-                gameObject.SetActive(false);
-            _hasLayoutCache = false;
+            SetMergedPivotSceneCameraSuppressed(true);
             return;
         }
 
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, screen, _uiCamera, out Vector2 local))
         {
-            if (gameObject.activeSelf)
-                gameObject.SetActive(false);
-            _hasLayoutCache = false;
+            SetMergedPivotSceneCameraSuppressed(true);
             return;
         }
+
+        SetMergedPivotSceneCameraSuppressed(false);
 
         if (!gameObject.activeSelf)
             gameObject.SetActive(true);
@@ -562,6 +584,28 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         }
         else
             _lastActiveForTop = false;
+    }
+
+    void SetMergedPivotSceneCameraSuppressed(bool suppressed)
+    {
+        if (_sceneCameraLayoutSuppressed == suppressed)
+            return;
+
+        _sceneCameraLayoutSuppressed = suppressed;
+
+        if (_graphics == null || _graphics.Length == 0)
+            _graphics = GetComponentsInChildren<Graphic>(true);
+        if (_graphics == null)
+            return;
+
+        for (int i = 0; i < _graphics.Length; i++)
+        {
+            if (_graphics[i] == null)
+                continue;
+            _graphics[i].enabled = !suppressed;
+            if (suppressed)
+                _graphics[i].raycastTarget = false;
+        }
     }
 
     void ApplyVisualState()
@@ -686,6 +730,11 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         _pivotLeftDownScreenPos = eventData.position;
         _pivotBulkDragCommitted = false;
         ControlPointHandleUI.RegisterPointerDragOwner(this);
+
+        // Dès l’appui : priorité au pivot pour Suppr / molette (sans attendre le clic court au relâchement).
+        ControlPointHandleUI.NotifyWallPointSelectionClearedForPivot();
+        ActivePivotForScroll = this;
+        RefreshPivotVisualNow();
     }
 
     void CommitPivotBulkDrag(PointerEventData eventData)
@@ -745,6 +794,7 @@ public class MergedLotShapePivotHandleUI : MonoBehaviour, IPointerDownHandler, I
         if (shortClick && edit != null && edit.wall != null)
         {
             EnvelopeOverlayHandleFocus.SetFocusViolet(edit.wall);
+            ControlPointHandleUI.NotifyWallPointSelectionClearedForPivot();
             ActivePivotForScroll = this;
             RefreshPivotVisualNow();
         }

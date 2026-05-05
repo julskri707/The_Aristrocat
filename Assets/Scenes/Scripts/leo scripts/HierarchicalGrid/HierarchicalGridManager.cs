@@ -39,6 +39,18 @@ public class HierarchicalGridManager : MonoBehaviour
     public IReadOnlyList<HierarchicalGridNode> LeafNodes => _leafNodes;
     public HierarchicalGridNode HoverCell => _hoverCell;
 
+    /// <summary>
+    /// Même facteur que <see cref="WallBuildController.GetEffectiveBuildingScale"/> : agrandit le rendu maillage de la grille
+    /// autour de <see cref="HierarchicalGridSettings.gridWorldCenterXZ"/> pour l’aligner visuellement sur le bâtiment mis à l’échelle.
+    /// </summary>
+    public float GetGridVisualScaleXZ()
+    {
+        WallBuildController wbc = drawInput != null ? drawInput.wallBuild : null;
+        if (wbc == null)
+            wbc = FindFirstObjectByType<WallBuildController>(FindObjectsInactive.Include);
+        return wbc != null ? Mathf.Max(0.01f, wbc.GetEffectiveBuildingScale()) : 1f;
+    }
+
     void Awake()
     {
         if (gridRenderer == null)
@@ -100,7 +112,7 @@ public class HierarchicalGridManager : MonoBehaviour
             if (drawInput != null && !drawInput.enableGridSnap)
                 hoverForRender = null;
 
-            gridRenderer.Render(_renderNodes, hoverForRender, settings);
+            gridRenderer.Render(_renderNodes, hoverForRender, settings, GetGridVisualScaleXZ());
             _hasRenderedOnce = true;
             _lastRenderedNodeCount = _renderNodes.Count;
         }
@@ -291,8 +303,26 @@ public class HierarchicalGridManager : MonoBehaviour
             return before != _hoverCell;
 
         Vector3 p = ray.GetPoint(enter);
+        // Même référentiel que le rendu (ScaleOutlineXZ) et que WallDrawInput.UnscaleGridCornerXZAboutOrigin :
+        // le quadtree est en coordonnées « logiques », le mesh est étiré par GetGridVisualScaleXZ autour de gridWorldCenterXZ.
+        p = MouseHitWorldToLogicalGridXZ(p);
         TryGetCellAtWorld(p, out _hoverCell);
         return before != _hoverCell;
+    }
+
+    /// <summary>
+    /// Inverse de l’échelle visuelle autour de <see cref="HierarchicalGridSettings.gridWorldCenterXZ"/> (voir <see cref="HierarchicalGridRenderer"/>).
+    /// </summary>
+    Vector3 MouseHitWorldToLogicalGridXZ(Vector3 worldOnPlane)
+    {
+        Vector2 O = settings.gridWorldCenterXZ;
+        float s = GetGridVisualScaleXZ();
+        if (Mathf.Approximately(s, 1f))
+            return worldOnPlane;
+        return new Vector3(
+            O.x + (worldOnPlane.x - O.x) / s,
+            worldOnPlane.y,
+            O.y + (worldOnPlane.z - O.y) / s);
     }
 
 }

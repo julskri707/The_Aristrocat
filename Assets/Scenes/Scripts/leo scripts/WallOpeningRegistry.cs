@@ -27,24 +27,25 @@ public class WallOpeningRegistry : MonoBehaviour
 {
     public List<WallOpeningEntry> entries = new List<WallOpeningEntry>();
 
-    public void AddOpening(int segmentIndex, float tCenter, float widthAlongWallMeters, float segmentLengthMeters,
+    /// <returns>Index de l’entrée ajoutée, ou -1 si refus.</returns>
+    public int AddOpening(int segmentIndex, float tCenter, float widthAlongWallMeters, float segmentLengthMeters,
         float h0, float h1, WallOpeningKind kind)
     {
         if (segmentLengthMeters < 0.01f || widthAlongWallMeters < 0.01f)
-            return;
+            return -1;
 
         float half = (widthAlongWallMeters * 0.5f) / segmentLengthMeters;
         float t0 = Mathf.Clamp01(tCenter - half);
         float t1 = Mathf.Clamp01(tCenter + half);
         if (t1 - t0 < 0.02f)
-            return;
+            return -1;
 
         float hLo = Mathf.Clamp01(Mathf.Min(h0, h1));
         float hHi = Mathf.Clamp01(Mathf.Max(h0, h1));
         h0 = hLo;
         h1 = hHi;
         if (h1 - h0 < 0.02f)
-            return;
+            return -1;
 
         entries.Add(new WallOpeningEntry
         {
@@ -55,6 +56,27 @@ public class WallOpeningRegistry : MonoBehaviour
             h1 = h1,
             kind = kind
         });
+
+        return entries.Count - 1;
+    }
+
+    public bool TryGetEntry(int index, out WallOpeningEntry e)
+    {
+        if (index < 0 || index >= entries.Count)
+        {
+            e = default;
+            return false;
+        }
+
+        e = entries[index];
+        return true;
+    }
+
+    public void SetEntry(int index, WallOpeningEntry e)
+    {
+        if (index < 0 || index >= entries.Count)
+            return;
+        entries[index] = e;
     }
 
     public bool HasOpeningsForSegment(int segmentIndex)

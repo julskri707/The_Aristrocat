@@ -14,6 +14,8 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
     public int indexA;
     public int indexB;
 
+    public bool LinkRelatesToWallShapeControlPoints => ControlPointShapeMembership.BelongsToWallShape(provider);
+
     public bool useDirectWorldPoints = false;
     public Vector3 worldA;
     public Vector3 worldB;
@@ -37,6 +39,9 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
     Quaternion _lastCamRotForLayout;
     bool _hasLayoutCache;
 
+    bool _sceneCameraLayoutSuppressed;
+    Graphic[] _linkGraphics;
+
     void Awake()
     {
         CacheCanvas();
@@ -47,6 +52,7 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
     {
         CacheCanvas();
         EnsureRaycastGraphic();
+        _sceneCameraLayoutSuppressed = false;
     }
 
     void CacheCanvas()
@@ -84,6 +90,32 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
 
         if (g != null)
             g.raycastTarget = true;
+    }
+
+    void EnsureLinkGraphicsCached()
+    {
+        if (_linkGraphics == null || _linkGraphics.Length == 0)
+            _linkGraphics = GetComponentsInChildren<Graphic>(true);
+    }
+
+    void SetLinkSceneCameraLayoutSuppressed(bool suppressed)
+    {
+        if (_sceneCameraLayoutSuppressed == suppressed)
+            return;
+
+        _sceneCameraLayoutSuppressed = suppressed;
+        EnsureLinkGraphicsCached();
+
+        if (_linkGraphics == null)
+            return;
+
+        for (int i = 0; i < _linkGraphics.Length; i++)
+        {
+            if (_linkGraphics[i] == null)
+                continue;
+            _linkGraphics[i].enabled = !suppressed;
+            _linkGraphics[i].raycastTarget = !suppressed;
+        }
     }
 
     void LateUpdate()
@@ -138,6 +170,8 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
             && (sceneCam.transform.position - _lastCamPosForLayout).sqrMagnitude < 1e-10f
             && Quaternion.Angle(sceneCam.transform.rotation, _lastCamRotForLayout) < 0.01f)
         {
+            if (_sceneCameraLayoutSuppressed)
+                SetLinkSceneCameraLayoutSuppressed(true);
             return;
         }
 
@@ -152,20 +186,18 @@ public class ControlPointLinkUI : MonoBehaviour, IPointerDownHandler
 
         if (sa.z <= 0f || sb.z <= 0f)
         {
-            if (gameObject.activeSelf)
-                gameObject.SetActive(false);
-            _hasLayoutCache = false;
+            SetLinkSceneCameraLayoutSuppressed(true);
             return;
         }
 
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, sa, _uiCamera, out Vector2 localA) ||
             !RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, sb, _uiCamera, out Vector2 localB))
         {
-            if (gameObject.activeSelf)
-                gameObject.SetActive(false);
-            _hasLayoutCache = false;
+            SetLinkSceneCameraLayoutSuppressed(true);
             return;
         }
+
+        SetLinkSceneCameraLayoutSuppressed(false);
 
         if (!gameObject.activeSelf)
             gameObject.SetActive(true);

@@ -808,6 +808,7 @@ MonoBehaviour:
   roofHeightScrollStep: 0.25
   roofOverhangScrollStep: 0.05
   roofRoundnessScrollStep: 0.08
+  roofSurElevationAboveWallScrollStep: 0.05
   defaultRoofCladdingProfile: {fileID: 11400000, guid: 17e1160f5bed035489afd725560cc008, type: 2}
   interactiveEnvelopeCladdingRefreshInterval: 0.08
 --- !u!4 &436511024
@@ -1598,12 +1599,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 54dfbff41976ccb40918c4d758413eba, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FreeCameraController
-  moveSpeed: 15
+  moveSpeed: 40
   fastMultiplier: 2.5
   lookSpeed: 3
   pitchMin: -80
   pitchMax: 80
-  zoomSpeed: 100
+  zoomSpeed: 400
+  fullscreenKey: 292
   rotateMouseButton: 324
   ascendKey: 32
   descendKey: 304
@@ -2740,13 +2742,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AutoShapeUI
   wall: {fileID: 1972683405}
+  autoUpgradeLegacyPresetDimensions: 1
   showUI: 1
   toggleUIKey: 9
   panelPos: {x: 16, y: 16}
-  panelSize: {x: 320, y: 110}
-  uiPresetCircleRadiusM: 2
-  uiPresetSquareSideM: 3
-  uiPresetTriangleSideM: 3
+  panelSize: {x: 320, y: 200}
+  uiPresetCircleRadiusM: 10
+  uiPresetSquareSideM: 10
+  uiPresetTriangleSideM: 10
 --- !u!1 &1972683404
 GameObject:
   m_ObjectHideFlags: 0
@@ -2784,6 +2787,7 @@ MonoBehaviour:
   pointSpacing: 0.5
   snapCloseDistance: 1
   flattenYToZero: 1
+  allowFreeDrawInsideDesignatedHouseFootprints: 0
   lineWidth: 0.12
   enableGridSnap: 1
   snapToHierarchicalVisualGrid: 1
@@ -2799,6 +2803,11 @@ MonoBehaviour:
   gridInnerAlpha: 0.38
   gridOuterAlpha: 0.06
   gridVisualYOffset: 0.01
+  showInteriorFineGridOverlay: 1
+  interiorFineGridFinenessMul: 2
+  interiorFineGridLineWidthMul: 0.62
+  interiorFineGridAlpha: 0.24
+  interiorFineGridMaxSegments: 960
   enableAutoShapes: 1
   useGridShapeDetectionOnlyWhenGridSnap: 1
   requireClosedLoop: 1
@@ -2830,6 +2839,8 @@ MonoBehaviour:
   roundedTriangleMaxApexAngle: 120
   minTriangleProbability: 0.32
   triangleMinScoreWhenStrokeIsCircular: 0.72
+  autoClosedPrimitiveUniformScale: 1.5
+  uiPresetSpawnSizeMultiplier: 1
   minClosedShapeConfidence: 0.56
   minClosedShapeLead: 0.06
   minCircleProbability: 0.3

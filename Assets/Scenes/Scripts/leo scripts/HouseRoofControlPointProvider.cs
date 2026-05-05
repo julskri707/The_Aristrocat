@@ -16,8 +16,11 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
     IControlPointProvider,
     IControlPointPathProvider,
     ISecondaryControlPointPathProvider,
-    IControlPointDragPlaneProvider
+    IControlPointDragPlaneProvider,
+    IControlPointWallShapeBinding
 {
+    public bool ControlPointsBelongToWallShape => false;
+
     public const int IdxHeight = 0;
     public const int IdxRoundnessFirst = 1;
     const float RoundnessHandleRadial01 = 0.55f;
@@ -409,6 +412,8 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
             if (!TryGetRoundnessEdgeOuterMid(edit, centroidXZ, basePlateY, _roof.overhangMeters, ei, out Vector3 outerMid, out Vector3 centerBase))
                 return;
 
+            _roof.useDomeProfile = true;
+
             TryGetRoundnessDomeAxis(outerMid, centerBase, out _, out Vector3 axisOutUp);
             Vector3 pNeutral = GetRoundnessHandleWorldForEdgeAtRoundness(edit, centroidXZ, basePlateY, apexY, ei, 0.5f);
             float h = Mathf.Max(HouseRoofSystem.MinRoofHeightMeters, apexY - basePlateY);
@@ -649,7 +654,7 @@ public class HouseRoofControlPointProvider : MonoBehaviour,
         verts = null;
         if (edit == null)
             return false;
-        var path = edit.GetPreviewPathWorld();
+        var path = edit.IsClosedLoopPath ? edit.GetOverlayPathWorld() : edit.GetPreviewPathWorld();
         if (path == null || path.Count < 3)
             return false;
         verts = new List<Vector3>(path);

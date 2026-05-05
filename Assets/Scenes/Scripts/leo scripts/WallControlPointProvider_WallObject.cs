@@ -7,8 +7,10 @@ using UnityEngine;
 /// - Si closedLoop: quand tu bouges le point 0, on met aussi à jour le dernier point
 /// </summary>
 [DisallowMultipleComponent]
-public class WallControlPointProvider_WallObject : MonoBehaviour, IControlPointProvider
+public class WallControlPointProvider_WallObject : MonoBehaviour, IControlPointProvider, IControlPointWallShapeBinding
 {
+    public bool ControlPointsBelongToWallShape => true;
+
     [Header("Target")]
     public WallObject wall;
 

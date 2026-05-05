@@ -3,7 +3,7 @@ using UnityEngine;
 
 [DisallowMultipleComponent]
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider))]
-public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPathProvider
+public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPathProvider, IControlPointWallShapeBinding
 {
     [Header("Wall Settings")]
     [Min(0.1f)] public float height = 2.5f;
@@ -64,6 +64,8 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
     readonly List<WallOpeningEntry> _scratchOpeningsForSegment = new List<WallOpeningEntry>();
 
     public IReadOnlyList<Vector3> Points => _points;
+
+    public bool ControlPointsBelongToWallShape => true;
 
     // =========================
     // IControlPointProvider
@@ -376,12 +378,13 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             }
             else
             {
-                AddQuadTwoSided(verts, uvs, tris,
+                // Une seule orientation par face : épaisseur déjà modélisée par out* vs in* (AddQuadTwoSided doublait les tris coplanaires).
+                AddQuadOriented(verts, uvs, tris,
                     outB[i], outT[i], outT[n], outB[n],
                     0f, v0, uHeight, v1,
                     expectedOuterNormal);
 
-                AddQuadTwoSided(verts, uvs, tris,
+                AddQuadOriented(verts, uvs, tris,
                     inB[n], inT[n], inT[i], inB[i],
                     0f, v1, uHeight, v0,
                     -expectedOuterNormal);
@@ -404,13 +407,13 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
         if (addCaps && !isClosed)
         {
             Vector3 startDir = segDir[0];
-            AddQuadTwoSided(verts, uvs, tris,
+            AddQuadOriented(verts, uvs, tris,
                 inB[0], inT[0], outT[0], outB[0],
                 0f, 0f, 1f, 1f,
                 -startDir);
 
             Vector3 endDir = segDir[segCount - 1];
-            AddQuadTwoSided(verts, uvs, tris,
+            AddQuadOriented(verts, uvs, tris,
                 outB[count - 1], outT[count - 1], inT[count - 1], inB[count - 1],
                 0f, 0f, 1f, 1f,
                 endDir);
@@ -950,18 +953,6 @@ public class WallObject : MonoBehaviour, IControlPointProvider, IControlPointPat
             tris.Add(start + 3);
             tris.Add(start + 2);
         }
-    }
-
-    private void AddQuadTwoSided(
-        List<Vector3> verts,
-        List<Vector2> uvs,
-        List<int> tris,
-        Vector3 a, Vector3 b, Vector3 c, Vector3 d,
-        float u0, float v0, float u1, float v1,
-        Vector3 expectedNormal)
-    {
-        AddQuadOriented(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, expectedNormal);
-        AddQuadOriented(verts, uvs, tris, a, b, c, d, u0, v0, u1, v1, -expectedNormal);
     }
 
     private void AddBackfaces(List<int> tris)

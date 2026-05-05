@@ -28,6 +28,8 @@ public class WallDrawInput : MonoBehaviour
     [Min(0.01f)] public float pointSpacing = 0.35f;
     [Min(0.01f)] public float snapCloseDistance = 1.0f;
     public bool flattenYToZero = true;
+    [Tooltip("Si activé : un tracé entièrement à l’intérieur du périmètre maison reste possible au crayon (murs intérieurs). Si désactivé (défaut) : tout point dans l’empreinte annule le dessin.")]
+    [SerializeField] bool allowFreeDrawInsideDesignatedHouseFootprints = false;
 
     [Header("Line Preview")]
     [Min(0.001f)] public float lineWidth = 0.12f;
@@ -56,6 +58,14 @@ public class WallDrawInput : MonoBehaviour
     [Range(0.02f, 1.0f)] public float gridInnerAlpha = 0.38f;
     [Range(0.01f, 0.8f)] public float gridOuterAlpha = 0.06f;
     [Range(-0.05f, 0.2f)] public float gridVisualYOffset = 0.01f;
+
+    [Header("Grille — intérieur / sol maison (overlay carré)")]
+    [Tooltip("Avec showGridInGame : dessine une seconde grille alignée sur le pas carte ÷ ce facteur (carrée). Les traits sont omis sous l’emprise plancher (lots avec parquet).")]
+    public bool showInteriorFineGridOverlay = true;
+    [Min(1.1f)] public float interiorFineGridFinenessMul = 2f;
+    [Range(0.35f, 1f)] public float interiorFineGridLineWidthMul = 0.62f;
+    [Range(0.04f, 0.55f)] public float interiorFineGridAlpha = 0.24f;
+    [Range(48, 2200)] public int interiorFineGridMaxSegments = 960;
 
     [Header("Auto Shapes")]
     public bool enableAutoShapes = true;
@@ -112,6 +122,14 @@ public class WallDrawInput : MonoBehaviour
     [Tooltip("When stroke is radially round, triangle score scales toward this factor (vs 1). Lower = less triangle vs circles.")]
     [Range(0.55f, 1f)] public float triangleMinScoreWhenStrokeIsCircular = 0.72f;
 
+    [Header("Auto-formes fermées — taille")]
+    [Tooltip("Échelle uniforme XZ appliquée au polygone ajusté (Rectangle / Carré / Triangle / Cercle) avant validation. 1 = taille déduite du tracé.")]
+    [Min(0.25f)] public float autoClosedPrimitiveUniformScale = 1.5f;
+
+    [Header("Boutons Tab : Carré / Triangle / Cercle")]
+    [Tooltip("Les dimensions définies sur AutoShapeUI sont multipliées avant création (pratique si une vieille scène a encore de petites valeurs sérialisées).")]
+    [Min(0.01f)] public float uiPresetSpawnSizeMultiplier = 1f;
+
     [Header("Shape Decision")]
     [Range(0.0f, 1.0f)] public float minClosedShapeConfidence = 0.22f;
     [Range(0.0f, 0.5f)] public float minClosedShapeLead = 0.05f;
@@ -163,10 +181,81 @@ public class WallDrawInput : MonoBehaviour
     private bool _gridHasActiveLines;
     private Vector3 _lastGridVisualCamPos;
     private float _lastGridVisualCamHeight;
+    private float _lastGridVisualDrawScale = -1f;
 
     HierarchicalGridManager _cachedHierarchicalGrid;
     float _nextHierarchicalGridRescanTime;
     bool _didHierarchicalGridSearch;
+
+    readonly List<Vector2> _scratchHouseFootprintRingForStrokeTest = new List<Vector2>(128);
+
+    readonly List<List<Vector2>> _parquetFootprintRings = new List<List<Vector2>>();
+    int _parquetFootprintRingCount;
+    readonly List<float> _scratchFineGridTs = new List<float>(48);
+    readonly HashSet<WallObject> _bundledHouseSourceWallsScratch = new HashSet<WallObject>();
+
+    /// <summary>
+    /// Lots sources listés sur une enveloppe maison : à ignorer pour les tests « coupe l’empreinte » si on ne veut que le contour extérieur fusionné.
+    /// </summary>
+    void CollectBundledHouseSourceWallsForFootprintTests(WallBuildController bc)
+    {
+        _bundledHouseSourceWallsScratch.Clear();
+        if (bc == null || !bc.DesignatedHouseLotsUseOuterEnvelopeOnly)
+            return;
+
+        HouseExteriorEnvelopeSources[] metas = UnityEngine.Object.FindObjectsByType<HouseExteriorEnvelopeSources>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+
+        for (int i = 0; i < metas.Length; i++)
+        {
+            HouseExteriorEnvelopeSources meta = metas[i];
+            if (meta == null)
+                continue;
+
+            IReadOnlyList<GameObject> src = meta.SourceLotObjects;
+            if (src == null)
+                continue;
+
+            for (int j = 0; j < src.Count; j++)
+            {
+                GameObject go = src[j];
+                if (go == null)
+                    continue;
+
+                WallObject w = go.GetComponent<WallObject>();
+                if (w != null)
+                    _bundledHouseSourceWallsScratch.Add(w);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lot pris en compte pour bloquer le dessin : parquet maison OU enveloppe avec sources listées (contour fusionné même sans matériau parquet sur l’enveloppe).
+    /// </summary>
+    bool ShouldSkipWallForHouseFootprintStrokeIteration(WallObject w, out WallEditShape edit)
+    {
+        edit = null;
+        if (w == null || !w.closedLoop)
+            return true;
+
+        if (_bundledHouseSourceWallsScratch.Contains(w))
+            return true;
+
+        edit = w.GetComponent<WallEditShape>();
+        if (edit == null || !edit.IsClosedLoopPath)
+            return true;
+
+        HouseParquetFloor pf = w.GetComponent<HouseParquetFloor>();
+        HouseExteriorEnvelopeSources envMeta = w.GetComponent<HouseExteriorEnvelopeSources>();
+        bool hasDesignatedParquet = pf != null && pf.IsDesignatedHouseLot;
+        bool hasEnvelopeSources =
+            envMeta != null &&
+            envMeta.SourceLotObjects != null &&
+            envMeta.SourceLotObjects.Count > 0;
+
+        return !hasDesignatedParquet && !hasEnvelopeSources;
+    }
 
     struct ShapeCandidate
     {
@@ -254,6 +343,8 @@ public class WallDrawInput : MonoBehaviour
         roundedTriangleMaxApexAngle = Mathf.Clamp(roundedTriangleMaxApexAngle, 40f, 170f);
         minTriangleProbability = Mathf.Clamp(minTriangleProbability, 0.10f, 0.80f);
         triangleMinScoreWhenStrokeIsCircular = Mathf.Clamp(triangleMinScoreWhenStrokeIsCircular, 0.55f, 1f);
+        autoClosedPrimitiveUniformScale = Mathf.Clamp(autoClosedPrimitiveUniformScale, 0.25f, 20f);
+        uiPresetSpawnSizeMultiplier = Mathf.Clamp(uiPresetSpawnSizeMultiplier, 0.01f, 50f);
         minClosedShapeConfidence = Mathf.Clamp01(minClosedShapeConfidence);
         minClosedShapeLead = Mathf.Clamp(minClosedShapeLead, 0f, 0.5f);
         minCircleProbability = Mathf.Clamp(minCircleProbability, 0.10f, 0.80f);
@@ -388,7 +479,9 @@ public class WallDrawInput : MonoBehaviour
 
         float baseY = (flattenYToZero ? 0f : mgr.settings.gridPlaneY) + gridVisualYOffset;
         Vector3 camPos = gridCam.transform.position;
-        float ext = Mathf.Max(0.25f, mgr.settings.minCellSize) * Mathf.Clamp(gridHalfExtent, 4, 200);
+        float drawScale = GridVisualScaleXZ();
+        Vector2 gridOrigin = mgr.settings.gridWorldCenterXZ;
+        float ext = Mathf.Max(0.25f, mgr.settings.minCellSize) * Mathf.Clamp(gridHalfExtent, 4, 200) * Mathf.Max(1f, drawScale);
         float minX = camPos.x - ext;
         float maxX = camPos.x + ext;
         float minZ = camPos.z - ext;
@@ -411,10 +504,10 @@ public class WallDrawInput : MonoBehaviour
                 continue;
 
             float x0 = mn.x, x1 = mx.x, z0 = mn.y, z1 = mx.y;
-            Vector3 a0 = new Vector3(x0, baseY, z0);
-            Vector3 a1 = new Vector3(x1, baseY, z0);
-            Vector3 a2 = new Vector3(x1, baseY, z1);
-            Vector3 a3 = new Vector3(x0, baseY, z1);
+            Vector3 a0 = ScaleGridDrawCornerXZ(new Vector3(x0, baseY, z0), gridOrigin, drawScale);
+            Vector3 a1 = ScaleGridDrawCornerXZ(new Vector3(x1, baseY, z0), gridOrigin, drawScale);
+            Vector3 a2 = ScaleGridDrawCornerXZ(new Vector3(x1, baseY, z1), gridOrigin, drawScale);
+            Vector3 a3 = ScaleGridDrawCornerXZ(new Vector3(x0, baseY, z1), gridOrigin, drawScale);
             Gizmos.DrawLine(a0, a1);
             Gizmos.DrawLine(a1, a2);
             Gizmos.DrawLine(a2, a3);
@@ -504,7 +597,9 @@ public class WallDrawInput : MonoBehaviour
             }
         }
 
-        int wanted = Mathf.Max(512, gridMaxLinesPerAxis * 8 + 128);
+        int wanted = Mathf.Max(
+            512,
+            gridMaxLinesPerAxis * 8 + Mathf.Max(128, interiorFineGridMaxSegments + 128));
         Material mat = GetOrCreateSharedGridMaterial();
 
         while (_gridLines.Count < wanted)
@@ -551,18 +646,24 @@ public class WallDrawInput : MonoBehaviour
             return;
 
         IReadOnlyList<HierarchicalGridNode> leaves = mgr.LeafNodes;
-        if (leaves == null || leaves.Count == 0)
+        bool hasLeaves = leaves != null && leaves.Count > 0;
+        bool wantFine = showInteriorFineGridOverlay &&
+                         TryGetMainGridLatticeStepXZ(out _, out _);
+        if (!hasLeaves && !wantFine)
             return;
 
         float baseY = (flattenYToZero ? 0f : mgr.settings.gridPlaneY) + gridVisualYOffset;
         Vector3 camPos = gridCam.transform.position;
         float camHeight = Mathf.Abs(camPos.y - baseY);
+        float drawScale = GridVisualScaleXZ();
+        Vector2 gridOrigin = mgr.settings.gridWorldCenterXZ;
 
         if (!_gridVisualStateDirty)
         {
             Vector2 deltaXZ = new Vector2(camPos.x - _lastGridVisualCamPos.x, camPos.z - _lastGridVisualCamPos.z);
             float heightDelta = Mathf.Abs(camHeight - _lastGridVisualCamHeight);
-            if (deltaXZ.sqrMagnitude < 0.0004f && heightDelta < 0.02f)
+            bool scaleChanged = !Mathf.Approximately(drawScale, _lastGridVisualDrawScale);
+            if (!scaleChanged && deltaXZ.sqrMagnitude < 0.0004f && heightDelta < 0.02f)
                 return;
         }
 
@@ -570,7 +671,7 @@ public class WallDrawInput : MonoBehaviour
         if (_gridLines.Count == 0)
             return;
 
-        float ext = Mathf.Max(0.25f, mgr.settings.minCellSize) * Mathf.Clamp(gridHalfExtent, 4, 200);
+        float ext = Mathf.Max(0.25f, mgr.settings.minCellSize) * Mathf.Clamp(gridHalfExtent, 4, 200) * Mathf.Max(1f, drawScale);
         float cx = camPos.x;
         float cz = camPos.z;
         float minX = cx - ext;
@@ -578,32 +679,92 @@ public class WallDrawInput : MonoBehaviour
         float minZ = cz - ext;
         float maxZ = cz + ext;
 
-        float width = Mathf.Clamp(gridLineWidth, 0.0005f, 0.20f);
+        float width = Mathf.Clamp(gridLineWidth * Mathf.Max(1f, drawScale), 0.0005f, 0.35f);
         var col = new Color(0.55f, 0.55f, 0.55f, Mathf.Clamp01(Mathf.Max(gridInnerAlpha, 0.35f)));
 
         int lineCursor = 0;
-        int maxLines = Mathf.Min(_gridLines.Count, gridMaxLinesPerAxis * 8);
+        int leafCap = Mathf.Min(_gridLines.Count, gridMaxLinesPerAxis * 8);
+        int maxTotal = Mathf.Min(
+            _gridLines.Count,
+            leafCap + (showInteriorFineGridOverlay ? interiorFineGridMaxSegments : 0));
 
-        for (int i = 0; i < leaves.Count && lineCursor < maxLines - 4; i++)
+        if (hasLeaves)
         {
-            HierarchicalGridNode leaf = leaves[i];
-            if (leaf == null)
-                continue;
+            for (int i = 0; i < leaves.Count && lineCursor < leafCap - 4 && lineCursor < maxTotal - 4; i++)
+            {
+                HierarchicalGridNode leaf = leaves[i];
+                if (leaf == null)
+                    continue;
 
-            Vector2 mn = leaf.Min;
-            Vector2 mx = leaf.Max;
-            if (mx.x < minX || mn.x > maxX || mx.y < minZ || mn.y > maxZ)
-                continue;
+                Vector2 mn = leaf.Min;
+                Vector2 mx = leaf.Max;
+                if (mx.x < minX || mn.x > maxX || mx.y < minZ || mn.y > maxZ)
+                    continue;
 
-            float x0 = mn.x;
-            float x1 = mx.x;
-            float z0 = mn.y;
-            float z1 = mx.y;
+                float x0 = mn.x;
+                float x1 = mx.x;
+                float z0 = mn.y;
+                float z1 = mx.y;
 
-            EmitGridLine(ref lineCursor, new Vector3(x0, baseY, z0), new Vector3(x1, baseY, z0), width, col);
-            EmitGridLine(ref lineCursor, new Vector3(x1, baseY, z0), new Vector3(x1, baseY, z1), width, col);
-            EmitGridLine(ref lineCursor, new Vector3(x1, baseY, z1), new Vector3(x0, baseY, z1), width, col);
-            EmitGridLine(ref lineCursor, new Vector3(x0, baseY, z1), new Vector3(x0, baseY, z0), width, col);
+                EmitGridLine(ref lineCursor,
+                    ScaleGridDrawCornerXZ(new Vector3(x0, baseY, z0), gridOrigin, drawScale),
+                    ScaleGridDrawCornerXZ(new Vector3(x1, baseY, z0), gridOrigin, drawScale),
+                    width, col);
+                EmitGridLine(ref lineCursor,
+                    ScaleGridDrawCornerXZ(new Vector3(x1, baseY, z0), gridOrigin, drawScale),
+                    ScaleGridDrawCornerXZ(new Vector3(x1, baseY, z1), gridOrigin, drawScale),
+                    width, col);
+                EmitGridLine(ref lineCursor,
+                    ScaleGridDrawCornerXZ(new Vector3(x1, baseY, z1), gridOrigin, drawScale),
+                    ScaleGridDrawCornerXZ(new Vector3(x0, baseY, z1), gridOrigin, drawScale),
+                    width, col);
+                EmitGridLine(ref lineCursor,
+                    ScaleGridDrawCornerXZ(new Vector3(x0, baseY, z1), gridOrigin, drawScale),
+                    ScaleGridDrawCornerXZ(new Vector3(x0, baseY, z0), gridOrigin, drawScale),
+                    width, col);
+            }
+        }
+
+        if (wantFine && lineCursor < maxTotal &&
+            TryGetMainGridLatticeStepXZ(out float mainLatticeStep, out Vector2 latticeOrigin))
+        {
+            RefreshParquetFootprintRings();
+            float fineStep = mainLatticeStep / Mathf.Max(1.1f, interiorFineGridFinenessMul);
+            if (fineStep > 1e-4f)
+            {
+                float wFine = Mathf.Clamp(
+                    width * interiorFineGridLineWidthMul,
+                    0.0005f,
+                    0.35f);
+                var colFine = new Color(0.44f, 0.52f, 0.58f, Mathf.Clamp01(interiorFineGridAlpha));
+
+                float xStart = latticeOrigin.x + Mathf.Floor((minX - latticeOrigin.x) / fineStep) * fineStep;
+                float zStart = latticeOrigin.y + Mathf.Floor((minZ - latticeOrigin.y) / fineStep) * fineStep;
+
+                for (float xf = xStart; xf <= maxX + fineStep * 0.5f && lineCursor < maxTotal; xf += fineStep)
+                {
+                    EmitFineGridSegmentMaskedXZ(
+                        new Vector2(xf, minZ),
+                        new Vector2(xf, maxZ),
+                        baseY,
+                        wFine,
+                        colFine,
+                        maxTotal,
+                        ref lineCursor);
+                }
+
+                for (float zf = zStart; zf <= maxZ + fineStep * 0.5f && lineCursor < maxTotal; zf += fineStep)
+                {
+                    EmitFineGridSegmentMaskedXZ(
+                        new Vector2(minX, zf),
+                        new Vector2(maxX, zf),
+                        baseY,
+                        wFine,
+                        colFine,
+                        maxTotal,
+                        ref lineCursor);
+                }
+            }
         }
 
         for (int i = lineCursor; i < _gridLines.Count; i++)
@@ -616,6 +777,7 @@ public class WallDrawInput : MonoBehaviour
 
         _lastGridVisualCamPos = camPos;
         _lastGridVisualCamHeight = camHeight;
+        _lastGridVisualDrawScale = drawScale;
         _gridVisualStateDirty = false;
     }
 
@@ -639,6 +801,160 @@ public class WallDrawInput : MonoBehaviour
         lr.SetPosition(1, b);
     }
 
+    void RefreshParquetFootprintRings()
+    {
+        int idx = 0;
+        WallEditShape[] edits = FindObjectsByType<WallEditShape>(FindObjectsSortMode.None);
+        for (int e = 0; e < edits.Length; e++)
+        {
+            WallEditShape ed = edits[e];
+            if (ed == null || ed.wall == null)
+                continue;
+
+            HouseParquetFloor pf = ed.wall.GetComponent<HouseParquetFloor>();
+            if (pf == null || !pf.IsDesignatedHouseLot)
+                continue;
+
+            while (idx >= _parquetFootprintRings.Count)
+                _parquetFootprintRings.Add(new List<Vector2>(64));
+
+            List<Vector2> ring = _parquetFootprintRings[idx];
+            ring.Clear();
+            if (!ed.TryGetClosedLotFootprintRingXZ(ring) || ring.Count < 3)
+                continue;
+
+            idx++;
+        }
+
+        _parquetFootprintRingCount = idx;
+    }
+
+    static float Cross2(Vector2 u, Vector2 v) => u.x * v.y - u.y * v.x;
+
+    static bool SegmentsIntersectXZ(Vector2 a, Vector2 b, Vector2 c, Vector2 d, out float tOnAb)
+    {
+        tOnAb = 0f;
+        Vector2 r = b - a;
+        Vector2 s = d - c;
+        float denom = Cross2(r, s);
+        if (Mathf.Abs(denom) < 1e-10f)
+            return false;
+
+        Vector2 qp = c - a;
+        float t = Cross2(qp, s) / denom;
+        float u = Cross2(qp, r) / denom;
+        if (t < -1e-6f || t > 1f + 1e-6f || u < -1e-6f || u > 1f + 1e-6f)
+            return false;
+
+        tOnAb = Mathf.Clamp01(t);
+        return true;
+    }
+
+    static bool PointInsidePolygonXZ(Vector2 p, List<Vector2> ring)
+    {
+        bool inside = false;
+        int n = ring.Count;
+        if (n < 3)
+            return false;
+
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            Vector2 pi = ring[i];
+            Vector2 pj = ring[j];
+            if (((pi.y > p.y) != (pj.y > p.y)) &&
+                (p.x < (pj.x - pi.x) * (p.y - pi.y) / (pj.y - pi.y + 1e-20f) + pi.x))
+                inside = !inside;
+        }
+
+        return inside;
+    }
+
+    bool PointInsideAnyParquetFootprintXZ(Vector2 p)
+    {
+        for (int i = 0; i < _parquetFootprintRingCount; i++)
+        {
+            if (PointInsidePolygonXZ(p, _parquetFootprintRings[i]))
+                return true;
+        }
+
+        return false;
+    }
+
+    static void SortAndDedupeTs(List<float> ts)
+    {
+        if (ts == null || ts.Count <= 1)
+            return;
+
+        ts.Sort();
+        int w = 0;
+        const float eps = 1e-5f;
+        for (int i = 0; i < ts.Count; i++)
+        {
+            if (w == 0 || Mathf.Abs(ts[i] - ts[w - 1]) > eps)
+                ts[w++] = ts[i];
+        }
+
+        if (w < ts.Count)
+            ts.RemoveRange(w, ts.Count - w);
+    }
+
+    void EmitFineGridSegmentMaskedXZ(
+        Vector2 a,
+        Vector2 b,
+        float baseY,
+        float width,
+        Color color,
+        int maxTotal,
+        ref int lineCursor)
+    {
+        if (lineCursor >= maxTotal || lineCursor >= _gridLines.Count)
+            return;
+
+        _scratchFineGridTs.Clear();
+        _scratchFineGridTs.Add(0f);
+        _scratchFineGridTs.Add(1f);
+
+        for (int ri = 0; ri < _parquetFootprintRingCount; ri++)
+        {
+            List<Vector2> ring = _parquetFootprintRings[ri];
+            int n = ring.Count;
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 c = ring[i];
+                Vector2 d = ring[(i + 1) % n];
+                if (SegmentsIntersectXZ(a, b, c, d, out float t))
+                    _scratchFineGridTs.Add(t);
+            }
+        }
+
+        SortAndDedupeTs(_scratchFineGridTs);
+
+        for (int k = 0; k < _scratchFineGridTs.Count - 1; k++)
+        {
+            if (lineCursor >= maxTotal)
+                return;
+
+            float t0 = _scratchFineGridTs[k];
+            float t1 = _scratchFineGridTs[k + 1];
+            if (t1 - t0 < 1e-7f)
+                continue;
+
+            float tm = (t0 + t1) * 0.5f;
+            Vector2 pm = Vector2.Lerp(a, b, tm);
+            if (!PointInsideAnyParquetFootprintXZ(pm))
+            {
+                Vector2 p0 = Vector2.Lerp(a, b, t0);
+                Vector2 p1 = Vector2.Lerp(a, b, t1);
+                EmitGridLine(
+                    ref lineCursor,
+                    new Vector3(p0.x, baseY, p0.y),
+                    new Vector3(p1.x, baseY, p1.y),
+                    width,
+                    color);
+            }
+        }
+    }
+
     void BeginDraw()
     {
         _points.Clear();
@@ -657,6 +973,10 @@ public class WallDrawInput : MonoBehaviour
             p = PostProcessPoint(p);
             _points.Add(p);
             RefreshLine();
+
+            if (!allowFreeDrawInsideDesignatedHouseFootprints &&
+                IsWorldPointInsideAnyDesignatedHouseFootprintXZ(p))
+                AbortStrokeBecauseHouseIntersection();
         }
     }
 
@@ -680,6 +1000,9 @@ public class WallDrawInput : MonoBehaviour
         {
             _points.Add(p);
             RefreshLine();
+
+            if (StrokeIntersectsAnyDesignatedHouseFootprint(_points))
+                AbortStrokeBecauseHouseIntersection();
         }
     }
 
@@ -773,10 +1096,20 @@ public class WallDrawInput : MonoBehaviour
         if (!didGridRectangle && enableGridSnap && snapToHierarchicalVisualGrid)
             ProjectPathToHierarchicalInPlace(_points, closed);
 
+        // Grid snap rounds X/Z independently → staircase on diagonals; collapse again after projection.
+        if (!closed && _points.Count >= 3)
+            TryCollapseOpenStrokeToChordIfNearlyCollinear(_points, afterLatticeSnap: true);
+
         if (wallBuild != null && wallBuild.snapDrawToExistingWallCorners)
             wallBuild.SnapPathVerticesToExistingWallCornersInPlace(_points);
 
         RefreshLine();
+
+        if (StrokeIntersectsAnyDesignatedHouseFootprint(_points))
+        {
+            AbortStrokeBecauseHouseIntersection();
+            return;
+        }
 
         LastCommittedShape = ShapeNameToKind(committedShapeName);
         LastCommittedShapeName = committedShapeName;
@@ -784,6 +1117,17 @@ public class WallDrawInput : MonoBehaviour
         List<Vector3> committedPoints = new List<Vector3>(_points);
         OnShapeCommittedDetailed?.Invoke(committedPoints, LastCommittedShape, LastCommittedShapeName);
         OnShapeCommitted?.Invoke(committedPoints);
+    }
+
+    void AbortStrokeBecauseHouseIntersection()
+    {
+        _isDrawing = false;
+        _points.Clear();
+        RefreshLine();
+        ResetLiveScores();
+        LastCommittedShape = DetectedShapeKind.Free;
+        LastCommittedShapeName = "None";
+        LastCommitSnappedToWallCorner = false;
     }
 
     bool TryGetMouseWorldPoint(out Vector3 worldPoint)
@@ -824,19 +1168,239 @@ public class WallDrawInput : MonoBehaviour
 
         Ray ray = cam.ScreenPointToRay(screenPosition);
 
-        if (groundCollider != null && groundCollider.Raycast(ray, out RaycastHit hit, 10000f))
+        const float rayMaxDistance = 10000f;
+
+        if (groundCollider != null && groundCollider.Raycast(ray, out RaycastHit hit, rayMaxDistance))
         {
             worldPoint = hit.point;
             return true;
         }
 
-        if (Physics.Raycast(ray, out RaycastHit hit2, 10000f))
+        if (Physics.Raycast(ray, out RaycastHit hit2, rayMaxDistance))
         {
+            // Sans collider sur le parquet : le rayon peut toucher un mur avant le sol. Si l’intersection du rayon
+            // avec un plan de dalle maison tombe dans l’empreinte ET est plus proche que ce mur, on utilise ce point
+            // (évite les MeshCollider sur tout le volume parquet qui perturbaient la physique / les fusions).
+            const float verticalWallMaxNormalY = 0.38f;
+            if (hit2.normal.y <= verticalWallMaxNormalY &&
+                TryRayIntersectClosestDesignatedHouseFloorBeforeDistance(ray, hit2.distance, out Vector3 floorPt))
+            {
+                worldPoint = floorPt;
+                return true;
+            }
+
             worldPoint = hit2.point;
             return true;
         }
 
         worldPoint = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Intersection la plus proche de la caméra avec le haut d’une dalle maison, strictement avant la distance du premier obstacle.
+    /// </summary>
+    bool TryRayIntersectClosestDesignatedHouseFloorBeforeDistance(Ray ray, float obstacleDistance, out Vector3 worldPoint)
+    {
+        worldPoint = default;
+        if (obstacleDistance <= 0.03f)
+            return false;
+
+        WallBuildController bc = wallBuild != null ? wallBuild : FindFirstObjectByType<WallBuildController>();
+        if (bc == null)
+            return false;
+
+        CollectBundledHouseSourceWallsForFootprintTests(bc);
+
+        float maxAlongRay = obstacleDistance - 0.03f;
+        float bestT = float.MaxValue;
+        Vector3 best = default;
+
+        IReadOnlyList<WallObject> walls = bc.Walls;
+        for (int i = 0; i < walls.Count; i++)
+        {
+            WallObject w = walls[i];
+            if (w == null || !w.closedLoop)
+                continue;
+
+            if (_bundledHouseSourceWallsScratch.Contains(w))
+                continue;
+
+            HouseParquetFloor pf = w.GetComponent<HouseParquetFloor>();
+            if (pf == null || !pf.IsDesignatedHouseLot)
+                continue;
+
+            WallEditShape edit = w.GetComponent<WallEditShape>();
+            if (edit == null || !edit.IsClosedLoopPath)
+                continue;
+
+            float story = Mathf.Max(0.1f, pf.storeyHeightMeters);
+            int floorCount = Mathf.Max(1, Mathf.RoundToInt(w.height / story));
+            float baseTop = edit.shapeY + Mathf.Max(0f, pf.yOffsetAboveBase);
+
+            for (int k = 0; k < floorCount; k++)
+            {
+                float slabTopY = baseTop + k * story;
+                float dy = ray.direction.y;
+                if (Mathf.Abs(dy) < 1e-5f)
+                    continue;
+
+                float t = (slabTopY - ray.origin.y) / dy;
+                if (t <= 0.001f || t >= maxAlongRay)
+                    continue;
+
+                Vector3 p = ray.GetPoint(t);
+                if (!edit.ContainsWorldPointInClosedLotFootprintXZ(p, 0f))
+                    continue;
+
+                if (t < bestT)
+                {
+                    bestT = t;
+                    best = p;
+                }
+            }
+        }
+
+        if (bestT >= float.MaxValue)
+            return false;
+
+        worldPoint = best;
+        return true;
+    }
+
+    /// <summary>
+    /// Tracé (XZ) vs lot « maison » : par défaut (<see cref="allowFreeDrawInsideDesignatedHouseFootprints"/> désactivé)
+    /// tout point dans l’empreinte est refusé ; sinon seuls les tracés qui traversent le contour (intérieur ↔ extérieur) le sont.
+    /// Maisons multi-sources : seule l’enveloppe extérieure compte si <see cref="WallBuildController.DesignatedHouseLotsUseOuterEnvelopeOnly"/> est actif.
+    /// </summary>
+    public bool StrokeIntersectsAnyDesignatedHouseFootprint(List<Vector3> points)
+    {
+        if (points == null || points.Count < 2)
+            return false;
+
+        WallBuildController bc = wallBuild != null ? wallBuild : FindFirstObjectByType<WallBuildController>();
+        if (bc == null)
+            return false;
+
+        CollectBundledHouseSourceWallsForFootprintTests(bc);
+
+        IReadOnlyList<WallObject> walls = bc.Walls;
+        for (int wi = 0; wi < walls.Count; wi++)
+        {
+            WallObject w = walls[wi];
+            if (ShouldSkipWallForHouseFootprintStrokeIteration(w, out WallEditShape edit))
+                continue;
+
+            if (StrokeCrossesDesignatedHouseFootprint(edit, points))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Même périmètres que <see cref="StrokeIntersectsAnyDesignatedHouseFootprint"/> : enveloppe seule si bundle + option contrôleur.
+    /// </summary>
+    bool IsWorldPointInsideAnyDesignatedHouseFootprintXZ(Vector3 world)
+    {
+        WallBuildController bc = wallBuild != null ? wallBuild : FindFirstObjectByType<WallBuildController>();
+        if (bc == null)
+            return false;
+
+        CollectBundledHouseSourceWallsForFootprintTests(bc);
+
+        IReadOnlyList<WallObject> walls = bc.Walls;
+        for (int wi = 0; wi < walls.Count; wi++)
+        {
+            WallObject w = walls[wi];
+            if (ShouldSkipWallForHouseFootprintStrokeIteration(w, out WallEditShape edit))
+                continue;
+
+            if (edit.ContainsWorldPointInClosedLotFootprintXZ(world, 0f))
+                return true;
+        }
+
+        return false;
+    }
+
+    bool StrokeCrossesDesignatedHouseFootprint(WallEditShape houseEdit, List<Vector3> pts)
+    {
+        _scratchHouseFootprintRingForStrokeTest.Clear();
+        if (!houseEdit.TryGetClosedLotFootprintRingXZ(_scratchHouseFootprintRingForStrokeTest) ||
+            _scratchHouseFootprintRingForStrokeTest.Count < 3)
+            return false;
+
+        int n = pts.Count;
+        int insideCount = 0;
+        for (int i = 0; i < n; i++)
+        {
+            if (houseEdit.ContainsWorldPointInClosedLotFootprintXZ(pts[i], 0f))
+                insideCount++;
+        }
+
+        if (!allowFreeDrawInsideDesignatedHouseFootprints)
+        {
+            if (insideCount > 0)
+                return true;
+        }
+        else
+        {
+            if (insideCount > 0 && insideCount < n)
+                return true;
+
+            if (insideCount == n)
+                return false;
+        }
+
+        for (int i = 0; i < n - 1; i++)
+        {
+            Vector2 a = new Vector2(pts[i].x, pts[i].z);
+            Vector2 b = new Vector2(pts[i + 1].x, pts[i + 1].z);
+            if ((a - b).sqrMagnitude < 1e-12f)
+                continue;
+
+            if (OpenSegmentCrossesPolygonEdgesXZ(a, b, _scratchHouseFootprintRingForStrokeTest))
+                return true;
+        }
+
+        return false;
+    }
+
+    static float Cross2xz(Vector2 u, Vector2 v) => u.x * v.y - u.y * v.x;
+
+    /// <summary>Intersection propre (non parallèle) segment-segment en XZ.</summary>
+    static bool SegmentsIntersectOpenXZ(Vector2 p, Vector2 p2, Vector2 q, Vector2 q2, float eps)
+    {
+        Vector2 r = p2 - p;
+        Vector2 s = q2 - q;
+        float rxs = Cross2xz(r, s);
+        if (Mathf.Abs(rxs) < eps)
+            return false;
+
+        Vector2 qp = q - p;
+        float t = Cross2xz(qp, s) / rxs;
+        float u = Cross2xz(qp, r) / rxs;
+        return t >= -eps && t <= 1f + eps && u >= -eps && u <= 1f + eps;
+    }
+
+    static bool OpenSegmentCrossesPolygonEdgesXZ(Vector2 a, Vector2 b, List<Vector2> ring)
+    {
+        int m = ring.Count;
+        if (m < 3)
+            return false;
+
+        const float eps = 1e-4f;
+        for (int i = 0; i < m; i++)
+        {
+            Vector2 c = ring[i];
+            Vector2 d = ring[(i + 1) % m];
+            if ((c - d).sqrMagnitude < 1e-12f)
+                continue;
+
+            if (SegmentsIntersectOpenXZ(a, b, c, d, eps))
+                return true;
+        }
+
         return false;
     }
 
@@ -892,6 +1456,44 @@ public class WallDrawInput : MonoBehaviour
     }
 
     /// <summary>
+    /// Aligné sur <see cref="WallBuildController.GetEffectiveBuildingScale"/> : agrandit le quadrillage gris (gizmo + overlay)
+    /// autour de <see cref="HierarchicalGridSettings.gridWorldCenterXZ"/> comme le rendu maillage du manager.
+    /// </summary>
+    float GridVisualScaleXZ()
+    {
+        if (wallBuild == null)
+            wallBuild = FindFirstObjectByType<WallBuildController>(FindObjectsInactive.Include);
+        return wallBuild != null ? Mathf.Max(0.01f, wallBuild.GetEffectiveBuildingScale()) : 1f;
+    }
+
+    static Vector3 ScaleGridDrawCornerXZ(Vector3 v, Vector2 originXZ, float s)
+    {
+        if (Mathf.Approximately(s, 1f))
+            return v;
+        return new Vector3(
+            originXZ.x + (v.x - originXZ.x) * s,
+            v.y,
+            originXZ.y + (v.z - originXZ.y) * s);
+    }
+
+    /// <summary>
+    /// Inverse de <see cref="ScaleGridDrawCornerXZ"/> : ramène un point monde vers l’espace où vit le quadtree / la maille feuille,
+    /// pour que le snap 9 points colle à la grille grise agrandie par le Building Scale.
+    /// </summary>
+    static Vector3 UnscaleGridCornerXZAboutOrigin(Vector3 v, Vector2 originXZ, float s)
+    {
+        if (Mathf.Approximately(s, 1f))
+            return v;
+        return new Vector3(
+            originXZ.x + (v.x - originXZ.x) / s,
+            v.y,
+            originXZ.y + (v.z - originXZ.y) / s);
+    }
+
+    /// <summary>Même facteur que la grille grise agrandie (<see cref="WallBuildController.GetEffectiveBuildingScale"/>).</summary>
+    public float BuildingScaledGridPlanMultiplierXZ => GridVisualScaleXZ();
+
+    /// <summary>
     /// Pour la fusion de lots : pas et origine de la grille hiérarchique (feuilles), si disponibles.
     /// </summary>
     public bool TryGetHierarchicalCellStepAndOrigin(out float cellStep, out Vector2 originXZ)
@@ -921,7 +1523,7 @@ public class WallDrawInput : MonoBehaviour
                 return false;
         }
 
-        cellStep = minCell;
+        cellStep = minCell * BuildingScaledGridPlanMultiplierXZ;
         originXZ = mgr.settings.gridWorldCenterXZ;
         return true;
     }
@@ -938,19 +1540,25 @@ public class WallDrawInput : MonoBehaviour
 
         float yOut = flattenYToZero ? 0f : world.y;
         float gy = mgr.settings.gridPlaneY;
-        Vector3 test = new Vector3(world.x, gy, world.z);
+        Vector2 O = mgr.settings.gridWorldCenterXZ;
+        float s = GridVisualScaleXZ();
+        Vector3 testWorld = new Vector3(world.x, gy, world.z);
+        Vector3 test = Mathf.Approximately(s, 1f)
+            ? testWorld
+            : UnscaleGridCornerXZAboutOrigin(testWorld, O, s);
 
         if (mgr.TryGetCellAtWorld(test, out HierarchicalGridNode cell))
         {
             Vector3 c = mgr.GetCellCenterWorld(cell);
-            return new Vector3(c.x, yOut, c.z);
+            Vector3 result = new Vector3(c.x, yOut, c.z);
+            return Mathf.Approximately(s, 1f) ? result : ScaleGridDrawCornerXZ(result, O, s);
         }
 
         IReadOnlyList<HierarchicalGridNode> leaves = mgr.LeafNodes;
         if (leaves == null || leaves.Count == 0)
             return world;
 
-        Vector2 p2 = new Vector2(world.x, world.z);
+        Vector2 p2 = new Vector2(test.x, test.z);
         float best = float.MaxValue;
         HierarchicalGridNode bestNode = null;
         for (int i = 0; i < leaves.Count; i++)
@@ -969,7 +1577,8 @@ public class WallDrawInput : MonoBehaviour
         if (bestNode != null)
         {
             Vector3 c = mgr.GetCellCenterWorld(bestNode);
-            return new Vector3(c.x, yOut, c.z);
+            Vector3 result = new Vector3(c.x, yOut, c.z);
+            return Mathf.Approximately(s, 1f) ? result : ScaleGridDrawCornerXZ(result, O, s);
         }
 
         return world;
@@ -1018,7 +1627,11 @@ public class WallDrawInput : MonoBehaviour
         if (mgr == null || mgr.settings == null)
             return world;
 
-        if (!TryResolveLeafForWorldSnap(mgr, world, out HierarchicalGridNode leaf) || leaf == null)
+        Vector2 O = mgr.settings.gridWorldCenterXZ;
+        float s = GridVisualScaleXZ();
+        Vector3 work = Mathf.Approximately(s, 1f) ? world : UnscaleGridCornerXZAboutOrigin(world, O, s);
+
+        if (!TryResolveLeafForWorldSnap(mgr, work, out HierarchicalGridNode leaf) || leaf == null)
             return world;
 
         float half = leaf.size * 0.5f;
@@ -1027,13 +1640,14 @@ public class WallDrawInput : MonoBehaviour
 
         float yOut = flattenYToZero ? 0f : world.y;
         Vector2 mn = leaf.Min;
-        float lx = world.x - mn.x;
-        float lz = world.z - mn.y;
+        float lx = work.x - mn.x;
+        float lz = work.z - mn.y;
         int ix = Mathf.Clamp(Mathf.RoundToInt(lx / half), 0, 2);
         int iz = Mathf.Clamp(Mathf.RoundToInt(lz / half), 0, 2);
         float qx = mn.x + ix * half;
         float qz = mn.y + iz * half;
-        return new Vector3(qx, yOut, qz);
+        Vector3 snappedLogical = new Vector3(qx, yOut, qz);
+        return Mathf.Approximately(s, 1f) ? snappedLogical : ScaleGridDrawCornerXZ(snappedLogical, O, s);
     }
 
     /// <summary>
@@ -1075,12 +1689,16 @@ public class WallDrawInput : MonoBehaviour
         if (mgr == null || mgr.settings == null)
             return world;
 
-        if (!TryResolveLeafForWorldSnap(mgr, world, out HierarchicalGridNode cell) || cell == null)
+        Vector2 O = mgr.settings.gridWorldCenterXZ;
+        float s = GridVisualScaleXZ();
+        Vector3 work = Mathf.Approximately(s, 1f) ? world : UnscaleGridCornerXZAboutOrigin(world, O, s);
+
+        if (!TryResolveLeafForWorldSnap(mgr, work, out HierarchicalGridNode cell) || cell == null)
             return world;
 
         Vector2 mn = cell.Min;
         Vector2 mx = cell.Max;
-        Vector2 p = new Vector2(world.x, world.z);
+        Vector2 p = new Vector2(work.x, work.z);
         Vector2 c0 = new Vector2(mn.x, mn.y);
         Vector2 c1 = new Vector2(mx.x, mn.y);
         Vector2 c2 = new Vector2(mx.x, mx.y);
@@ -1094,7 +1712,8 @@ public class WallDrawInput : MonoBehaviour
         TryCorner(p, c3, ref bestC, ref bestD);
 
         float yOut = flattenYToZero ? 0f : world.y;
-        return new Vector3(bestC.x, yOut, bestC.y);
+        Vector3 snappedLogical = new Vector3(bestC.x, yOut, bestC.y);
+        return Mathf.Approximately(s, 1f) ? snappedLogical : ScaleGridDrawCornerXZ(snappedLogical, O, s);
     }
 
     static void TryCorner(Vector2 p, Vector2 cand, ref Vector2 bestC, ref float bestD)
@@ -1130,7 +1749,7 @@ public class WallDrawInput : MonoBehaviour
         if (mgr == null || mgr.settings == null)
             return false;
 
-        step = Mathf.Max(0.01f, mgr.settings.minCellSize);
+        step = Mathf.Max(0.01f, mgr.settings.minCellSize) * BuildingScaledGridPlanMultiplierXZ;
         worldOriginXZ = mgr.settings.gridWorldCenterXZ;
         return true;
     }
@@ -1212,7 +1831,7 @@ public class WallDrawInput : MonoBehaviour
             return false;
 
         float minCell = Mathf.Max(0.01f, mgr.settings.minCellSize);
-        float tol = Mathf.Max(tolerance, minCell * 0.2f);
+        float tol = Mathf.Max(tolerance, minCell * 0.2f * Mathf.Max(1f, BuildingScaledGridPlanMultiplierXZ));
 
         for (int i = 0; i < points.Count; i++)
         {
@@ -1273,7 +1892,7 @@ public class WallDrawInput : MonoBehaviour
     /// If every sample stays within tolerance of the chord from first to last point, collapse to that segment
     /// so straight-line detection yields a true diagonal wall (two endpoints).
     /// </summary>
-    bool TryCollapseOpenStrokeToChordIfNearlyCollinear(List<Vector3> points)
+    bool TryCollapseOpenStrokeToChordIfNearlyCollinear(List<Vector3> points, bool afterLatticeSnap = false)
     {
         if (points == null || points.Count < 3)
             return false;
@@ -1294,6 +1913,9 @@ public class WallDrawInput : MonoBehaviour
 
         float spacing = GetActiveCapturePointSpacing();
         float tol = Mathf.Max(spacing * openStrokeChordDeviationGridMul, 0.06f);
+        if (afterLatticeSnap && enableGridSnap && snapToHierarchicalVisualGrid &&
+            TryGetMainGridLatticeStepXZ(out float gridStep, out _))
+            tol = Mathf.Max(tol, Mathf.Max(0.08f, gridStep * 0.4f));
 
         if (maxD > tol)
             return false;
@@ -1313,6 +1935,8 @@ public class WallDrawInput : MonoBehaviour
             return;
 
         ProjectPathToHierarchicalInPlace(points, closed);
+        if (!closed && points.Count >= 3)
+            TryCollapseOpenStrokeToChordIfNearlyCollinear(points, afterLatticeSnap: true);
     }
 
     void RefreshLine()
@@ -1362,6 +1986,26 @@ public class WallDrawInput : MonoBehaviour
                 return DetectedShapeKind.OpenArc;
             default:
                 return DetectedShapeKind.Free;
+        }
+    }
+
+    static void ScaleClosedAutofitPointsXZAboutCentroid(List<Vector3> path, float scaleXZ)
+    {
+        if (path == null || path.Count < 2 || Mathf.Approximately(scaleXZ, 1f))
+            return;
+
+        Vector3 sum = Vector3.zero;
+        int n = path.Count;
+        for (int i = 0; i < n; i++)
+            sum += path[i];
+        Vector3 c = sum / n;
+
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 p = path[i];
+            p.x = c.x + (p.x - c.x) * scaleXZ;
+            p.z = c.z + (p.z - c.z) * scaleXZ;
+            path[i] = p;
         }
     }
 
@@ -1527,6 +2171,10 @@ public class WallDrawInput : MonoBehaviour
             lastDetectedClosedShape = "Free";
             return false;
         }
+
+        if (!Mathf.Approximately(autoClosedPrimitiveUniformScale, 1f) &&
+            (best.name == "Rectangle" || best.name == "Square" || best.name == "Triangle" || best.name == "Circle"))
+            ScaleClosedAutofitPointsXZAboutCentroid(best.points, autoClosedPrimitiveUniformScale);
 
         fittedPoints = best.points;
         shapeName = best.name;

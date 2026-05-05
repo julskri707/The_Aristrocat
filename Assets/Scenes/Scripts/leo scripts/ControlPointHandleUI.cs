@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -9,6 +10,12 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     public Camera cam;
     public IControlPointProvider provider;
     public int index;
+
+    /// <summary>
+    /// Identifiant simple : cette poignée suit le contour « forme » murale (<see cref="WallEditShape"/>, etc.) ou un système hors forme (toit, catalogue…).
+    /// Source de vérité : <see cref="ControlPointShapeMembership.BelongsToWallShape"/>.
+    /// </summary>
+    public bool ControlPointBelongsToWallShape => ControlPointShapeMembership.BelongsToWallShape(provider);
 
     [Header("Drag")]
     public float groundY = 0f;
@@ -267,6 +274,12 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     bool _hasLayoutCache;
     bool _lastSelectedForTop;
 
+    /// <summary>
+    /// Poignée hors champ / derrière la caméra : on masque les graphiques sans <see cref="GameObject.SetActive"/>,
+    /// sinon <see cref="LateUpdate"/> ne tourne plus et l’overlay ne se réaffiche jamais au retour caméra.
+    /// </summary>
+    bool _sceneCameraLayoutSuppressed;
+
     void Awake()
     {
         CacheCanvas();
@@ -274,16 +287,66 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
     void Update()
     {
+        // Suppr / Échap / Ctrl+A : indépendant du layout écran — sinon les poignées hors champ ou masquées ne reçoivent jamais les touches.
+        if (cam != null && provider != null &&
+            provider == SelectedProvider &&
+            (SelectAllOnProvider || index == SelectedIndex))
+            HandleDeleteInput();
+
         if (cam == null || provider == null)
             return;
         if (SelectedProvider != provider || SelectedIndex != index)
             return;
+
+        float scroll = Input.GetAxis("Mouse ScrollWheel");
+
+        if (IsCatalogCentralDragHandle(provider, index))
+        {
+            if (Mathf.Abs(scroll) < 1e-6f)
+            {
+                s_RotateScrollUndoArmed = true;
+                return;
+            }
+
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+                return;
+
+            WallUndoManager undoCatalog = GetUndoManager();
+            if (undoCatalog != null && s_RotateScrollUndoArmed)
+            {
+                undoCatalog.RecordSnapshot("Rotate catalog object");
+                s_RotateScrollUndoArmed = false;
+            }
+
+            Component provComp = provider as Component;
+            if (provComp != null)
+            {
+                int steps = Mathf.RoundToInt(scroll * 10f);
+                if (steps == 0)
+                    steps = scroll > 0f ? 1 : -1;
+                if (provComp is PlacedWallOpeningManipulator wallOp)
+                {
+                    int n = Mathf.Max(1, Mathf.Abs(steps));
+                    for (int i = 0; i < n; i++)
+                        wallOp.ApplyCenterWheelQuarterTurn();
+                }
+                else
+                {
+                    provComp.transform.Rotate(0f, steps * 90f, 0f, Space.World);
+                    if (provComp is PlacedStairManipulator stair)
+                        stair.NotifyRotatedWithFootprintClamp();
+                }
+            }
+
+            BlockCameraZoomFromWallShapeScroll = true;
+            return;
+        }
+
         if (provider is not WallEditShape edit)
             return;
         if (!IsCenterLikeHandle(edit, index))
             return;
 
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) < 1e-6f)
         {
             s_RotateScrollUndoArmed = true;
@@ -430,6 +493,7 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     void OnEnable()
     {
         CacheCanvas();
+        _sceneCameraLayoutSuppressed = false;
     }
 
     void OnDisable()
@@ -483,6 +547,43 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         _rect.pivot = new Vector2(0.5f, 0.5f);
     }
 
+    void EnsureGraphicsCachedForCameraSuppress()
+    {
+        if (_graphics == null || _graphics.Length == 0)
+            _graphics = GetComponentsInChildren<Graphic>(true);
+        if (_spriteRenderers == null || _spriteRenderers.Length == 0)
+            _spriteRenderers = GetComponentsInChildren<SpriteRenderer>(true);
+    }
+
+    void SetSceneCameraLayoutSuppressed(bool suppressed)
+    {
+        if (_sceneCameraLayoutSuppressed == suppressed)
+            return;
+
+        _sceneCameraLayoutSuppressed = suppressed;
+        EnsureGraphicsCachedForCameraSuppress();
+
+        if (_graphics != null)
+        {
+            for (int i = 0; i < _graphics.Length; i++)
+            {
+                if (_graphics[i] == null)
+                    continue;
+                _graphics[i].enabled = !suppressed;
+                _graphics[i].raycastTarget = !suppressed;
+            }
+        }
+
+        if (_spriteRenderers != null)
+        {
+            for (int i = 0; i < _spriteRenderers.Length; i++)
+            {
+                if (_spriteRenderers[i] != null)
+                    _spriteRenderers[i].enabled = !suppressed;
+            }
+        }
+    }
+
     void LateUpdate()
     {
         if (cam == null || provider == null)
@@ -518,8 +619,13 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
             && (cam.transform.position - _lastCamPosForLayout).sqrMagnitude < 1e-10f
             && Quaternion.Angle(cam.transform.rotation, _lastCamRotForLayout) < 0.01f)
         {
+            if (_sceneCameraLayoutSuppressed)
+            {
+                SetSceneCameraLayoutSuppressed(true);
+                return;
+            }
+
             ApplySelectionColor();
-            HandleDeleteInput();
             bool selectedNow = provider != null &&
                                provider == SelectedProvider &&
                                (SelectAllOnProvider || index == SelectedIndex);
@@ -544,27 +650,24 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
 
         if (screen.z <= 0f)
         {
-            if (gameObject.activeSelf)
-                gameObject.SetActive(false);
-            _hasLayoutCache = false;
+            SetSceneCameraLayoutSuppressed(true);
             return;
         }
 
         Vector2 localPoint;
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, screen, _uiCamera, out localPoint))
         {
-            if (gameObject.activeSelf)
-                gameObject.SetActive(false);
-            _hasLayoutCache = false;
+            SetSceneCameraLayoutSuppressed(true);
             return;
         }
+
+        SetSceneCameraLayoutSuppressed(false);
 
         if (!gameObject.activeSelf)
             gameObject.SetActive(true);
 
         _rect.anchoredPosition = localPoint;
         ApplySelectionColor();
-        HandleDeleteInput();
 
         bool selected = provider != null &&
                         provider == SelectedProvider &&
@@ -935,12 +1038,24 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     {
         if (provider is HouseRoofControlPointProvider)
             return world;
+        if (provider is PlacedWallOpeningManipulator)
+            return world;
 
         WallDrawInput di = GetWallDrawInput();
         if (di == null || !di.enableGridSnap)
             return world;
 
         return di.SnapWorldPointForEditing(world);
+    }
+
+    /// <summary>
+    /// Poignée de déplacement « objet catalogue » : lit / prefabs sol (0) ; escalier (4).
+    /// </summary>
+    static bool IsCatalogCentralDragHandle(IControlPointProvider prov, int handleIndex)
+    {
+        return prov is CatalogPlacedObjectDraggable && handleIndex == 0
+               || prov is PlacedStairManipulator && handleIndex == 4
+               || prov is PlacedWallOpeningManipulator && handleIndex == 4;
     }
 
     /// <summary>
@@ -974,6 +1089,18 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         const float roofAmberB = 1f;
         const float roofAmberBG = 0.68f;
         const float roofAmberBB = 0.22f;
+
+        if (IsCatalogCentralDragHandle(provider, index))
+        {
+            Color baseGreen = new Color(0.22f, 0.78f, 0.34f, 1f);
+            Color selGreen = new Color(0.35f, 0.95f, 0.48f, 1f);
+            bool sel = provider != null &&
+                       provider == SelectedProvider &&
+                       (SelectAllOnProvider || index == SelectedIndex);
+            Color cCenter = sel ? selGreen : baseGreen;
+            ApplyColorToHandleGraphics(cCenter);
+            return;
+        }
 
         if (provider is HouseRoofControlPointProvider roofCp)
         {
@@ -1028,7 +1155,11 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
                         provider == SelectedProvider &&
                         (SelectAllOnProvider || index == SelectedIndex);
         Color c = selected ? selectedColor : normalColor;
+        ApplyColorToHandleGraphics(c);
+    }
 
+    void ApplyColorToHandleGraphics(Color c)
+    {
         if (_graphic != null)
             _graphic.color = c;
         if (_graphics != null)
@@ -1079,12 +1210,31 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         if (!SelectAllOnProvider && !isCurrentPoint)
             return;
 
-        if (!Input.GetKeyDown(KeyCode.Delete) && !Input.GetKeyDown(KeyCode.Backspace))
-            return;
+        // Poignées de mouvement (pivot global, milieux d’arête, milieux de mur orthogonal…) :
+        // Suppr = supprimer toute la forme (mur).
+        if (provider is WallEditShape moveEdit &&
+            !SelectAllOnProvider &&
+            moveEdit.IsNonDeletableMovementHandleIndex(index))
+        {
+            if (!TryReserveWallShapeDeleteHotkey())
+                return;
 
-        if (s_LastDeleteFrame == Time.frameCount)
+            WallUndoManager undoMove = GetUndoManager();
+            if (undoMove != null)
+                undoMove.RecordSnapshot("Delete Wall (Move Handle)");
+
+            bool removedWhole = TryDeleteWholeWall();
+            if (!removedWhole)
+                return;
+
+            ControlPointOverlayManager overlayMove = GetOverlayManager();
+            if (overlayMove != null)
+                overlayMove.RebuildOverlay();
             return;
-        s_LastDeleteFrame = Time.frameCount;
+        }
+
+        if (!TryReserveWallShapeDeleteHotkey())
+            return;
 
         bool removed = TryDeleteSelectedPoint();
         if (!removed)
@@ -1098,28 +1248,39 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
     private bool TryDeleteSelectedPoint()
     {
         WallUndoManager undo = GetUndoManager();
-        if (undo != null)
-            undo.RecordSnapshot(SelectAllOnProvider ? "Delete Wall (All Points)" : "Delete Handle");
 
+        // Ctrl+A / Ctrl+Q puis Suppr : suppression du mur entier (comportement d’origine).
         if (SelectAllOnProvider)
-            return TryDeleteWholeWall();
-
-        if (provider is WallEditShape editShape)
         {
-            if (IsCenterLikeHandle(editShape, index))
-                return TryDeleteWholeWall();
-
-            // Open freeform with only two handles (segment): removing one clears the whole wall.
-            if (editShape.shapeKind == WallEditShape.ShapeKind.Free &&
-                !editShape.IsClosedLoopPath &&
-                editShape.freeControlPoints != null &&
-                editShape.freeControlPoints.Count == 2)
-                return TryDeleteWholeWall();
-
-            return editShape.RemoveControlPointAt(index);
+            if (undo != null)
+                undo.RecordSnapshot("Delete Wall (All Points)");
+            return TryDeleteWholeWall();
         }
 
-        return false;
+        WallEditShape editShape = provider as WallEditShape;
+        if (editShape == null)
+            return false;
+
+        // Les formes analytiques (rectangle / triangle / ellipse / arc) gardent leurs poignées :
+        // seule une forme libre (points "normaux") peut supprimer un sommet individuellement.
+        if (editShape.shapeKind != WallEditShape.ShapeKind.Free)
+            return false;
+
+        // Mur ouvert réduit à un segment (2 points) : comme avant, une suppression enlève tout le mur.
+        if (editShape.shapeKind == WallEditShape.ShapeKind.Free &&
+            !editShape.IsClosedLoopPath &&
+            editShape.freeControlPoints != null &&
+            editShape.freeControlPoints.Count == 2)
+        {
+            if (undo != null)
+                undo.RecordSnapshot("Delete Handle");
+            return TryDeleteWholeWall();
+        }
+
+        // Demi-cercle (arc ouvert), polyline en S, sommets de contours fermés, etc. : un seul point.
+        if (undo != null)
+            undo.RecordSnapshot("Delete Handle");
+        return editShape.RemoveControlPointAt(index);
     }
 
     private bool TryDeleteWholeWall()
@@ -1129,12 +1290,51 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
             return false;
 
         WallObject wall = providerComponent.GetComponent<WallObject>();
+        if (wall == null && provider is WallEditShape wes && wes.wall != null)
+            wall = wes.wall;
+
+        // Enveloppe multi-lots : supprimer un seul lot source (forme focalisée), pas tout l’ensemble.
+        wall = ResolveSingleShapeDeleteTarget(wall);
+
+        return DestroyWholeWallGameObject(wall);
+    }
+
+    static WallObject ResolveSingleShapeDeleteTarget(WallObject wall)
+    {
+        if (wall == null)
+            return null;
+
+        HouseExteriorEnvelopeSources env = wall.GetComponent<HouseExteriorEnvelopeSources>();
+        if (env == null || !env.HasMultipleSourceLots || !env.UseIndependentSourceHandlesForHouseEnvelope)
+            return wall;
+
+        ControlPointOverlayManager overlay = GetOverlayManager();
+        int focused = overlay != null ? overlay.IndependentHouseEnvelopeFocusedSourceLotIndex : -1;
+        IReadOnlyList<GameObject> src = env.SourceLotObjects;
+        if (src == null || focused < 0 || focused >= src.Count)
+            return wall;
+
+        GameObject go = src[focused];
+        if (go == null)
+            return wall;
+
+        WallObject srcWall = go.GetComponent<WallObject>();
+        return srcWall != null ? srcWall : wall;
+    }
+
+    /// <summary>
+    /// Détruit le GameObject du mur et nettoie sélection / pivot actif (sans snapshot undo — l’appelant enregistre si besoin).
+    /// </summary>
+    public static bool DestroyWholeWallGameObject(WallObject wall)
+    {
         if (wall == null)
             return false;
 
         WallBuildController build = GetBuildController();
         if (build != null)
             build.UnregisterWall(wall);
+
+        MergedLotShapePivotHandleUI.InvalidateActivePivotIfTargetsWall(wall);
 
         ControlPointOverlayManager overlay = GetOverlayManager();
         if (overlay != null)
@@ -1149,6 +1349,19 @@ public class ControlPointHandleUI : MonoBehaviour, IPointerDownHandler, IDragHan
         else
             DestroyImmediate(wall.gameObject);
 
+        return true;
+    }
+
+    /// <summary>
+    /// Suppr / Retour arrière : une seule action par frame (sommet, pivot violet, Ctrl+A…).
+    /// </summary>
+    public static bool TryReserveWallShapeDeleteHotkey()
+    {
+        if (!Input.GetKeyDown(KeyCode.Delete) && !Input.GetKeyDown(KeyCode.Backspace))
+            return false;
+        if (s_LastDeleteFrame == Time.frameCount)
+            return false;
+        s_LastDeleteFrame = Time.frameCount;
         return true;
     }
 }

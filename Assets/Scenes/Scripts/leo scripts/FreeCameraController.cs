@@ -1,9 +1,15 @@
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class FreeCameraController : MonoBehaviour
 {
     [Header("Movement")]
-    public float moveSpeed = 15f;
+    public float moveSpeed = 60f;
     public float fastMultiplier = 2.5f;
 
     [Header("Look")]
@@ -12,9 +18,10 @@ public class FreeCameraController : MonoBehaviour
     public float pitchMax = 80f;
 
     [Header("Zoom")]
-    public float zoomSpeed = 100f;
+    public float zoomSpeed = 400f;
 
     [Header("Keys")]
+    public KeyCode fullscreenKey = KeyCode.F11;
     public KeyCode rotateMouseButton = KeyCode.Mouse1; // clic droit
     public KeyCode ascendKey = KeyCode.Space;          // monter
     public KeyCode descendKey = KeyCode.LeftShift;     // descendre (LeftShift ou RightShift)
@@ -32,9 +39,52 @@ public class FreeCameraController : MonoBehaviour
 
     void Update()
     {
+        if (WasFullscreenTogglePressed())
+            ToggleFullscreen();
+
         HandleLook();
         HandleMove();
     }
+
+    bool WasFullscreenTogglePressed()
+    {
+        if (Input.GetKeyDown(fullscreenKey))
+            return true;
+
+#if ENABLE_INPUT_SYSTEM
+        Keyboard kb = Keyboard.current;
+        if (kb != null && fullscreenKey == KeyCode.F11 && kb.f11Key.wasPressedThisFrame)
+            return true;
+#endif
+        return false;
+    }
+
+    void ToggleFullscreen()
+    {
+#if UNITY_EDITOR
+        // Dans l’éditeur, Screen.fullScreen n’affecte pas la vue Game : on maximise cette fenêtre (effet « plein écran » pratique).
+        ToggleEditorGameViewMaximized();
+#else
+        bool next = !Screen.fullScreen;
+        Screen.fullScreenMode = next ? FullScreenMode.FullScreenWindow : FullScreenMode.Windowed;
+        Screen.fullScreen = next;
+#endif
+    }
+
+#if UNITY_EDITOR
+    static void ToggleEditorGameViewMaximized()
+    {
+        System.Type gameViewType = typeof(Editor).Assembly.GetType("UnityEditor.GameView");
+        if (gameViewType == null)
+            return;
+
+        EditorWindow gameView = EditorWindow.GetWindow(gameViewType, false, null, false);
+        if (gameView == null)
+            return;
+
+        gameView.maximized = !gameView.maximized;
+    }
+#endif
 
     void LateUpdate()
     {

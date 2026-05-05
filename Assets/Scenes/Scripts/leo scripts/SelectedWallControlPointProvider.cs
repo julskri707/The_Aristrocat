@@ -12,6 +12,9 @@ public class SelectedWallControlPointProvider : MonoBehaviour, IControlPointProv
             buildController = FindFirstObjectByType<WallBuildController>();
     }
 
+    /// <summary>Provider réellement utilisé pour les poignées (même logique que <see cref="WallBuildController.ResolveBestProvider"/>).</summary>
+    public IControlPointProvider ActiveWallProvider => CurrentProviderComponent as IControlPointProvider;
+
     Component CurrentProviderComponent
     {
         get

@@ -38,6 +38,10 @@ public class WallBuildController : MonoBehaviour
     public WallStyleDefinition defaultWallStyle;
 
     [Header("Building Scale Override")]
+    [Tooltip(
+        "Si activé : applique le multiplicateur aux hauteurs / épaisseurs des murs et à l’échelle du habillage (pierres, etc.). " +
+        "Les chemins XZ proviennent déjà du monde Unity (tracé souris, collage, fusion) : ils ne sont pas re-mis à l’échelle, " +
+        "pour rester alignés avec le dessin et éviter un mur « doublé » ou décalé par rapport au trait.")]
     [SerializeField] private bool enableBuildingScaleOverride = false;
     [SerializeField, Min(0.01f)] private float buildingScaleMultiplier = 2f;
     [SerializeField] private Transform scaleReferenceObject;
@@ -80,6 +84,12 @@ public class WallBuildController : MonoBehaviour
     [SerializeField, Min(0.0002f)] float flushMergeMaxGapAbsoluteM = 0.005f;
     [Tooltip("Maisons adjacentes: conserve les lots sources (cachés) et met à jour un mur enveloppe extérieur unique au lieu de fusionner destructivement les lots.")]
     [SerializeField] bool designatedHouseLotsUseOuterEnvelopeOnly = true;
+
+    /// <summary>
+    /// Aligné sur <see cref="designatedHouseLotsUseOuterEnvelopeOnly"/> : tests de tracé / sol qui doivent ignorer les
+    /// contours des lots sources rattachés à une enveloppe (voir <see cref="HouseExteriorEnvelopeSources"/>).
+    /// </summary>
+    public bool DesignatedHouseLotsUseOuterEnvelopeOnly => designatedHouseLotsUseOuterEnvelopeOnly;
     [Tooltip("Si activé: pendant le drag d'une source d'enveloppe, dès qu'elle n'est plus connectée au groupe, elle est détachée immédiatement en lot standalone (au lieu d'attendre le PointerUp).")]
     [SerializeField] bool detachDisconnectedSourceImmediatelyDuringDrag = true;
     [Tooltip("Obsolète/conservé pour compatibilité scène : la fusion auto maison est toujours active côté code et ne concerne que les lots maison.")]
@@ -107,16 +117,45 @@ public class WallBuildController : MonoBehaviour
     [Header("Menu lot maison — Ajouter un étage")]
     [Tooltip("Hauteur (m) ajoutée au périmètre du lot et aux murs intérieurs rattachés à chaque « Ajouter un étage » (sans dupliquer le contour).")]
     [SerializeField, Min(0.1f)] float addFloorHeightMeters = 2.5f;
-    [Header("Toit — réglages rapides (mur sélectionné)")]
+    [Header("Toit — réglages rapides (mur sélectionné avec toit)")]
+    [Tooltip("Molette + Alt : hauteur du toit. Molette + Alt + Maj : surélévation de la base au-dessus du mur (0–2,5 m). Molette + Maj : débord. Molette + Ctrl : arrondi (active le profil dôme).")]
     [SerializeField, Min(0.01f)] float roofHeightScrollStep = 0.25f;
     [SerializeField, Min(0.005f)] float roofOverhangScrollStep = 0.05f;
     [SerializeField, Min(0.01f)] float roofRoundnessScrollStep = 0.08f;
+    [SerializeField, Min(0.01f)] float roofSurElevationAboveWallScrollStep = 0.05f;
     [Header("Toit — profil cladding (Add Roof)")]
     [Tooltip("Transmis au HouseRoofSystem ajouté par « Add Roof » (runtime / générateur cladding si profils vides).")]
     [SerializeField] RoofCladdingProfile defaultRoofCladdingProfile;
     [Header("Perf — drag interactif maisons multi-etages")]
     [Tooltip("Intervalle mini (s) entre refresh cladding interactifs forcés pendant le drag d'une source d'enveloppe.")]
     [SerializeField, Min(0.01f)] float interactiveEnvelopeCladdingRefreshInterval = 0.08f;
+
+    WallDrawInput _subscribedDrawInputForCommittedEvents;
+
+    /// <summary>
+    /// <see cref="WallDrawInput.OnShapeCommittedDetailed"/> est multicast : plusieurs <see cref="WallBuildController"/>
+    /// sur la même scène référençant le même tracé ajoutent chacun <see cref="HandleShapeCommittedDetailed"/> → deux murs au même XZ.
+    /// </summary>
+    static void TeardownOtherControllersSubscribedToDrawCommits(WallDrawInput input, WallBuildController except)
+    {
+        if (input == null || except == null)
+            return;
+
+        WallBuildController[] all = FindObjectsByType<WallBuildController>(FindObjectsSortMode.None);
+        for (int i = 0; i < all.Length; i++)
+        {
+            WallBuildController w = all[i];
+            if (w == null || w == except)
+                continue;
+            if (w._subscribedDrawInputForCommittedEvents != input)
+                continue;
+
+            Debug.LogWarning(
+                $"[WallBuildController] Plusieurs contrôleurs écoutaient le même WallDrawInput — désabonnement de '{w.gameObject.name}' pour éviter les murs doublons.",
+                w);
+            w.TeardownDrawInputCommittedSubscription();
+        }
+    }
 
     private readonly List<WallObject> _walls = new List<WallObject>();
     readonly List<WallObject> _wallGatherScratch = new List<WallObject>(32);
@@ -181,71 +220,6 @@ public class WallBuildController : MonoBehaviour
         {
             WallCladdingGenerator.SetGlobalRebuildSuspended(false);
         }
-    }
-
-    private List<Vector3> ApplyBuildingScaleToPathIfNeeded(List<Vector3> path)
-    {
-        if (path == null)
-            return null;
-
-        float multiplier = BuildingScale;
-        if (Mathf.Approximately(multiplier, 1f))
-            return new List<Vector3>(path);
-
-        Bounds originalBounds = BuildPathBounds(path);
-        Vector2 centerXZ = ComputePathCenterXZ(path);
-        var scaled = new List<Vector3>(path.Count);
-        for (int i = 0; i < path.Count; i++)
-        {
-            Vector3 p = path[i];
-            Vector2 offsetXZ = new Vector2(p.x - centerXZ.x, p.z - centerXZ.y);
-            scaled.Add(new Vector3(
-                centerXZ.x + offsetXZ.x * multiplier,
-                p.y,
-                centerXZ.y + offsetXZ.y * multiplier));
-        }
-
-        Bounds scaledBounds = BuildPathBounds(scaled);
-        Debug.Log($"[BuildingScale] effectiveScale={multiplier:F3}");
-        Debug.Log("[BuildingScale] path scaled");
-        Debug.Log($"[BuildingScale] originalBounds={FormatBounds(originalBounds)}");
-        Debug.Log($"[BuildingScale] scaledBounds={FormatBounds(scaledBounds)}");
-        return scaled;
-    }
-
-    static Vector2 ComputePathCenterXZ(IReadOnlyList<Vector3> path)
-    {
-        if (path == null || path.Count == 0)
-            return Vector2.zero;
-
-        int n = path.Count;
-        if (n > 1 && Vector3.Distance(path[0], path[n - 1]) < 0.0001f)
-            n--;
-        if (n <= 0)
-            return Vector2.zero;
-
-        double sx = 0.0;
-        double sz = 0.0;
-        for (int i = 0; i < n; i++)
-        {
-            sx += path[i].x;
-            sz += path[i].z;
-        }
-
-        float inv = 1f / n;
-        return new Vector2((float)(sx * inv), (float)(sz * inv));
-    }
-
-    static Bounds BuildPathBounds(IReadOnlyList<Vector3> path)
-    {
-        if (path == null || path.Count == 0)
-            return new Bounds(Vector3.zero, Vector3.zero);
-
-        Bounds b = new Bounds(path[0], Vector3.zero);
-        for (int i = 1; i < path.Count; i++)
-            b.Encapsulate(path[i]);
-
-        return b;
     }
 
     void LogScaleDiagnostic(WallObject generatedWall, string context)
@@ -637,6 +611,55 @@ public class WallBuildController : MonoBehaviour
 
         if (undoManager == null)
             undoManager = FindFirstObjectByType<WallUndoManager>();
+
+        EnsureDrawInputBound();
+    }
+
+    /// <summary>
+    /// Force le même <see cref="WallDrawInput"/> que l’UI « Wall draw » (presets cercle/carré/triangle) pour que le centre écran et le snap utilisent la bonne référence.
+    /// Ré-abonne les événements de commit si nécessaire.
+    /// </summary>
+    public void BindWallDrawInput(WallDrawInput input)
+    {
+        drawInput = input;
+        SyncDrawInputCommittedSubscription();
+    }
+
+    void EnsureDrawInputBound()
+    {
+        if (drawInput == null)
+            drawInput = FindFirstObjectByType<WallDrawInput>(FindObjectsInactive.Include);
+        SyncDrawInputCommittedSubscription();
+    }
+
+    void SyncDrawInputCommittedSubscription()
+    {
+        if (!isActiveAndEnabled)
+            return;
+        if (drawInput == _subscribedDrawInputForCommittedEvents)
+            return;
+
+        if (drawInput != null)
+            TeardownOtherControllersSubscribedToDrawCommits(drawInput, this);
+
+        if (_subscribedDrawInputForCommittedEvents != null)
+        {
+            _subscribedDrawInputForCommittedEvents.OnShapeCommittedDetailed -= HandleShapeCommittedDetailed;
+            _subscribedDrawInputForCommittedEvents = null;
+        }
+
+        _subscribedDrawInputForCommittedEvents = drawInput;
+        if (_subscribedDrawInputForCommittedEvents != null)
+            _subscribedDrawInputForCommittedEvents.OnShapeCommittedDetailed += HandleShapeCommittedDetailed;
+    }
+
+    void TeardownDrawInputCommittedSubscription()
+    {
+        if (_subscribedDrawInputForCommittedEvents != null)
+        {
+            _subscribedDrawInputForCommittedEvents.OnShapeCommittedDetailed -= HandleShapeCommittedDetailed;
+            _subscribedDrawInputForCommittedEvents = null;
+        }
     }
 
     IEnumerator Start()
@@ -648,14 +671,12 @@ public class WallBuildController : MonoBehaviour
 
     void OnEnable()
     {
-        if (drawInput != null)
-            drawInput.OnShapeCommittedDetailed += HandleShapeCommittedDetailed;
+        EnsureDrawInputBound();
     }
 
     void OnDisable()
     {
-        if (drawInput != null)
-            drawInput.OnShapeCommittedDetailed -= HandleShapeCommittedDetailed;
+        TeardownDrawInputCommittedSubscription();
     }
 
     void Update()
@@ -749,7 +770,9 @@ public class WallBuildController : MonoBehaviour
         bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
         bool alt = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
 
-        if (alt)
+        if (alt && shift && !ctrl)
+            roof.AdjustYOffsetAboveWallTop(scroll * ScaleBuildingMeters(roofSurElevationAboveWallScrollStep) * 10f);
+        else if (alt && !shift)
             roof.AdjustHeight(scroll * ScaleBuildingMeters(roofHeightScrollStep) * 10f);
         else if (ctrl)
             roof.AdjustRoundness(scroll * roofRoundnessScrollStep * 10f);
@@ -805,7 +828,10 @@ public class WallBuildController : MonoBehaviour
         roof.roofHeightMeters = oldHeight * scale;
         roof.overhangMeters = oldOverhang * scale;
         roof.roofThicknessMeters = oldThickness * scale;
-        roof.yOffsetAboveWallTop = oldYOffset * scale;
+        roof.yOffsetAboveWallTop = Mathf.Clamp(
+            oldYOffset * scale,
+            0f,
+            HouseRoofSystem.MaxYOffsetAboveWallTopMeters);
         roof.RebuildNow();
 
         Debug.Log($"[BuildingScale] roof values scaled height {oldHeight:F3}->{roof.roofHeightMeters:F3} overhang {oldOverhang:F3}->{roof.overhangMeters:F3} thickness {oldThickness:F3}->{roof.roofThicknessMeters:F3}");
@@ -1092,6 +1118,53 @@ public class WallBuildController : MonoBehaviour
             overlay = FindFirstObjectByType<ControlPointOverlayManager>(FindObjectsInactive.Include);
         if (overlay != null)
             overlay.RebuildOverlay();
+    }
+
+    /// <summary>
+    /// Quand le toit est resté sur un lot source et que le contour visible est l'enveloppe, les pignons lisent un mesh
+    /// de faîtage trop petit (ancienne empreinte). Transfère les réglages de génération vers un toit sur le mur enveloppe.
+    /// </summary>
+    void EnsureCanonicalRoofOnHouseEnvelope(WallObject envelopeWall)
+    {
+        if (envelopeWall == null)
+            return;
+
+        HouseExteriorEnvelopeSources meta = envelopeWall.GetComponent<HouseExteriorEnvelopeSources>();
+        if (meta == null || meta.SourceLotObjects == null || meta.SourceLotObjects.Count == 0)
+            return;
+
+        if (envelopeWall.GetComponent<HouseRoofSystem>() != null)
+            return;
+
+        HouseRoofSystem donor = null;
+        for (int i = 0; i < meta.SourceLotObjects.Count; i++)
+        {
+            GameObject go = meta.SourceLotObjects[i];
+            if (go == null)
+                continue;
+            WallObject sw = go.GetComponent<WallObject>();
+            if (sw == null)
+                continue;
+            donor = sw.GetComponent<HouseRoofSystem>();
+            if (donor != null)
+                break;
+        }
+
+        if (donor == null)
+            return;
+
+        HouseRoofSystem created = envelopeWall.gameObject.AddComponent<HouseRoofSystem>();
+        created.CopyShallowGenerationSettingsFrom(donor);
+        created.RebuildNow();
+
+        HouseGableWallSystem gSys = envelopeWall.GetComponent<HouseGableWallSystem>();
+        if (gSys == null)
+        {
+            gSys = envelopeWall.gameObject.AddComponent<HouseGableWallSystem>();
+            gSys.EnsureRoot();
+        }
+
+        gSys.RebuildNow();
     }
 
     void ScheduleHouseEnvelopeFloorConsistencyRefresh(WallObject envelopeWall)
@@ -2197,7 +2270,6 @@ public class WallBuildController : MonoBehaviour
             Vector3 p = _clipboardPath[i];
             pasted.Add(new Vector3(p.x + ox, p.y, p.z + oz));
         }
-        pasted = ApplyBuildingScaleToPathIfNeeded(pasted);
 
         WallObject wall = Instantiate(wallPrefab);
         wall.transform.position = Vector3.zero;
@@ -2325,19 +2397,19 @@ public class WallBuildController : MonoBehaviour
         if (wallPrefab == null || points == null || points.Count < 2)
             return null;
 
-        List<Vector3> scaledPoints = ApplyBuildingScaleToPathIfNeeded(points);
+        var pathWorldXZ = new List<Vector3>(points);
 
         WallObject wall = Instantiate(wallPrefab);
         wall.transform.position = Vector3.zero;
         ApplyBuildingScaleToNewWallDimensions(wall);
-        wall.SetPath(scaledPoints);
+        wall.SetPath(pathWorldXZ);
 
         WallEditShape editShape = wall.GetComponent<WallEditShape>();
         if (editShape == null)
             editShape = wall.gameObject.AddComponent<WallEditShape>();
 
         editShape.wall = wall;
-        editShape.InitFromDetectedPath(scaledPoints, detectedKind);
+        editShape.InitFromDetectedPath(pathWorldXZ, detectedKind);
 
         var workingPath = new List<Vector3>(wall.Points);
         if (drawInput != null)
@@ -2495,6 +2567,9 @@ public class WallBuildController : MonoBehaviour
         if (wallPrefab == null || points == null || points.Count < 2)
             return;
 
+        if (drawInput != null && drawInput.StrokeIntersectsAnyDesignatedHouseFootprint(points))
+            return;
+
         if (undoManager == null)
             undoManager = FindFirstObjectByType<WallUndoManager>();
         if (undoManager != null)
@@ -2513,6 +2588,7 @@ public class WallBuildController : MonoBehaviour
 
     Vector3 ResolveUiPresetSpawnCenterWorld()
     {
+        EnsureDrawInputBound();
         if (drawInput == null)
             return Vector3.zero;
 
@@ -2636,11 +2712,11 @@ public class WallBuildController : MonoBehaviour
     }
 
     /// <summary>Pan « Wall draw » : crée un cercle au centre de l’écran (projection sol).</summary>
-    public void SpawnUiPresetCircle(float radiusMeters = 2f) =>
+    public void SpawnUiPresetCircle(float radiusMeters = 10f) =>
         SpawnUiPresetCircleAtWorldCenter(ResolveUiPresetSpawnCenterWorld(), radiusMeters);
 
     /// <summary>Cercle au centre XZ d’un lot fermé (menu lot / pivot), même logique de fusion que <see cref="SpawnUiPresetCircle"/>.</summary>
-    public void SpawnUiPresetCircleAtReferenceLotCenter(WallObject referenceLot, float radiusMeters = 2f)
+    public void SpawnUiPresetCircleAtReferenceLotCenter(WallObject referenceLot, float radiusMeters = 10f)
     {
         if (referenceLot == null)
             return;
@@ -2648,6 +2724,7 @@ public class WallBuildController : MonoBehaviour
         if (ed == null || !ed.TryGetHouseLotSpawnCenterWorld(out Vector3 c))
             return;
 
+        EnsureDrawInputBound();
         if (drawInput == null || wallPrefab == null)
             return;
 
@@ -2666,6 +2743,7 @@ public class WallBuildController : MonoBehaviour
 
     void SpawnUiPresetCircleAtWorldCenter(Vector3 centerWorld, float radiusMeters)
     {
+        EnsureDrawInputBound();
         if (drawInput == null || wallPrefab == null)
             return;
 
@@ -2680,8 +2758,9 @@ public class WallBuildController : MonoBehaviour
     }
 
     /// <summary>Pan « Wall draw » : crée un carré au centre de l’écran.</summary>
-    public void SpawnUiPresetSquare(float sideLengthMeters = 3f)
+    public void SpawnUiPresetSquare(float sideLengthMeters = 10f)
     {
+        EnsureDrawInputBound();
         if (drawInput == null || wallPrefab == null)
             return;
 
@@ -2697,11 +2776,11 @@ public class WallBuildController : MonoBehaviour
     }
 
     /// <summary>Pan « Wall draw » : crée un triangle équilatéral au centre de l’écran.</summary>
-    public void SpawnUiPresetTriangle(float sideLengthMeters = 3f) =>
+    public void SpawnUiPresetTriangle(float sideLengthMeters = 10f) =>
         SpawnUiPresetTriangleAtWorldCenter(ResolveUiPresetSpawnCenterWorld(), sideLengthMeters);
 
     /// <summary>Triangle équilatéral au centre XZ d’un lot fermé (menu lot / pivot).</summary>
-    public void SpawnUiPresetTriangleAtReferenceLotCenter(WallObject referenceLot, float sideLengthMeters = 3f)
+    public void SpawnUiPresetTriangleAtReferenceLotCenter(WallObject referenceLot, float sideLengthMeters = 10f)
     {
         if (referenceLot == null)
             return;
@@ -2709,6 +2788,7 @@ public class WallBuildController : MonoBehaviour
         if (ed == null || !ed.TryGetHouseLotSpawnCenterWorld(out Vector3 c))
             return;
 
+        EnsureDrawInputBound();
         if (drawInput == null || wallPrefab == null)
             return;
 
@@ -2727,6 +2807,7 @@ public class WallBuildController : MonoBehaviour
 
     void SpawnUiPresetTriangleAtWorldCenter(Vector3 centerWorld, float sideLengthMeters)
     {
+        EnsureDrawInputBound();
         if (drawInput == null || wallPrefab == null)
             return;
 
@@ -2743,7 +2824,7 @@ public class WallBuildController : MonoBehaviour
     /// <summary>
     /// Carré centré sur un lot (enveloppe multi-plans, lot source, rectangle, triangle, ellipse…), avec fusion comme les autres presets.
     /// </summary>
-    public void SpawnUiPresetSquareAtReferenceLotCenter(WallObject referenceLot, float sideLengthMeters = 3f)
+    public void SpawnUiPresetSquareAtReferenceLotCenter(WallObject referenceLot, float sideLengthMeters = 10f)
     {
         if (referenceLot == null)
             return;
@@ -2751,6 +2832,7 @@ public class WallBuildController : MonoBehaviour
         if (ed == null || !ed.TryGetHouseLotSpawnCenterWorld(out Vector3 c))
             return;
 
+        EnsureDrawInputBound();
         if (drawInput == null || wallPrefab == null)
             return;
 
@@ -3179,6 +3261,8 @@ public class WallBuildController : MonoBehaviour
         }
         else
             TrySyncBundledShellHeightsForEnvelopeInteractivePreview(envelopeWall, preferSelectSourceWallAfterSplit);
+
+        EnsureCanonicalRoofOnHouseEnvelope(envelopeWall);
 
         if (refreshControlPointOverlay && overlay != null)
             overlay.RebuildOverlay();
@@ -4658,6 +4742,8 @@ public class WallBuildController : MonoBehaviour
                 }
             }
 
+            EnsureCanonicalRoofOnHouseEnvelope(envelopeWall);
+
             EnsureWallStoneCladdingEnabled(envelopeWall);
             StartCoroutine(CoRefreshCladdingAfterLotMerge(envelopeWall));
             StartCoroutine(CoDeferredParquetAfterOverlapMerge(envelopeWall, parquetMat, parquetUv, parquetY));
@@ -5799,6 +5885,8 @@ public class WallBuildController : MonoBehaviour
         if (mgr != null && mgr.settings != null)
         {
             cellStep = Mathf.Max(0.01f, mgr.settings.minCellSize);
+            if (drawInput != null)
+                cellStep *= drawInput.BuildingScaledGridPlanMultiplierXZ;
             gridOriginXZ = mgr.settings.gridWorldCenterXZ;
             return true;
         }
@@ -5942,6 +6030,10 @@ public class WallBuildController : MonoBehaviour
         ForceSelectWall(wall);
     }
 
+    /// <summary>
+    /// Détermine quel composant fournit les poignées pour un mur (priorité <see cref="WallEditShape"/>, puis <see cref="WallSelectable"/>, puis premier <see cref="IControlPointProvider"/>).
+    /// Pour classifier ces points : <see cref="ControlPointShapeMembership.BelongsToWallShape"/>.
+    /// </summary>
     MonoBehaviour ResolveBestProvider(WallObject wall)
     {
         if (wall == null)
@@ -6035,6 +6127,26 @@ public class WallBuildController : MonoBehaviour
             else
                 overlay.ClearTarget();
         }
+    }
+
+    /// <summary>
+    /// Sélection d’un objet hors mur (ex. escalier catalogue) : overlay de poignées sans mur sélectionné.
+    /// </summary>
+    public void ForceSelectOverlayOnly(MonoBehaviour providerBehaviour)
+    {
+        if (providerBehaviour == null || !(providerBehaviour is IControlPointProvider))
+        {
+            ForceSelectWall(null);
+            return;
+        }
+
+        SelectedWall = null;
+
+        if (overlay == null)
+            overlay = FindFirstObjectByType<ControlPointOverlayManager>(FindObjectsInactive.Include);
+
+        if (overlay != null)
+            overlay.SetTarget(providerBehaviour, -1);
     }
 
     bool TryResolveIndependentEnvelopeSelectionFromBundledSource(

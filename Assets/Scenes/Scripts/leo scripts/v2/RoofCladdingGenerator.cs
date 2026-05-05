@@ -54,6 +54,19 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         public bool hasSecondNormal;
     }
 
+    /// <summary>Arête intérieure (hip / noue) projetée dans le repère UV du triangle pour décaler le clipping des tuiles.</summary>
+    readonly struct CreaseUvCut
+    {
+        public readonly Vector2 a;
+        public readonly Vector2 b;
+
+        public CreaseUvCut(Vector2 a, Vector2 b)
+        {
+            this.a = a;
+            this.b = b;
+        }
+    }
+
     [Header("Profile")]
     [SerializeField] private RoofCladdingProfile defaultProfile;
     [SerializeField] private bool autoRegenerate = true;
@@ -99,13 +112,40 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
     [Tooltip("Logs [RoofTileZFightFix] une fois par rebuild.")]
     [SerializeField] private bool logRoofTileZFightFix;
 
-    [Header("Finitions d'arêtes")]
+    [Header("Jonctions entre pans (hip) — tuiles")]
+    [Tooltip("Éloigne les tuiles des arêtes noue/hip (clipping UV). Utile surtout si « Generate crease caps » est désactivé ; sinon laisser la combinaison par défaut (inset coupé quand les caps sont actifs).")]
+    [SerializeField, Min(0f)] private float creaseAdjacentTileInsetMeters = 0.055f;
+
+    [Tooltip("Multiplier l’inset par l’échelle bâtiment (WallBuildController).")]
+    [SerializeField] private bool scaleCreaseInsetWithBuildingScale = true;
+
+    [Tooltip("Si les caps de noue sont activés : ne pas appliquer l’inset tuiles (les caps couvrent la jonction ; évite bande claire sous le couvre-joint).")]
+    [SerializeField] private bool suppressTileCreaseInsetWhenCreaseCapsEnabled = true;
+
+    [Header("Finitions d'arêtes — couvre-joint (covent)")]
+    [Tooltip("Bandes 3D le long des cassures entre deux pans (noue, joint faîtage / extension). Réactivé par défaut.")]
     [SerializeField] private bool generateCreaseCaps = true;
     [SerializeField, Range(2f, 45f)] private float creaseCapMinAngleDeg = 8f;
-    [SerializeField, Range(0.90f, 0.999f)] private float capCoplanarDotThreshold = 0.98f;
+
+    [Tooltip("Au-delà de ce produit scalaire des normales, l’arête est traitée comme quasi coplanaire et ne reçoit pas de cap. Valeur plus haute = plus de caps (ex. entre faîtage central et pan étendu).")]
+    [SerializeField, Range(0.90f, 0.999f)] private float capCoplanarDotThreshold = 0.994f;
     [SerializeField, Min(0.02f)] private float creaseCapWidthMeters = 0.18f;
     [SerializeField, Min(0.002f)] private float creaseCapSurfaceProtrusionMeters = 0.035f;
     [SerializeField, Min(0f)] private float creaseCapEmbedDepthMeters = 0.02f;
+
+    [Tooltip("Avec extension latérale en quad (pas d’arête mesh faîtage central ↔ poignée) : dessine quand même un couvre-joint 3D sur ce segment (sinon le cladding ne voit plus de noue).")]
+    [SerializeField] private bool generateSyntheticLateralExtensionRidgeCaps = true;
+
+    [Header("Continuité tuiles sur un même pan (coplanaire)")]
+    [Tooltip("Si deux triangles du shell partagent une arête et sont quasi coplanaires, les traiter comme UN quad pour la pose des tuiles — supprime la couture au milieu du pan (sans fusionner le mesh collision).")]
+    [SerializeField] private bool mergeCoplanarAdjacentFacesForRoofCladding = true;
+
+    [Tooltip("Produit scalaire minimum entre les normales pour autoriser la fusion (très proche de 1 = quasi même plan).")]
+    [SerializeField, Range(0.985f, 0.99999f)] private float mergeCoplanarRoofFacesNormalDotMin = 0.9995f;
+
+    [Tooltip("Distance max (m) des sommets au plan de l’autre triangle pour valider la coplanarité.")]
+    [SerializeField, Min(0.0005f)] private float mergeCoplanarRoofFacePlaneDistanceMeters = 0.004f;
+
     [SerializeField] private bool generatePerimeterCaps = true;
     [SerializeField, Min(0.02f)] private float perimeterCapWidthMeters = 0.16f;
     [SerializeField, Min(0.002f)] private float perimeterCapSurfaceProtrusionMeters = 0.03f;
@@ -155,6 +195,17 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         configHash = configHash * 31 + (scaleExtraTileGapWithBuildingScale ? 1 : 0);
         configHash = configHash * 31 + Mathf.RoundToInt(extraTileNormalOffsetMeters * 100000f);
         configHash = configHash * 31 + (scaleExtraTileNormalOffsetWithBuildingScale ? 7 : 11);
+        configHash = configHash * 31 + Mathf.RoundToInt(creaseAdjacentTileInsetMeters * 100000f);
+        configHash = configHash * 31 + (scaleCreaseInsetWithBuildingScale ? 19 : 23);
+        configHash = configHash * 31 + (suppressTileCreaseInsetWhenCreaseCapsEnabled ? 43 : 47);
+        configHash = configHash * 31 + (generateCreaseCaps ? 29 : 31);
+        configHash = configHash * 31 + (generateSyntheticLateralExtensionRidgeCaps ? 53 : 59);
+        configHash = configHash * 31 + (mergeCoplanarAdjacentFacesForRoofCladding ? 61 : 67);
+        configHash = configHash * 31 + Mathf.RoundToInt(mergeCoplanarRoofFacesNormalDotMin * 100000f);
+        configHash = configHash * 31 + Mathf.RoundToInt(mergeCoplanarRoofFacePlaneDistanceMeters * 100000f);
+        configHash = configHash * 31 + (generatePerimeterCaps ? 37 : 41);
+        configHash = configHash * 31 + Mathf.RoundToInt(capCoplanarDotThreshold * 10000f);
+        configHash = configHash * 31 + Mathf.RoundToInt(creaseCapMinAngleDeg * 100f);
         bool needRebuild = _runtime.IsDirty || configHash != _lastConfigHash;
         if (!needRebuild)
             return;
@@ -274,6 +325,16 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
             Debug.Log($"[RoofTileGap] stepV={stepV:F5}", this);
         }
 
+        float creaseInsetScaled = Mathf.Max(0f, creaseAdjacentTileInsetMeters);
+        if (scaleCreaseInsetWithBuildingScale)
+            creaseInsetScaled *= buildingScale;
+
+        if (generateCreaseCaps && suppressTileCreaseInsetWhenCreaseCapsEnabled)
+            creaseInsetScaled = 0f;
+
+        bool trackShellEdges =
+            generateCreaseCaps || generatePerimeterCaps || creaseInsetScaled > 1e-7f;
+
         _roofTileOrientationLogRemaining = logStableTileOrientation ? 24 : 0;
         _roofTileGroupOrientationLogRemaining = logRoofTileGroupOrientation ? 64 : 0;
 
@@ -283,11 +344,14 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         var outUv = new List<Vector2>(maxTiles * 12);
         var outCol = new List<Color>(maxTiles * 12);
         var outTris = new List<int>(maxTiles * 18);
-        var edgeMap = generateCreaseCaps ? new Dictionary<EdgeKey, CreaseEdgeInfo>(exteriorTriIndexCount) : null;
+        var edgeMap = trackShellEdges ? new Dictionary<EdgeKey, CreaseEdgeInfo>(exteriorTriIndexCount) : null;
         var creaseEdges = generateCreaseCaps ? new List<CreaseEdgeInfo>(64) : null;
 
         int triCount = exteriorTriIndexCount / 3;
         var triValid = new bool[triCount];
+        var triI0 = new int[triCount];
+        var triI1 = new int[triCount];
+        var triI2 = new int[triCount];
         var triV0 = new Vector3[triCount];
         var triE1 = new Vector3[triCount];
         var triE2 = new Vector3[triCount];
@@ -318,9 +382,12 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
             if (n.y < 0f)
                 n = -n;
 
-            RegisterCreaseEdge(edgeMap, creaseEdges, i0, i1, v0w, v1w, n);
-            RegisterCreaseEdge(edgeMap, creaseEdges, i1, i2, v1w, v2w, n);
-            RegisterCreaseEdge(edgeMap, creaseEdges, i2, i0, v2w, v0w, n);
+            if (edgeMap != null)
+            {
+                RegisterCreaseEdge(edgeMap, creaseEdges, i0, i1, v0w, v1w, n);
+                RegisterCreaseEdge(edgeMap, creaseEdges, i1, i2, v1w, v2w, n);
+                RegisterCreaseEdge(edgeMap, creaseEdges, i2, i0, v2w, v0w, n);
+            }
 
             if (!TryComputeRoofTileAxes(v0w, v1w, v2w, n, out Vector3 axisU, out Vector3 axisV))
                 continue;
@@ -328,6 +395,9 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
                 continue;
 
             triValid[slot] = true;
+            triI0[slot] = i0;
+            triI1[slot] = i1;
+            triI2[slot] = i2;
             triV0[slot] = v0w;
             triE1[slot] = e1;
             triE2[slot] = e2;
@@ -339,25 +409,187 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
 
         ApplyRoofSideGroupTileOrientation(triAxisU, triAxisV, triN, triArea, triValid);
 
-        // --- Phase 2 : même grille qu’avant, axes du groupe pour les petites faces du même pan ---
+        var skipSlotForCoplanarMerge = new bool[triCount];
+        List<Vector2>[] mergedCoplanarFootprintUv = new List<Vector2>[triCount];
+        var absorbedCoplanarBuddySlot = new int[triCount];
+        for (int si = 0; si < triCount; si++)
+            absorbedCoplanarBuddySlot[si] = -1;
+
+        if (mergeCoplanarAdjacentFacesForRoofCladding)
+        {
+            float planeEps = mergeCoplanarRoofFacePlaneDistanceMeters;
+            if (!Mathf.Approximately(buildingScale, 1f))
+                planeEps *= buildingScale;
+
+            var edgeToSlots = new Dictionary<EdgeKey, List<int>>(Mathf.Max(8, exteriorTriIndexCount / 2));
+            for (int slot = 0; slot < triCount; slot++)
+            {
+                if (!triValid[slot])
+                    continue;
+
+                void RegisterEdgeForSlot(int ia, int ib)
+                {
+                    var ek = new EdgeKey(ia, ib);
+                    if (!edgeToSlots.TryGetValue(ek, out List<int> list))
+                    {
+                        list = new List<int>(2);
+                        edgeToSlots[ek] = list;
+                    }
+
+                    if (list.Count > 0 && list[list.Count - 1] == slot)
+                        return;
+                    if (list.Count >= 4)
+                        return;
+                    list.Add(slot);
+                }
+
+                RegisterEdgeForSlot(triI0[slot], triI1[slot]);
+                RegisterEdgeForSlot(triI1[slot], triI2[slot]);
+                RegisterEdgeForSlot(triI2[slot], triI0[slot]);
+            }
+
+            foreach (KeyValuePair<EdgeKey, List<int>> kv in edgeToSlots)
+            {
+                List<int> L = kv.Value;
+                if (L == null || L.Count != 2)
+                    continue;
+                int sa = L[0];
+                int sb = L[1];
+                if (sa == sb || !triValid[sa] || !triValid[sb])
+                    continue;
+                if (skipSlotForCoplanarMerge[sa] || skipSlotForCoplanarMerge[sb])
+                    continue;
+
+                int axisSlot = triArea[sa] >= triArea[sb] ? sa : sb;
+                int otherSlot = axisSlot == sa ? sb : sa;
+
+                if (mergedCoplanarFootprintUv[axisSlot] != null || mergedCoplanarFootprintUv[otherSlot] != null)
+                    continue;
+
+                if (!TryBuildCoplanarMergedQuadFootprintUv(
+                        sa,
+                        sb,
+                        triI0,
+                        triI1,
+                        triI2,
+                        triV0,
+                        triAxisU,
+                        triAxisV,
+                        triN,
+                        triArea,
+                        roofMf.transform,
+                        verts,
+                        mergeCoplanarRoofFacesNormalDotMin,
+                        planeEps,
+                        out List<Vector2> quadFootprintUv))
+                    continue;
+
+                skipSlotForCoplanarMerge[otherSlot] = true;
+                mergedCoplanarFootprintUv[axisSlot] = quadFootprintUv;
+                absorbedCoplanarBuddySlot[axisSlot] = otherSlot;
+            }
+        }
+
+        List<CreaseUvCut>[] creaseUvCutsPerTri = null;
+        if (creaseInsetScaled > 1e-7f && edgeMap != null)
+        {
+            creaseUvCutsPerTri = new List<CreaseUvCut>[triCount];
+            for (int slot = 0; slot < triCount; slot++)
+            {
+                if (!triValid[slot])
+                    continue;
+
+                List<CreaseUvCut> cuts = CollectCreaseUvCutsForTriangleSlot(
+                    slot,
+                    triI0,
+                    triI1,
+                    triI2,
+                    triV0,
+                    triAxisU,
+                    triAxisV,
+                    edgeMap,
+                    roofMf,
+                    verts,
+                    capCoplanarDotThreshold);
+
+                if (cuts != null && cuts.Count > 0)
+                    creaseUvCutsPerTri[slot] = cuts;
+            }
+        }
+
+        List<Vector2>[] tileFootprintUvBoundary = new List<Vector2>[triCount];
+        List<CreaseUvCut>[] tileCreaseCutsResolved = new List<CreaseUvCut>[triCount];
+
+        for (int slot = 0; slot < triCount; slot++)
+        {
+            if (!triValid[slot] || skipSlotForCoplanarMerge[slot])
+                continue;
+
+            if (mergedCoplanarFootprintUv[slot] != null)
+                tileFootprintUvBoundary[slot] = mergedCoplanarFootprintUv[slot];
+            else
+            {
+                Vector3 e1 = triE1[slot];
+                Vector3 e2 = triE2[slot];
+                Vector3 axisU = triAxisU[slot];
+                Vector3 axisV = triAxisV[slot];
+                float u1 = Vector3.Dot(e1, axisU);
+                float u2 = Vector3.Dot(e2, axisU);
+                float vv1 = Vector3.Dot(e1, axisV);
+                float vv2 = Vector3.Dot(e2, axisV);
+                tileFootprintUvBoundary[slot] = new List<Vector2>(3)
+                {
+                    Vector2.zero,
+                    new Vector2(u1, vv1),
+                    new Vector2(u2, vv2)
+                };
+            }
+
+            if (creaseUvCutsPerTri == null)
+                continue;
+
+            List<CreaseUvCut> mergedCuts = null;
+            if (creaseUvCutsPerTri[slot] != null)
+                mergedCuts = new List<CreaseUvCut>(creaseUvCutsPerTri[slot]);
+
+            int buddy = absorbedCoplanarBuddySlot[slot];
+            if (buddy >= 0 && creaseUvCutsPerTri[buddy] != null)
+            {
+                mergedCuts ??= new List<CreaseUvCut>();
+                mergedCuts.AddRange(creaseUvCutsPerTri[buddy]);
+            }
+
+            if (mergedCuts != null)
+                tileCreaseCutsResolved[slot] = mergedCuts;
+        }
+
+        // --- Phase 2 : grille tuiles par triangle OU quad fusionné coplanaire ---
         for (int slot = 0; slot < triCount && tilesBuilt < maxTiles; slot++)
         {
-            if (!triValid[slot])
+            if (!triValid[slot] || skipSlotForCoplanarMerge[slot])
                 continue;
 
             Vector3 v0w = triV0[slot];
-            Vector3 e1 = triE1[slot];
-            Vector3 e2 = triE2[slot];
             Vector3 n = triN[slot];
             Vector3 axisU = triAxisU[slot];
             Vector3 axisV = triAxisV[slot];
 
-            float u0 = 0f, u1 = Vector3.Dot(e1, axisU), u2 = Vector3.Dot(e2, axisU);
-            float vv0 = 0f, vv1 = Vector3.Dot(e1, axisV), vv2 = Vector3.Dot(e2, axisV);
-            float minU = Mathf.Min(u0, u1, u2);
-            float maxU = Mathf.Max(u0, u1, u2);
-            float minV = Mathf.Min(vv0, vv1, vv2);
-            float maxV = Mathf.Max(vv0, vv1, vv2);
+            List<Vector2> footprintUv = tileFootprintUvBoundary[slot];
+            if (footprintUv == null || footprintUv.Count < 3)
+                continue;
+
+            float minU = footprintUv[0].x;
+            float maxU = footprintUv[0].x;
+            float minV = footprintUv[0].y;
+            float maxV = footprintUv[0].y;
+            for (int pi = 1; pi < footprintUv.Count; pi++)
+            {
+                Vector2 p = footprintUv[pi];
+                minU = Mathf.Min(minU, p.x);
+                maxU = Mathf.Max(maxU, p.x);
+                minV = Mathf.Min(minV, p.y);
+                maxV = Mathf.Max(maxV, p.y);
+            }
 
             int row = 0;
             for (float fv = minV; fv <= maxV + 1e-4f && tilesBuilt < maxTiles; fv += stepV, row++)
@@ -393,9 +625,7 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
                             axisU,
                             axisV,
                             n,
-                            new Vector2(u0, vv0),
-                            new Vector2(u1, vv1),
-                            new Vector2(u2, vv2),
+                            footprintUv,
                             fu,
                             fv,
                             w,
@@ -403,7 +633,9 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
                             normalOffset,
                             thick,
                             tileEmbedDepth,
-                            tint))
+                            tint,
+                            tileCreaseCutsResolved[slot],
+                            creaseInsetScaled))
                     {
                         tilesBuilt++;
                     }
@@ -421,10 +653,11 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
                     continue;
 
                 float normalDot = Vector3.Dot(edge.normalA.normalized, edge.normalB.normalized);
-                if (normalDot > capCoplanarDotThreshold)
+                float angleDeg = Mathf.Acos(Mathf.Clamp(normalDot, -1f, 1f)) * Mathf.Rad2Deg;
+                if (normalDot > capCoplanarDotThreshold && angleDeg < creaseCapMinAngleDeg)
                 {
                     if (logRebuildWarnings)
-                        Debug.Log($"[RoofCladding] cap skipped: smooth/coplanar edge dot={normalDot:0.###}", this);
+                        Debug.Log($"[RoofCladding] cap skipped: quasi coplanaire dot={normalDot:0.###} angle={angleDeg:0.#}°", this);
                     continue;
                 }
 
@@ -444,6 +677,55 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
                     capTint);
                 if (logRebuildWarnings)
                     Debug.Log($"[RoofCladding] cap generated: real roof break dot={normalDot:0.###}", this);
+            }
+        }
+
+        if (generateCreaseCaps &&
+            generateSyntheticLateralExtensionRidgeCaps &&
+            _roof != null &&
+            _roof.useLateralFaceSystem &&
+            !_roof.useDomeProfile &&
+            _roof.LateralExtensionStructuralQuadAlongBaseEdge &&
+            _roof.TryComputeFootprintBaseCornersWorld(out float synBaseY, out Vector2 synCentroidXZ, out _, out _))
+        {
+            Vector3 centralApexW = new Vector3(synCentroidXZ.x, synBaseY + _roof.roofHeightMeters, synCentroidXZ.y);
+            Color synthTint = new Color(0.48f, 0.20f, 0.12f, 1f);
+            float capW = creaseCapWidthMeters * buildingScale;
+            float capProtrude = creaseCapSurfaceProtrusionMeters * buildingScale;
+            float capEmbed = creaseCapEmbedDepthMeters * buildingScale;
+
+            for (int li = 0; li < HouseRoofSystem.MaxLateralApexPoints; li++)
+            {
+                if (!_roof.TryGetLateralApexWorldAtIndex(li, out Vector3 lateralApexW))
+                    continue;
+
+                if (!TryPickRoofShellNormalsNearEndpoints(
+                        verts,
+                        roofMf.transform,
+                        tris,
+                        exteriorTriIndexCount,
+                        centralApexW,
+                        lateralApexW,
+                        out Vector3 nCentral,
+                        out Vector3 nLateral))
+                {
+                    EstimateLateralExtensionRidgeNormalsFallback(centralApexW, lateralApexW, synCentroidXZ, out nCentral, out nLateral);
+                }
+
+                AppendCreaseCapLocal(
+                    outVerts,
+                    outUv,
+                    outCol,
+                    outTris,
+                    worldToCladdingLocal,
+                    centralApexW,
+                    lateralApexW,
+                    nCentral,
+                    nLateral,
+                    capW,
+                    capProtrude,
+                    capEmbed,
+                    synthTint);
             }
         }
 
@@ -600,7 +882,7 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         Vector3 worldB,
         Vector3 normal)
     {
-        if (edgeMap == null || creaseEdges == null)
+        if (edgeMap == null)
             return;
 
         var key = new EdgeKey(ia, ib);
@@ -625,7 +907,67 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         existing.normalB = normal;
         existing.hasSecondNormal = true;
         edgeMap[key] = existing;
-        creaseEdges.Add(existing);
+        creaseEdges?.Add(existing);
+    }
+
+    static List<CreaseUvCut> CollectCreaseUvCutsForTriangleSlot(
+        int slot,
+        int[] triI0,
+        int[] triI1,
+        int[] triI2,
+        Vector3[] triV0,
+        Vector3[] triAxisU,
+        Vector3[] triAxisV,
+        Dictionary<EdgeKey, CreaseEdgeInfo> edgeMap,
+        MeshFilter roofMf,
+        Vector3[] verts,
+        float coplanarDotThreshold)
+    {
+        if (edgeMap == null || roofMf == null || verts == null)
+            return null;
+
+        int i0 = triI0[slot];
+        int i1 = triI1[slot];
+        int i2 = triI2[slot];
+        Vector3 origin = triV0[slot];
+        Vector3 axisU = triAxisU[slot];
+        Vector3 axisV = triAxisV[slot];
+
+        List<CreaseUvCut> list = null;
+
+        void TryEdge(int ia, int ib)
+        {
+            var key = new EdgeKey(ia, ib);
+            if (!edgeMap.TryGetValue(key, out CreaseEdgeInfo info) || !info.hasSecondNormal)
+                return;
+
+            float nd = Vector3.Dot(info.normalA.normalized, info.normalB.normalized);
+            if (nd > coplanarDotThreshold)
+                return;
+
+            if (ia < 0 || ib < 0 || ia >= verts.Length || ib >= verts.Length)
+                return;
+
+            Vector3 wa = roofMf.transform.TransformPoint(verts[ia]);
+            Vector3 wb = roofMf.transform.TransformPoint(verts[ib]);
+            Vector2 ua = EdgeUvFromWorld(origin, axisU, axisV, wa);
+            Vector2 ub = EdgeUvFromWorld(origin, axisU, axisV, wb);
+
+            list ??= new List<CreaseUvCut>(3);
+            list.Add(new CreaseUvCut(ua, ub));
+        }
+
+        TryEdge(i0, i1);
+        TryEdge(i1, i2);
+        TryEdge(i2, i0);
+
+        return list;
+    }
+
+    static Vector2 EdgeUvFromWorld(Vector3 triangleOriginW, Vector3 axisU, Vector3 axisV, Vector3 world)
+    {
+        Vector3 d = world - triangleOriginW;
+        return new Vector2(Vector3.Dot(d, axisU), Vector3.Dot(d, axisV));
     }
 
     enum RoofPanSideGroup
@@ -926,6 +1268,103 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         return initialized;
     }
 
+    /// <summary>
+    /// Normales des triangles du shell les plus proches des deux extrémités d’une crête (pour couvre-joint sans arête mesh).
+    /// </summary>
+    static bool TryPickRoofShellNormalsNearEndpoints(
+        Vector3[] vertsLocal,
+        Transform roofWorld,
+        int[] tris,
+        int exteriorIndexCount,
+        Vector3 pCentral,
+        Vector3 pLateral,
+        out Vector3 nCentral,
+        out Vector3 nLateral)
+    {
+        nCentral = Vector3.up;
+        nLateral = Vector3.up;
+        if (vertsLocal == null || roofWorld == null || tris == null)
+            return false;
+
+        float bestCSq = float.MaxValue;
+        float bestLSq = float.MaxValue;
+
+        for (int t = 0; t + 2 < exteriorIndexCount; t += 3)
+        {
+            int i0 = tris[t];
+            int i1 = tris[t + 1];
+            int i2 = tris[t + 2];
+            if (i0 < 0 || i1 < 0 || i2 < 0 || i0 >= vertsLocal.Length || i1 >= vertsLocal.Length || i2 >= vertsLocal.Length)
+                continue;
+
+            Vector3 v0 = roofWorld.TransformPoint(vertsLocal[i0]);
+            Vector3 v1 = roofWorld.TransformPoint(vertsLocal[i1]);
+            Vector3 v2 = roofWorld.TransformPoint(vertsLocal[i2]);
+            Vector3 ctr = (v0 + v1 + v2) * (1f / 3f);
+
+            Vector3 n = Vector3.Cross(v1 - v0, v2 - v0);
+            float nm = n.magnitude;
+            if (nm < 1e-10f)
+                continue;
+            n /= nm;
+            if (n.y < 0f)
+                n = -n;
+
+            float dC = (ctr - pCentral).sqrMagnitude;
+            if (dC < bestCSq)
+            {
+                bestCSq = dC;
+                nCentral = n;
+            }
+
+            float dL = (ctr - pLateral).sqrMagnitude;
+            if (dL < bestLSq)
+            {
+                bestLSq = dL;
+                nLateral = n;
+            }
+        }
+
+        const float maxReasonableSq = 25f;
+        return bestCSq < maxReasonableSq && bestLSq < maxReasonableSq;
+    }
+
+    static void EstimateLateralExtensionRidgeNormalsFallback(
+        Vector3 centralApexWorld,
+        Vector3 lateralApexWorld,
+        Vector2 footprintCentroidXZ,
+        out Vector3 nCentral,
+        out Vector3 nLateral)
+    {
+        Vector3 along = lateralApexWorld - centralApexWorld;
+        float len = along.magnitude;
+        if (len < 1e-6f)
+        {
+            nCentral = Vector3.up;
+            nLateral = Vector3.up;
+            return;
+        }
+
+        along /= len;
+
+        Vector3 mid = (centralApexWorld + lateralApexWorld) * 0.5f;
+        Vector3 towardCentroid = new Vector3(footprintCentroidXZ.x - mid.x, 0f, footprintCentroidXZ.y - mid.z);
+        if (towardCentroid.sqrMagnitude < 1e-10f)
+            towardCentroid = Vector3.Cross(Vector3.up, along);
+        towardCentroid.Normalize();
+
+        nCentral = Vector3.Cross(along, towardCentroid);
+        nCentral.Normalize();
+        if (nCentral.y < 0.06f)
+            nCentral = -nCentral;
+
+        Vector3 awayCentroid = -towardCentroid;
+        nLateral = Vector3.Cross(awayCentroid, along);
+        nLateral.Normalize();
+        if (nLateral.y < 0.06f)
+            nLateral = -nLateral;
+    }
+
     static void AppendCreaseCapLocal(
         List<Vector3> verts,
         List<Vector2> uvs,
@@ -1097,10 +1536,192 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         return avgY + verticality * 2f;
     }
 
+    static void ClipFootprintPolygonAgainstUvBoundary(List<Vector2> polygon, IReadOnlyList<Vector2> boundaryUvCcW)
+    {
+        if (polygon == null || polygon.Count == 0 || boundaryUvCcW == null || boundaryUvCcW.Count < 3)
+            return;
+
+        Vector2 insideRef = Vector2.zero;
+        for (int i = 0; i < boundaryUvCcW.Count; i++)
+            insideRef += boundaryUvCcW[i];
+        insideRef /= boundaryUvCcW.Count;
+
+        for (int i = 0; i < boundaryUvCcW.Count; i++)
+        {
+            int j = (i + 1) % boundaryUvCcW.Count;
+            ClipPolygonAgainstEdge(polygon, boundaryUvCcW[i], boundaryUvCcW[j], insideRef);
+            if (polygon.Count < 3)
+                return;
+        }
+    }
+
+    static bool TryCollectFourDistinctMeshIndices(
+        int a0,
+        int a1,
+        int a2,
+        int b0,
+        int b1,
+        int b2,
+        out int[] four)
+    {
+        four = null;
+        Span<int> span = stackalloc int[6] { a0, a1, a2, b0, b1, b2 };
+        var uniq = new List<int>(6);
+        for (int i = 0; i < 6; i++)
+        {
+            int v = span[i];
+            bool dup = false;
+            for (int j = 0; j < uniq.Count; j++)
+            {
+                if (uniq[j] == v)
+                {
+                    dup = true;
+                    break;
+                }
+            }
+
+            if (!dup)
+                uniq.Add(v);
+        }
+
+        if (uniq.Count != 4)
+            return false;
+        four = uniq.ToArray();
+        return true;
+    }
+
+    static float SignedAreaPolygon2D(Vector2[] poly)
+    {
+        float a = 0f;
+        int n = poly != null ? poly.Length : 0;
+        for (int i = 0; i < n; i++)
+        {
+            Vector2 u = poly[i];
+            Vector2 v = poly[(i + 1) % n];
+            a += u.x * v.y - v.x * u.y;
+        }
+
+        return a * 0.5f;
+    }
+
+    static bool IsConvexQuadUv(Vector2[] q)
+    {
+        if (q == null || q.Length != 4)
+            return false;
+        int sign = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            Vector2 e0 = q[(i + 1) % 4] - q[i];
+            Vector2 e1 = q[(i + 2) % 4] - q[(i + 1) % 4];
+            float z = e0.x * e1.y - e0.y * e1.x;
+            if (Mathf.Abs(z) < 1e-10f)
+                continue;
+            int s = z > 0f ? 1 : -1;
+            if (sign == 0)
+                sign = s;
+            else if (s != sign)
+                return false;
+        }
+
+        return sign != 0;
+    }
+
+    static bool TryOrderConvexQuadUvCcW(Vector2[] p, out Vector2[] ordered)
+    {
+        ordered = null;
+        if (p == null || p.Length != 4)
+            return false;
+
+        Vector2 c = (p[0] + p[1] + p[2] + p[3]) * 0.25f;
+        var order = new int[4];
+        for (int i = 0; i < 4; i++)
+            order[i] = i;
+
+        System.Array.Sort(order, (ia, ib) =>
+        {
+            float aa = Mathf.Atan2(p[ia].y - c.y, p[ia].x - c.x);
+            float ab = Mathf.Atan2(p[ib].y - c.y, p[ib].x - c.x);
+            return aa.CompareTo(ab);
+        });
+
+        ordered = new Vector2[4];
+        for (int i = 0; i < 4; i++)
+            ordered[i] = p[order[i]];
+
+        if (!IsConvexQuadUv(ordered))
+            return false;
+
+        if (SignedAreaPolygon2D(ordered) < 0f)
+            System.Array.Reverse(ordered);
+
+        return SignedAreaPolygon2D(ordered) > 1e-8f;
+    }
+
+    static bool TryBuildCoplanarMergedQuadFootprintUv(
+        int sa,
+        int sb,
+        int[] triI0,
+        int[] triI1,
+        int[] triI2,
+        Vector3[] triV0,
+        Vector3[] triAxisU,
+        Vector3[] triAxisV,
+        Vector3[] triN,
+        float[] triArea,
+        Transform xf,
+        Vector3[] vertsLocal,
+        float normalDotMin,
+        float planeDistMax,
+        out List<Vector2> quadUvCcW)
+    {
+        quadUvCcW = null;
+        if (triI0 == null || vertsLocal == null || xf == null || triArea == null)
+            return false;
+
+        if (!TryCollectFourDistinctMeshIndices(
+                triI0[sa],
+                triI1[sa],
+                triI2[sa],
+                triI0[sb],
+                triI1[sb],
+                triI2[sb],
+                out int[] idx4))
+            return false;
+
+        if (Vector3.Dot(triN[sa], triN[sb]) < normalDotMin)
+            return false;
+
+        int axisSlot = triArea[sa] >= triArea[sb] ? sa : sb;
+        Vector3 nRef = triN[axisSlot];
+        Vector3 oRef = triV0[axisSlot];
+        Vector3 axisU = triAxisU[axisSlot];
+        Vector3 axisV = triAxisV[axisSlot];
+
+        var uvPts = new Vector2[4];
+        for (int i = 0; i < 4; i++)
+        {
+            int vi = idx4[i];
+            if (vi < 0 || vi >= vertsLocal.Length)
+                return false;
+
+            Vector3 w = xf.TransformPoint(vertsLocal[vi]);
+            float distPl = Mathf.Abs(Vector3.Dot(w - oRef, nRef));
+            if (distPl > planeDistMax)
+                return false;
+
+            Vector3 d = w - oRef;
+            uvPts[i] = new Vector2(Vector3.Dot(d, axisU), Vector3.Dot(d, axisV));
+        }
+
+        if (!TryOrderConvexQuadUvCcW(uvPts, out Vector2[] ordered))
+            return false;
+
+        quadUvCcW = new List<Vector2>(4) { ordered[0], ordered[1], ordered[2], ordered[3] };
+        return true;
+    }
+
     /// <summary>
-    /// Tuile axis-aligned dans le plan (axisU, axisV) : quad centré sur (centerU, centerV), découpé au triangle en UV puis extrudé en épaisseur.
-    /// Les UV : U suit <c>p.x</c> le long de axisU ; V utilise <c>1 - InverseLerp(...)</c> pour l’orientation texture « haut du pan » — couplé au repère axisU/axisV fixé plus haut.
-    /// Si <see cref="SignedArea"/> du polygone découpé est négatif, <see cref="polygon.Reverse"/> corrige le winding pour les triangles.
+    /// Tuile axis-aligned dans le plan (axisU, axisV) : quad centré sur (centerU, centerV), découpé au footprint triangle ou quad coplanaire fusionné, puis extrudé en épaisseur.
     /// </summary>
     static bool AppendClippedTileFaceLocal(
         List<Vector3> verts,
@@ -1112,9 +1733,7 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         Vector3 axisU,
         Vector3 axisV,
         Vector3 n,
-        Vector2 triA,
-        Vector2 triB,
-        Vector2 triC,
+        IReadOnlyList<Vector2> footprintUvCcW,
         float centerU,
         float centerV,
         float width,
@@ -1122,7 +1741,9 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         float normalOffset,
         float surfaceProtrusion,
         float embedDepth,
-        Color tint)
+        Color tint,
+        List<CreaseUvCut> creaseUvCuts,
+        float creaseInsetMeters)
     {
         float hu = width * 0.5f;
         float hv = height * 0.5f;
@@ -1134,9 +1755,37 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
             new Vector2(centerU - hu, centerV + hv)
         };
 
-        ClipPolygonAgainstEdge(polygon, triA, triB, triC);
-        ClipPolygonAgainstEdge(polygon, triB, triC, triA);
-        ClipPolygonAgainstEdge(polygon, triC, triA, triB);
+        ClipFootprintPolygonAgainstUvBoundary(polygon, footprintUvCcW);
+
+        if (creaseUvCuts != null && creaseInsetMeters > 1e-6f)
+        {
+            Vector2 centroidUv = Vector2.zero;
+            int nb = footprintUvCcW != null ? footprintUvCcW.Count : 0;
+            if (nb > 0)
+            {
+                for (int i = 0; i < nb; i++)
+                    centroidUv += footprintUvCcW[i];
+                centroidUv /= nb;
+            }
+
+            for (int ci = 0; ci < creaseUvCuts.Count; ci++)
+            {
+                CreaseUvCut cut = creaseUvCuts[ci];
+                Vector2 seg = cut.b - cut.a;
+                float sl = seg.magnitude;
+                if (sl < 1e-7f)
+                    continue;
+
+                Vector2 tang = seg / sl;
+                Vector2 inward = new Vector2(-tang.y, tang.x);
+                if (Vector2.Dot(centroidUv - cut.a, inward) < 0f)
+                    inward = -inward;
+
+                ClipPolygonAgainstHalfPlaneInset(polygon, cut.a, inward, creaseInsetMeters);
+                if (polygon.Count < 3)
+                    return false;
+            }
+        }
 
         if (polygon.Count < 3 || Mathf.Abs(SignedArea(polygon)) < 0.0005f)
             return false;
@@ -1198,6 +1847,64 @@ public sealed class RoofCladdingGenerator : MonoBehaviour
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Coupe le polygone pour ne garder que les points à distance signée ≥ <paramref name="minSignedDistance"/>
+    /// du bord limité par l’origine et la normale « vers l’intérieur du triangle » (repère UV orthonormé du pan).
+    /// </summary>
+    static void ClipPolygonAgainstHalfPlaneInset(
+        List<Vector2> polygon,
+        Vector2 planeOrigin,
+        Vector2 inwardNormal,
+        float minSignedDistance)
+    {
+        if (polygon.Count == 0 || minSignedDistance <= 1e-10f)
+            return;
+
+        Vector2 n = inwardNormal;
+        if (n.sqrMagnitude < 1e-14f)
+            return;
+        n.Normalize();
+
+        bool Inside(Vector2 p) =>
+            Vector2.Dot(p - planeOrigin, n) >= minSignedDistance - 1e-5f;
+
+        Vector2 Intersect(Vector2 from, Vector2 to)
+        {
+            float df = Vector2.Dot(from - planeOrigin, n) - minSignedDistance;
+            float dt = Vector2.Dot(to - planeOrigin, n) - minSignedDistance;
+            float denom = dt - df;
+            if (Mathf.Abs(denom) < 1e-10f)
+                return from;
+            float t = Mathf.Clamp01(-df / denom);
+            return from + (to - from) * t;
+        }
+
+        var input = new List<Vector2>(polygon);
+        polygon.Clear();
+
+        Vector2 previous = input[input.Count - 1];
+        bool previousInside = Inside(previous);
+        for (int i = 0; i < input.Count; i++)
+        {
+            Vector2 current = input[i];
+            bool currentInside = Inside(current);
+
+            if (currentInside)
+            {
+                if (!previousInside)
+                    polygon.Add(Intersect(previous, current));
+                polygon.Add(current);
+            }
+            else if (previousInside)
+            {
+                polygon.Add(Intersect(previous, current));
+            }
+
+            previous = current;
+            previousInside = currentInside;
+        }
     }
 
     static void ClipPolygonAgainstEdge(List<Vector2> polygon, Vector2 edgeA, Vector2 edgeB, Vector2 insideReference)
